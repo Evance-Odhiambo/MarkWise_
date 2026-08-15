@@ -1,0 +1,23 @@
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Root-level env files
+.env*
+!.env.example
+!.env.sample
+
+# Secrets
+init.sql
+secrets/
+*.pem
+*.key
+
+# Build artifacts
+*.log

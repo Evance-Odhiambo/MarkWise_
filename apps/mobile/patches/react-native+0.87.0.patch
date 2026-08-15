@@ -1,0 +1,11 @@
+diff --git a/node_modules/react-native/package.json b/node_modules/react-native/package.json
+--- a/node_modules/react-native/package.json
++++ b/node_modules/react-native/package.json
+@@ -60,6 +60,7 @@
+       "default": "./src/unstable-internals-do-not-use.js"
+     },
+     "./src/fb_internal/*": "./src/fb_internal/*",
++    "./src/private/featureflags/*": "./src/private/featureflags/*",
+     "./package.json": "./package.json"
+   },
+   "jest-junit": {

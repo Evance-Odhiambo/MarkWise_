@@ -1,0 +1,66 @@
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: markwise-db
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-markwise}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-markwise123}
+      POSTGRES_DB: ${POSTGRES_DB:-markwise}
+    ports:
+      - "5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-markwise} -d ${POSTGRES_DB:-markwise}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: markwise-redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redisdata:/data
+    command: redis-server --appendonly yes
+    restart: unless-stopped
+
+  api:
+    build:
+      context: ./apps/web
+      dockerfile: Dockerfile
+    container_name: markwise-api
+    ports:
+      - "3000:3000"
+    env_file:
+      - apps/web/.env
+    depends_on:
+      - postgres
+      - redis
+    restart: unless-stopped
+
+  prisma-studio:
+    image: node:20-alpine
+    container_name: markwise-prisma-studio
+    working_dir: /app/apps/web
+    command: npx prisma studio --browser
+    ports:
+      - "5555:5555"
+    volumes:
+      - ./apps/web:/app/apps/web
+      - ./apps/web/prisma:/app/apps/web/prisma
+    env_file:
+      - apps/web/.env
+    environment:
+      DATABASE_URL: postgresql://markwise:markwise123@postgres:5432/markwise?schema=public
+    depends_on:
+      - postgres
+    restart: unless-stopped
+
+volumes:
+  pgdata:
+  redisdata:
