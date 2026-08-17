@@ -10,7 +10,7 @@ interface RegisterRequest {
   email: string;
   password: string;
   role: string;
-    institution?: {
+  institution?: {
     name: string;
     apiUrl?: string;
   };
@@ -20,6 +20,7 @@ interface User {
   id: string;
   name: string;
   email: string;
+  password: string;
   role: string;
   institutionId?: string;
 }
@@ -27,7 +28,7 @@ interface User {
 interface Institution {
   id: string;
   name: string;
-  apiUrl: string;
+  apiUrl?: string;
 }
 
 async function readUsers(): Promise<User[]> {
@@ -78,8 +79,23 @@ export async function POST(request: Request) {
       );
     }
 
+    if (password.length < 8) {
+      return NextResponse.json(
+        { error: "Password must be at least 8 characters long" },
+        { status: 400 }
+      );
+    }
+
+    if (role !== "system-admin" && role !== "admin") {
+      return NextResponse.json(
+        { error: "Unsupported role" },
+        { status: 400 }
+      );
+    }
+
     const users = await readUsers();
-    const existingUser = users.find((u) => u.email === email);
+    const normalizedEmail = email.trim().toLowerCase();
+    const existingUser = users.find((user) => user.email.toLowerCase() === normalizedEmail);
     if (existingUser) {
       return NextResponse.json(
         { error: "User with this email already exists" },
@@ -90,15 +106,25 @@ export async function POST(request: Request) {
     let institutionId: string | undefined;
 
     if (institution && (role === "admin" || role === "system-admin")) {
+      const institutionName = institution.name?.trim();
+      if (!institutionName) {
+        return NextResponse.json(
+          { error: "Institution name is required" },
+          { status: 400 }
+        );
+      }
+
       const institutions = await readInstitutions();
-      const existingInst = institutions.find((i) => i.name === institution.name);
+      const existingInst = institutions.find(
+        (item) => item.name.trim().toLowerCase() === institutionName.toLowerCase()
+      );
 
       if (existingInst) {
         institutionId = existingInst.id;
       } else {
         const newInstitution: Institution = {
-          id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-          name: institution.name,
+          id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+          name: institutionName,
           apiUrl: institution.apiUrl || "",
         };
         institutions.push(newInstitution);
@@ -108,9 +134,10 @@ export async function POST(request: Request) {
     }
 
     const newUser: User = {
-      id: `${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      name,
-      email,
+      id: `${Date.now()}-${Math.random().toString(36).slice(2, 11)}`,
+      name: name.trim(),
+      email: normalizedEmail,
+      password,
       role,
       institutionId,
     };

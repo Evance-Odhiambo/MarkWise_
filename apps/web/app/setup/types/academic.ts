@@ -24,7 +24,6 @@ export interface AcademicCourse {
   id: string;
   name: string;
   duration: number; // Number of years
-  description?: string | null;
   years: AcademicYear[];
 }
 

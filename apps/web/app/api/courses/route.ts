@@ -38,7 +38,6 @@ function formatCourse(course: CourseWithYears): AcademicCourse {
     id: course.id,
     name: course.name,
     duration: course.years.length,
-    description: null,
     years: course.years.map((y: CourseYearWithSemesters) => ({
       id: y.id,
       yearNumber: y.yearNumber,
@@ -59,9 +58,13 @@ function formatCourse(course: CourseWithYears): AcademicCourse {
   };
 }
 
-export async function GET() {
+export async function GET(request: Request) {
   try {
+    const { searchParams } = new URL(request.url);
+    const institutionId = searchParams.get("institutionId");
+
     const courses = await prisma.course.findMany({
+      where: institutionId ? { institutionId } : undefined,
       include: {
         years: {
           include: {

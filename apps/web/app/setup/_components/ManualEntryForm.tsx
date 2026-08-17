@@ -1,12 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import type {
-  AcademicCourse,
-  AcademicYear,
-  AcademicSemester,
-  AcademicUnit,
-} from "../types/academic";
+import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
+import { Card } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+import type { AcademicCourse, AcademicSemester, AcademicUnit } from "../types/academic";
 
 interface ManualEntryFormProps {
   data: AcademicCourse[];
@@ -21,12 +20,10 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
   const [selectedYearId, setSelectedYearId] = useState<string | null>(null);
   const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
 
-  // Course form states
   const [courseName, setCourseName] = useState("");
   const [courseDuration, setCourseDuration] = useState(1);
-  const [courseDesc, setCourseDesc] = useState("");
+  const [editingCourseId, setEditingCourseId] = useState<string | null>(null);
 
-  // Unit form states
   const [unitName, setUnitName] = useState("");
   const [unitCode, setUnitCode] = useState("");
   const [bulkUnitCsv, setBulkUnitCsv] = useState("");
@@ -34,7 +31,7 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
   const resetCourseForm = () => {
     setCourseName("");
     setCourseDuration(1);
-    setCourseDesc("");
+    setEditingCourseId(null);
   };
 
   const resetUnitForm = () => {
@@ -43,20 +40,60 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     setBulkUnitCsv("");
   };
 
-  const generateSemesters = (yearId: string): AcademicSemester[] => {
-    return SEMESTER_OPTIONS.map((name, idx) => ({
+  const generateSemesters = (yearId: string): AcademicSemester[] =>
+    SEMESTER_OPTIONS.map((name, idx) => ({
       id: `sem-${yearId}-${idx + 1}`,
       name,
       semesterNum: idx + 1,
       yearId,
       units: [],
     }));
-  };
 
   const addCourse = () => {
     if (!courseName || courseDuration < 1) return;
 
-    const existing = data.find((c) => c.name === courseName);
+    if (editingCourseId) {
+      const updatedData = data.map((course) => {
+        if (course.id !== editingCourseId) return course;
+
+        const updatedCourse: AcademicCourse = {
+          ...course,
+          name: courseName,
+          duration: courseDuration,
+        };
+
+        const nextYears = Array.from({ length: courseDuration }, (_, index) => {
+          const yearNumber = index + 1;
+          const existingYear = course.years.find((year) => year.yearNumber === yearNumber);
+
+          if (existingYear) {
+            return {
+              ...existingYear,
+              semesters: existingYear.semesters.length
+                ? existingYear.semesters
+                : generateSemesters(existingYear.id),
+            };
+          }
+
+          const yearId = `year-${course.id}-${yearNumber}`;
+          return {
+            id: yearId,
+            yearNumber,
+            courseId: course.id,
+            semesters: generateSemesters(yearId),
+          };
+        });
+
+        return { ...updatedCourse, years: nextYears };
+      });
+
+      onDataChange(updatedData);
+      resetCourseForm();
+      setView("courses");
+      return;
+    }
+
+    const existing = data.find((c) => c.name.toLowerCase() === courseName.trim().toLowerCase());
     if (existing) {
       alert("A course with this name already exists");
       return;
@@ -66,11 +103,9 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
       id: `course-${Date.now()}`,
       name: courseName,
       duration: courseDuration,
-      description: courseDesc || null,
       years: [],
     };
 
-    // Auto-generate years and semesters based on duration
     for (let year = 1; year <= courseDuration; year++) {
       const yearId = `year-${newCourse.id}-${year}`;
       newCourse.years.push({
@@ -87,26 +122,27 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
   };
 
   const deleteCourse = (courseId: string) => {
-    onDataChange(data.filter((c) => c.id !== courseId));
-    setSelectedCourseId(null);
-    setSelectedYearId(null);
-    setSelectedSemesterId(null);
-    setView("courses");
+    const nextData = data.filter((course) => course.id !== courseId);
+    onDataChange(nextData);
+
+    if (selectedCourseId === courseId) {
+      setSelectedCourseId(null);
+      setSelectedYearId(null);
+      setSelectedSemesterId(null);
+    }
+
+    if (editingCourseId === courseId) {
+      resetCourseForm();
+    }
   };
 
   const getCourse = (courseId: string | null) =>
     courseId ? data.find((c) => c.id === courseId) : null;
 
   const getYear = (courseId: string | null, yearId: string | null) =>
-    courseId && yearId
-      ? getCourse(courseId)?.years.find((y) => y.id === yearId)
-      : null;
+    courseId && yearId ? getCourse(courseId)?.years.find((y) => y.id === yearId) : null;
 
-  const getSemester = (
-    courseId: string | null,
-    yearId: string | null,
-    semesterId: string | null
-  ) =>
+  const getSemester = (courseId: string | null, yearId: string | null, semesterId: string | null) =>
     courseId && yearId && semesterId
       ? getYear(courseId, yearId)?.semesters?.find((s) => s.id === semesterId)
       : null;
@@ -116,18 +152,13 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
       sum +
       (c.years || []).reduce(
         (sumY, y) =>
-          sumY +
-          (y.semesters || []).reduce((sumS, s) => sumS + (s.units || []).length, 0),
+          sumY + (y.semesters || []).reduce((sumS, s) => sumS + (s.units || []).length, 0),
         0
       ),
     0
   );
 
-  const addUnitsFromCsv = (
-    courseId: string,
-    yearId: string,
-    semesterId: string
-  ) => {
+  const addUnitsFromCsv = (courseId: string, yearId: string, semesterId: string) => {
     const lines = bulkUnitCsv
       .split("\n")
       .map((line) => line.trim())
@@ -160,9 +191,7 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                 ? {
                     ...y,
                     semesters: (y.semesters || []).map((s) =>
-                      s.id === semesterId
-                        ? { ...s, units: [...(s.units || []), ...newUnits] }
-                        : s
+                      s.id === semesterId ? { ...s, units: [...(s.units || []), ...newUnits] } : s
                     ),
                   }
                 : y
@@ -174,17 +203,10 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     resetUnitForm();
   };
 
-  const addSingleUnit = (
-    courseId: string,
-    yearId: string,
-    semesterId: string
-  ) => {
+  const addSingleUnit = (courseId: string, yearId: string, semesterId: string) => {
     if (!unitCode || !unitName) return;
 
-    const course = getCourse(courseId);
-    const year = getYear(courseId, yearId);
     const semester = getSemester(courseId, yearId, semesterId);
-
     if (!semester) return;
 
     const existing = semester.units.find((u) => u.code === unitCode);
@@ -209,9 +231,7 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                 ? {
                     ...y,
                     semesters: (y.semesters || []).map((s) =>
-                      s.id === semesterId
-                        ? { ...s, units: [...(s.units || []), newUnit] }
-                        : s
+                      s.id === semesterId ? { ...s, units: [...(s.units || []), newUnit] } : s
                     ),
                   }
                 : y
@@ -223,12 +243,7 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     resetUnitForm();
   };
 
-  const deleteUnit = (
-    courseId: string,
-    yearId: string,
-    semesterId: string,
-    unitId: string
-  ) => {
+  const deleteUnit = (courseId: string, yearId: string, semesterId: string, unitId: string) => {
     const updatedData = data.map((c) =>
       c.id === courseId
         ? {
@@ -251,72 +266,63 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     onDataChange(updatedData);
   };
 
-  // View: Courses
   const renderCoursesView = () => (
-    <div className="space-y-4">
-      <h3 className="text-lg font-semibold text-gray-900">Courses / Programs</h3>
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Course Name
-          </label>
-          <input
+    <div className="space-y-5">
+      <div className="flex items-center justify-between">
+        <h3 className="text-lg font-semibold text-slate-900">Courses / Programs</h3>
+        <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
+          {data.length} added
+        </Badge>
+      </div>
+
+      <div className="grid gap-4 md:grid-cols-3">
+        <div className="space-y-2 md:col-span-1">
+          <label className="block text-sm font-medium text-slate-700">Course Name</label>
+          <Input
             type="text"
             value={courseName}
             onChange={(e) => setCourseName(e.target.value)}
             placeholder="e.g. Computer Science"
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="h-11 rounded-xl border-slate-200 bg-slate-50"
           />
         </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Duration (Years)
-          </label>
-          <input
+        <div className="space-y-2">
+          <label className="block text-sm font-medium text-slate-700">Duration (Years)</label>
+          <Input
             type="number"
             value={courseDuration}
             onChange={(e) => setCourseDuration(parseInt(e.target.value, 10) || 1)}
             min={1}
             max={10}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            className="h-11 rounded-xl border-slate-200 bg-slate-50"
           />
         </div>
-        <div className="flex items-end">
-          <button
-            type="button"
-            onClick={addCourse}
-            disabled={!courseName || courseDuration < 1}
-            className="w-full bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white py-2 px-4 rounded-lg font-medium transition"
-          >
-            Add Course
-          </button>
+        <div className="flex items-end gap-2">
+          <Button type="button" onClick={addCourse} disabled={!courseName || courseDuration < 1} className="w-full justify-center">
+            {editingCourseId ? "Update Course" : "Add Course"}
+          </Button>
+          {editingCourseId && (
+            <Button type="button" variant="outline" onClick={resetCourseForm} className="justify-center">
+              Cancel
+            </Button>
+          )}
         </div>
-      </div>
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Description (optional)
-        </label>
-        <textarea
-          value={courseDesc}
-          onChange={(e) => setCourseDesc(e.target.value)}
-          placeholder="Brief description of the course/program..."
-          rows={2}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-        />
       </div>
 
       {data.length === 0 ? (
-        <p className="text-gray-500 text-sm">No courses added yet.</p>
+        <Card className="border-dashed border-slate-300 bg-slate-50/70">
+          <div className="p-6 text-center text-sm text-slate-500">No courses added yet.</div>
+        </Card>
       ) : (
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Name</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Duration</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Years</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Units</th>
-                <th className="w-1"></th>
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Name</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Duration</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Years</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Units</th>
+                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -328,23 +334,43 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                   0
                 );
                 return (
-                  <tr key={course.id} className="border-t border-gray-100">
-                    <td className="py-2 px-3">{course.name}</td>
-                    <td className="py-2 px-3">{course.duration} years</td>
-                    <td className="py-2 px-3">{yearCount}</td>
-                    <td className="py-2 px-3">{unitCount}</td>
-                    <td className="py-2 px-3">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setSelectedCourseId(course.id);
-                          setView("years");
-                          resetCourseForm();
-                        }}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-                      >
-                        Manage
-                      </button>
+                  <tr key={course.id} className="border-t border-slate-200">
+                    <td className="px-4 py-3 font-medium text-slate-800">{course.name}</td>
+                    <td className="px-4 py-3 text-slate-600">{course.duration} years</td>
+                    <td className="px-4 py-3 text-slate-600">{yearCount}</td>
+                    <td className="px-4 py-3 text-slate-600">{unitCount}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-3">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setSelectedCourseId(course.id);
+                            setView("years");
+                            resetCourseForm();
+                          }}
+                          className="text-sm font-medium text-blue-600 hover:text-blue-700"
+                        >
+                          Manage
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setEditingCourseId(course.id);
+                            setCourseName(course.name);
+                            setCourseDuration(course.duration);
+                          }}
+                          className="text-sm font-medium text-amber-600 hover:text-amber-700"
+                        >
+                          Edit
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => deleteCourse(course.id)}
+                          className="text-sm font-medium text-red-600 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </div>
                     </td>
                   </tr>
                 );
@@ -356,36 +382,41 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     </div>
   );
 
-  // View: Years
   const renderYearsView = () => {
     const course = selectedCourseId ? getCourse(selectedCourseId) : null;
     if (!course) return null;
+
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setView("courses");
-              setSelectedYearId(null);
-            }}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-          >
-            ← Back
-          </button>
-          <h3 className="text-lg font-semibold text-gray-900">
-            {course.name} — Years (Duration: {course.duration} years)
-          </h3>
+      <div className="space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setView("courses");
+                setSelectedYearId(null);
+              }}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700"
+            >
+              ← Back
+            </button>
+            <h3 className="text-lg font-semibold text-slate-900">
+              {course.name} — Duration {course.duration} years
+            </h3>
+          </div>
+          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+            {course.years.length} years
+          </Badge>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Year Number</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Semesters</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Units</th>
-                <th className="w-1"></th>
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Year</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Semesters</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Units</th>
+                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -395,11 +426,11 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                   0
                 );
                 return (
-                  <tr key={year.id} className="border-t border-gray-100">
-                    <td className="py-2 px-3">Year {year.yearNumber}</td>
-                    <td className="py-2 px-3">{(year.semesters || []).length}</td>
-                    <td className="py-2 px-3">{unitCount}</td>
-                    <td className="py-2 px-3">
+                  <tr key={year.id} className="border-t border-slate-200">
+                    <td className="px-4 py-3 text-slate-800">Year {year.yearNumber}</td>
+                    <td className="px-4 py-3 text-slate-600">{(year.semesters || []).length}</td>
+                    <td className="px-4 py-3 text-slate-600">{unitCount}</td>
+                    <td className="px-4 py-3 text-right">
                       <button
                         type="button"
                         onClick={() => {
@@ -407,7 +438,7 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                           setView("semesters");
                           resetUnitForm();
                         }}
-                        className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                        className="text-sm font-medium text-blue-600 hover:text-blue-700"
                       >
                         Manage
                       </button>
@@ -422,58 +453,58 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     );
   };
 
-  // View: Semesters
   const renderSemestersView = () => {
     const course = selectedCourseId ? getCourse(selectedCourseId) : null;
-    const year = selectedCourseId && selectedYearId
-      ? getYear(selectedCourseId, selectedYearId)
-      : null;
+    const year = selectedCourseId && selectedYearId ? getYear(selectedCourseId, selectedYearId) : null;
     if (!course || !year) return null;
 
-    const yearNumber = year.yearNumber;
-
     return (
-      <div className="space-y-4">
-        <div className="flex items-center gap-2">
-          <button
-            type="button"
-            onClick={() => {
-              setView("years");
-              setSelectedSemesterId(null);
-            }}
-            className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-          >
-            ← Back
-          </button>
-          <h3 className="text-lg font-semibold text-gray-900">
-            {course.name} — Year {yearNumber} — Semesters
-          </h3>
+      <div className="space-y-5">
+        <div className="flex items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setView("years");
+                setSelectedSemesterId(null);
+              }}
+              className="text-sm font-medium text-blue-600 hover:text-blue-700"
+            >
+              ← Back
+            </button>
+            <h3 className="text-lg font-semibold text-slate-900">
+              {course.name} — Year {year.yearNumber}
+            </h3>
+          </div>
+          <Badge variant="secondary" className="rounded-full bg-blue-50 text-blue-700">
+            Semester plan
+          </Badge>
         </div>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
+        <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Name</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Semester #</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Units</th>
-                <th className="w-1"></th>
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Name</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Semester #</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">Units</th>
+                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">Action</th>
               </tr>
             </thead>
             <tbody>
               {(year.semesters || []).map((sem) => (
-                <tr key={sem.id} className="border-t border-gray-100">
-                  <td className="py-2 px-3">{sem.name}</td>
-                  <td className="py-2 px-3">{sem.semesterNum}</td>
-                  <td className="py-2 px-3">{(sem.units || []).length}</td>
-                  <td className="py-2 px-3">
+                <tr key={sem.id} className="border-t border-slate-200">
+                  <td className="px-4 py-3 text-slate-800">{sem.name}</td>
+                  <td className="px-4 py-3 text-slate-600">{sem.semesterNum}</td>
+                  <td className="px-4 py-3 text-slate-600">{(sem.units || []).length}</td>
+                  <td className="px-4 py-3 text-right">
                     <button
                       type="button"
                       onClick={() => {
                         setSelectedSemesterId(sem.id);
                         resetUnitForm();
                       }}
-                      className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+                      className="text-sm font-medium text-blue-600 hover:text-blue-700"
                     >
                       Add Units
                     </button>
@@ -485,13 +516,13 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
         </div>
 
         {selectedSemesterId && (
-          <div className="flex flex-col gap-4">
+          <div className="space-y-4">
             <button
               type="button"
               onClick={() => setSelectedSemesterId(null)}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium self-start"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700"
             >
-              ← Back to Semesters
+              ← Back to semesters
             </button>
             {renderUnitsView()}
           </div>
@@ -500,125 +531,122 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     );
   };
 
-  // View: Units
   const renderUnitsView = () => {
     if (!selectedCourseId || !selectedYearId || !selectedSemesterId) return null;
     const semester = getSemester(selectedCourseId, selectedYearId, selectedSemesterId);
     if (!semester) return null;
 
     return (
-      <div className="space-y-4">
-        <h3 className="text-lg font-semibold text-gray-900">
-          Units
-        </h3>
-
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Unit Name
-            </label>
-            <input
-              type="text"
-              value={unitName}
-              onChange={(e) => setUnitName(e.target.value)}
-              placeholder="e.g. Introduction to Programming"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+      <Card className="border-slate-200 bg-slate-50/60">
+        <div className="space-y-5 p-4 sm:p-5">
+          <div className="flex items-center justify-between gap-3">
+            <h3 className="text-lg font-semibold text-slate-900">Units</h3>
+            <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">
+              {semester.units.length} in this term
+            </Badge>
           </div>
-          <div>
-            <label className="block text-sm font-medium text-gray-700 mb-1">
-              Unit Code
-            </label>
-            <input
-              type="text"
-              value={unitCode}
-              onChange={(e) => setUnitCode(e.target.value)}
-              placeholder="e.g. CS1010L"
-              className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
-            />
+
+          <div className="grid gap-4 md:grid-cols-2">
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Unit Name</label>
+              <Input
+                type="text"
+                value={unitName}
+                onChange={(e) => setUnitName(e.target.value)}
+                placeholder="e.g. Introduction to Programming"
+                className="h-11 rounded-xl border-slate-200 bg-white"
+              />
+            </div>
+            <div className="space-y-2">
+              <label className="block text-sm font-medium text-slate-700">Unit Code</label>
+              <Input
+                type="text"
+                value={unitCode}
+                onChange={(e) => setUnitCode(e.target.value)}
+                placeholder="e.g. CS1010L"
+                className="h-11 rounded-xl border-slate-200 bg-white"
+              />
+            </div>
           </div>
-        </div>
 
-        <button
-          type="button"
-          onClick={() => addSingleUnit(selectedCourseId, selectedYearId, selectedSemesterId)}
-          disabled={!unitCode || !unitName}
-          className="bg-blue-600 hover:bg-blue-700 disabled:bg-gray-300 text-white py-2 px-4 rounded-lg font-medium transition"
-        >
-          Add Unit
-        </button>
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <Button
+              type="button"
+              onClick={() => addSingleUnit(selectedCourseId, selectedYearId, selectedSemesterId)}
+              disabled={!unitCode || !unitName}
+              className="justify-center"
+            >
+              Add Unit
+            </Button>
+          </div>
 
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">
-            Bulk Add Units (CSV format: code,name)
-          </label>
-          <textarea
-            value={bulkUnitCsv}
-            onChange={(e) => setBulkUnitCsv(e.target.value)}
-            placeholder={`CS1010L,Introduction to Programming&#10;CS2030,Data Structures&#10;MA1010,C Mathematics`}
-            rows={6}
-            className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
-          />
-          <p className="text-sm text-gray-500 mt-1">
-            Enter one unit per line: code, name
-          </p>
-        </div>
+          <div className="space-y-2">
+            <label className="block text-sm font-medium text-slate-700">Bulk Add Units (CSV format: code,name)</label>
+            <textarea
+              value={bulkUnitCsv}
+              onChange={(e) => setBulkUnitCsv(e.target.value)}
+              placeholder={`CS1010L,Introduction to Programming\nCS2030,Data Structures\nMA1010,C Mathematics`}
+              rows={6}
+              className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
+            />
+            <p className="text-xs text-slate-500">Enter one unit per line: code, name</p>
+          </div>
 
-        <button
-          type="button"
-          onClick={() => addUnitsFromCsv(selectedCourseId, selectedYearId, selectedSemesterId)}
-          disabled={!bulkUnitCsv.trim()}
-          className="bg-green-600 hover:bg-green-700 disabled:bg-gray-300 text-white py-2 px-4 rounded-lg font-medium transition"
-        >
-          Add Units from CSV
-        </button>
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => addUnitsFromCsv(selectedCourseId, selectedYearId, selectedSemesterId)}
+            disabled={!bulkUnitCsv.trim()}
+            className="justify-center"
+          >
+            Add Units from CSV
+          </Button>
 
-        <div className="border border-gray-200 rounded-lg overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-gray-50">
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Unit Name</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Unit Code</th>
-                <th className="w-1"></th>
-              </tr>
-            </thead>
-            <tbody>
-              {semester.units.length === 0 ? (
+          <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
+            <table className="w-full text-sm">
+              <thead className="bg-slate-50">
                 <tr>
-                  <td colSpan={3} className="py-4 px-3 text-gray-500 text-center">
-                    No units added yet.
-                  </td>
+                  <th className="px-4 py-3 text-left font-medium text-slate-700">Unit Name</th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-700">Unit Code</th>
+                  <th className="w-20 px-4 py-3 text-right font-medium text-slate-700">Action</th>
                 </tr>
-              ) : (
-                semester.units.map((unit) => (
-                  <tr key={unit.id} className="border-t border-gray-100">
-                    <td className="py-2 px-3">{unit.name}</td>
-                    <td className="py-2 px-3">{unit.code}</td>
-                    <td className="py-2 px-3">
-                      <button
-                        type="button"
-                        onClick={() =>
-                          deleteUnit(selectedCourseId, selectedYearId, selectedSemesterId, unit.id)
-                        }
-                        className="text-red-600 hover:text-red-800 text-sm font-medium"
-                      >
-                        Delete
-                      </button>
+              </thead>
+              <tbody>
+                {semester.units.length === 0 ? (
+                  <tr>
+                    <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
+                      No units added yet.
                     </td>
                   </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+                ) : (
+                  semester.units.map((unit) => (
+                    <tr key={unit.id} className="border-t border-slate-200">
+                      <td className="px-4 py-3 text-slate-800">{unit.name}</td>
+                      <td className="px-4 py-3 text-slate-600">{unit.code}</td>
+                      <td className="px-4 py-3 text-right">
+                        <button
+                          type="button"
+                          onClick={() => deleteUnit(selectedCourseId, selectedYearId, selectedSemesterId, unit.id)}
+                          className="text-sm font-medium text-red-600 hover:text-red-700"
+                        >
+                          Delete
+                        </button>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
         </div>
-      </div>
+      </Card>
     );
   };
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="flex flex-wrap items-center gap-2">
           {view !== "courses" && (
             <button
               type="button"
@@ -628,34 +656,16 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                 setSelectedYearId(null);
                 setSelectedSemesterId(null);
               }}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
+              className="text-sm font-medium text-blue-600 hover:text-blue-700"
             >
               ← Back to Courses
             </button>
           )}
-          {view === "years" && selectedCourseId && (
-            <button
-              type="button"
-              onClick={() => setView("courses")}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-            >
-              ← Back
-            </button>
-          )}
-          {view === "semesters" && selectedCourseId && selectedYearId && (
-            <button
-              type="button"
-              onClick={() => setView("years")}
-              className="text-blue-600 hover:text-blue-800 text-sm font-medium"
-            >
-              ← Back
-            </button>
-          )}
         </div>
-        <span className="text-sm text-gray-500">
-          {data.length} course{data.length !== 1 ? "s" : ""}, {totalUnits} unit
-          {totalUnits !== 1 ? "s" : ""}
-        </span>
+
+        <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
+          {data.length} courses · {totalUnits} units
+        </Badge>
       </div>
 
       {view === "courses" && renderCoursesView()}

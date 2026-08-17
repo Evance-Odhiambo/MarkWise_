@@ -1,5 +1,7 @@
 "use client";
 
+import { Card } from "@/components/ui/card";
+import { cn } from "@/lib/utils";
 import type { ImportMethod } from "../types/academic";
 
 interface MethodSelectorProps {
@@ -30,26 +32,37 @@ const methods: { value: ImportMethod; label: string; description: string; icon: 
 
 export function AcademicMethodSelector({ method, onChange }: MethodSelectorProps) {
   return (
-    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-      {methods.map((m) => (
-        <button
-          key={m.value}
-          type="button"
-          onClick={() => onChange(m.value)}
-          className={`
-            flex flex-col items-center text-center p-4 rounded-lg border-2 transition-all
-            ${
-              method === m.value
-                ? "border-blue-600 bg-blue-50"
-                : "border-gray-200 hover:border-gray-300"
-            }
-          `}
-        >
-          <span className="text-2xl mb-2">{m.icon}</span>
-          <h3 className="font-semibold text-gray-900">{m.label}</h3>
-          <p className="text-sm text-gray-600 mt-1">{m.description}</p>
-        </button>
-      ))}
+    <div className="grid gap-4 md:grid-cols-3">
+      {methods.map((m) => {
+        const active = method === m.value;
+
+        return (
+          <Card
+            key={m.value}
+            className={cn(
+              "cursor-pointer border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
+              active
+                ? "border-blue-500 bg-blue-50/80 shadow-sm ring-2 ring-blue-100"
+                : "border-slate-200 bg-white/80 hover:border-slate-300"
+            )}
+            onClick={() => onChange(m.value)}
+          >
+            <div className="flex h-full flex-col p-5 text-left">
+              <div
+                className={cn(
+                  "mb-3 flex h-11 w-11 items-center justify-center rounded-xl text-xl shadow-sm",
+                  active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
+                )}
+              >
+                {m.icon}
+              </div>
+
+              <h3 className="text-base font-semibold text-slate-900">{m.label}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{m.description}</p>
+            </div>
+          </Card>
+        );
+      })}
     </div>
   );
 }

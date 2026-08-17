@@ -44,7 +44,6 @@ export function parseCsv(csvText: string): ParseResult {
         id: `course-${courseMap.size + 1}`,
         name: courseName,
         duration,
-        description: null,
         years: [],
       };
       courseMap.set(courseKey, course);

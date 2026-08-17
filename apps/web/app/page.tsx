@@ -2,19 +2,7 @@
 import AppHeader from "../components/AppHeader";
 import AppFooter from "../components/AppFooter";
 import Link from "next/link";
-import { useState, useEffect, useRef } from "react";
-
-// ─── Feature Icons (SVG-based for better quality) ──────────
-interface FeatureIconProps {
-  children: React.ReactNode;
-  className?: string;
-}
-
-const FeatureIcon: React.FC<FeatureIconProps> = ({ children, className = "" }) => (
-  <div className={`flex items-center justify-center w-12 h-12 rounded-xl bg-linear-to-br from-emerald-500 to-emerald-600 text-2xl ${className}`}>
-    {children}
-  </div>
-);
+import { useState, useEffect } from "react";
 
 // ─── Feature Data ────────────────────────────────────────────
 const IN_PERSON_FEATURES = [
@@ -36,7 +24,7 @@ const IN_PERSON_FEATURES = [
     icon: "🔢",
     title: "Manual PIN Entry",
     description:
-      "Students enter a session-specific PIN on their phone — simple, fast, and works with any device.",
+      "Students enter a session-specific PIN on their phone — simple, fast, and works with any device. Suitable where student device doesn't support BLE or QR scanning.",
     color: "from-green-500 to-teal-600",
   },
   {
@@ -153,21 +141,20 @@ const TESTIMONIALS = [
 ];
 
 const STATS = [
-  { value: "50K+", label: "Active Users" },
-  { value: "20+", label: "Institutions" },
-  { value: "99%", label: "Satisfaction Rate" },
-  { value: "1M+", label: "Attendance Records" },
+  { value: "99.9%", label: "Successful check-ins" },
+  { value: "< 30s", label: "Average check-in time" },
+  { value: "10x", label: "Faster than paper roll calls" },
+  { value: "1M+", label: "Records processed" },
 ];
 
 // ─── HomePage Component ─────────────────────────────────────
 const HomePage: React.FC = () => {
-  const [isVisible, setIsVisible] = useState(false);
+  const [isVisible, setIsVisible] = useState(true);
   const [visibleCards, setVisibleCards] = useState<Set<string>>(new Set());
-  const statsRef = useRef<HTMLDivElement>(null);
+  const [activeFlowStep, setActiveFlowStep] = useState(0);
+  const [activeMode, setActiveMode] = useState<"in-person" | "online">("in-person");
 
   useEffect(() => {
-    setIsVisible(true);
-    
     const observer = new IntersectionObserver((entries) => {
       entries.forEach(entry => {
         if (entry.isIntersecting) {
@@ -183,6 +170,14 @@ const HomePage: React.FC = () => {
     cards.forEach(card => observer.observe(card));
 
     return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const interval = window.setInterval(() => {
+      setActiveFlowStep((prev) => (prev + 1) % 3);
+    }, 2200);
+
+    return () => window.clearInterval(interval);
   }, []);
 
   return (
@@ -279,19 +274,19 @@ const HomePage: React.FC = () => {
             <div className="mt-16 flex flex-wrap justify-center gap-4">
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-green-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">99.9% Secure</span>
+                <span className="text-sm font-medium text-white">Secure by default</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-blue-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">Zero Hardware</span>
+                <span className="text-sm font-medium text-white">Zero hardware</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-purple-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">10x Faster</span>
+                <span className="text-sm font-medium text-white">Offline resilient</span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-amber-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">Offline First</span>
+                <span className="text-sm font-medium text-white">Real-time tracking</span>
               </div>
             </div>
           </div>
@@ -321,7 +316,7 @@ const HomePage: React.FC = () => {
           </div>
 
           {/* ─── In-Person Features ────────────────────────────── */}
-          <div className="mb-20">
+          <div className="mb-10">
             <div className="flex items-center gap-4 mb-8">
               <div className="bg-linear-to-br from-green-500 to-green-600 rounded-xl w-14 h-14 flex items-center justify-center text-3xl shadow-lg">
                 📱
@@ -436,7 +431,7 @@ const HomePage: React.FC = () => {
             </div>
           </div>
         </div>
-      </section>
+      </section>      
 
       {/* ─── How It Works ────────────────────────────────────── */}
       <section id="how-it-works" className="py-20 px-4 bg-white">
@@ -512,9 +507,9 @@ const HomePage: React.FC = () => {
                   ))}
                 </div>
                 <blockquote className="text-slate-700 text-lg leading-relaxed mb-6 italic">
-                  <span className="text-4xl text-green-200 leading-none mr-2">"</span>
+                  <span className="text-4xl text-green-200 leading-none mr-2">“</span>
                   {testimonial.quote}
-                  <span className="text-4xl text-green-200 leading-none ml-2">"</span>
+                  <span className="text-4xl text-green-200 leading-none ml-2">”</span>
                 </blockquote>
                 <div className="border-t border-green-100 pt-4">
                   <p className="font-semibold text-green-800">{testimonial.author}</p>

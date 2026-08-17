@@ -1,9 +1,22 @@
 "use client";
 
-import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { useState } from "react";
+import { ArrowRight, Building2, CheckCircle2, Eye, EyeOff, LockKeyhole, Mail, ShieldCheck, UserRound } from "lucide-react";
 
-const AdminRegisterPage: React.FC = () => {
+import { Button } from "@/components/ui/button";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Input } from "@/components/ui/input";
+
+const PASSWORD_REQUIREMENTS = [
+  { key: "length", label: "At least 8 characters", test: (value: string) => value.length >= 8 },
+  { key: "upper", label: "One uppercase letter", test: (value: string) => /[A-Z]/.test(value) },
+  { key: "number", label: "One number", test: (value: string) => /\d/.test(value) },
+  { key: "special", label: "One special character", test: (value: string) => /[^A-Za-z0-9]/.test(value) },
+];
+
+export default function AdminRegisterPage() {
   const router = useRouter();
   const [formData, setFormData] = useState({
     name: "",
@@ -12,20 +25,39 @@ const AdminRegisterPage: React.FC = () => {
     confirmPassword: "",
     institutionName: "",
   });
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const passwordChecks = PASSWORD_REQUIREMENTS.map((requirement) => ({
+    ...requirement,
+    valid: requirement.test(formData.password),
+  }));
+
+  const passwordValid = passwordChecks.every((requirement) => requirement.valid);
+
+  const handleSubmit = async (event: React.FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     setError(null);
 
-    if (formData.password !== formData.confirmPassword) {
-      setError("Passwords do not match");
+    if (!formData.name.trim()) {
+      setError("Full name is required");
       return;
     }
 
-    if (!formData.institutionName) {
+    if (!formData.institutionName.trim()) {
       setError("Institution name is required");
+      return;
+    }
+
+    if (!passwordValid) {
+      setError("Password must include at least 8 characters, one uppercase letter, one number, and one special character");
+      return;
+    }
+
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match");
       return;
     }
 
@@ -47,11 +79,12 @@ const AdminRegisterPage: React.FC = () => {
       });
 
       if (response.ok) {
-        router.push("/student/login");
-      } else {
-        const data = await response.json().catch(() => ({ error: "Registration failed" }));
-        setError(data.error || "Registration failed");
+        router.push("/admin/system-admin/login");
+        return;
       }
+
+      const data = await response.json().catch(() => ({ error: "Registration failed" }));
+      setError(data.error || "Registration failed");
     } catch {
       setError("An unexpected error occurred");
     } finally {
@@ -60,102 +93,197 @@ const AdminRegisterPage: React.FC = () => {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-100 py-8">
-      <div className="bg-white p-8 rounded-lg shadow-md w-full max-w-md">
-        <h2 className="text-2xl font-bold mb-6 text-center">System Administrator Registration</h2>
-        <p className="text-sm text-gray-600 mb-6 text-center">
-          Register as the first system admin and set up your institution
-        </p>
+    <main className="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(20,184,166,0.12),_transparent_35%),linear-gradient(135deg,#f8fafc_0%,#ecfeff_100%)] px-4 py-8 sm:px-6 lg:px-8">
+      <div className="mx-auto grid min-h-[calc(100vh-4rem)] max-w-6xl items-center gap-8 lg:grid-cols-[0.92fr_1.08fr]">
+        <section className="hidden rounded-[2rem] border border-emerald-200 bg-slate-900 p-8 text-slate-50 shadow-2xl shadow-emerald-900/20 lg:flex lg:flex-col lg:justify-between">
+          <div className="space-y-6">
+            <div className="inline-flex items-center gap-2 rounded-full border border-white/10 bg-white/5 px-3 py-1.5 text-xs font-medium uppercase tracking-[0.2em] text-emerald-200">
+              <ShieldCheck className="h-3.5 w-3.5" />
+              System admin setup
+            </div>
 
-        {error && <p className="text-sm text-red-600 mb-4 text-center">{error}</p>}
-
-        <form onSubmit={handleSubmit} className="space-y-5">
-          <div>
-            <label htmlFor="name" className="block text-gray-700 font-medium mb-2">
-              Full Name
-            </label>
-            <input
-              type="text"
-              id="name"
-              value={formData.name}
-              onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your name"
-              required
-            />
+            <div>
+              <p className="text-sm font-medium text-emerald-200">Start your institution</p>
+              <h1 className="mt-3 max-w-md text-4xl font-semibold tracking-tight text-white">
+                Launch a secure digital campus with a single administrator account.
+              </h1>
+            </div>
           </div>
 
-          <div>
-            <label htmlFor="email" className="block text-gray-700 font-medium mb-2">
-              Email
-            </label>
-            <input
-              type="email"
-              id="email"
-              value={formData.email}
-              onChange={(e) => setFormData({ ...formData, email: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your email"
-              required
-            />
+          <div className="mt-10 space-y-4">
+            {[
+              "Create your institution profile and governance scope",
+              "Set permissions for students, lecturers, and academic operations",
+              "Launch a unified administration dashboard for total visibility",
+            ].map((item) => (
+              <div key={item} className="flex items-start gap-3 rounded-2xl border border-white/10 bg-white/5 p-4">
+                <CheckCircle2 className="mt-0.5 h-5 w-5 text-emerald-300" />
+                <p className="text-sm text-slate-200">{item}</p>
+              </div>
+            ))}
           </div>
+        </section>
 
-          <div>
-            <label htmlFor="institutionName" className="block text-gray-700 font-medium mb-2">
-              Institution Name
-            </label>
-            <input
-              type="text"
-              id="institutionName"
-              value={formData.institutionName}
-              onChange={(e) => setFormData({ ...formData, institutionName: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="e.g. Harvard University"
-              required
-            />
-          </div>
+        <section className="flex justify-center">
+          <Card className="w-full max-w-xl border-slate-200 bg-white/90 shadow-[0_25px_60px_rgba(15,118,110,0.12)] backdrop-blur-sm">
+            <CardHeader className="space-y-3 pb-6 text-center">
+              <div className="mx-auto flex h-12 w-12 items-center justify-center rounded-2xl bg-emerald-100 text-emerald-700 ring-1 ring-emerald-200">
+                <Building2 className="h-6 w-6" />
+              </div>
+              <div>
+                <CardTitle className="text-3xl font-semibold tracking-tight text-slate-900">Create account</CardTitle>
+                <CardDescription className="mt-2 text-base text-slate-600">
+                  Set up your institution and system administration access.
+                </CardDescription>
+              </div>
+            </CardHeader>
 
-          <div>
-            <label htmlFor="password" className="block text-gray-700 font-medium mb-2">
-              Password
-            </label>
-            <input
-              type="password"
-              id="password"
-              value={formData.password}
-              onChange={(e) => setFormData({ ...formData, password: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Enter your password"
-              required
-            />
-          </div>
+            <CardContent>
+              <form onSubmit={handleSubmit} className="space-y-4">
+                <div className="grid gap-4 sm:grid-cols-2">
+                  <div className="space-y-2 sm:col-span-2">
+                    <label htmlFor="name" className="text-sm font-medium text-slate-700">
+                      Username
+                    </label>
+                    <div className="relative">
+                      <UserRound className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="name"
+                        type="text"
+                        value={formData.name}
+                        onChange={(event) => setFormData({ ...formData, name: event.target.value })}
+                        placeholder="Jane Doe"
+                        className="h-11 pl-9 text-base"
+                        required
+                      />
+                    </div>
+                  </div>
 
-          <div>
-            <label htmlFor="confirmPassword" className="block text-gray-700 font-medium mb-2">
-              Confirm Password
-            </label>
-            <input
-              type="password"
-              id="confirmPassword"
-              value={formData.confirmPassword}
-              onChange={(e) => setFormData({ ...formData, confirmPassword: e.target.value })}
-              className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-              placeholder="Confirm your password"
-              required
-            />
-          </div>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label htmlFor="email" className="text-sm font-medium text-slate-700">
+                      Work email
+                    </label>
+                    <div className="relative">
+                      <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="email"
+                        type="email"
+                        value={formData.email}
+                        onChange={(event) => setFormData({ ...formData, email: event.target.value })}
+                        placeholder="admin@institution.edu"
+                        className="h-11 pl-9 text-base"
+                        required
+                      />
+                    </div>
+                  </div>
 
-          <button
-            type="submit"
-            disabled={isSubmitting}
-            className="w-full bg-blue-500 hover:bg-blue-600 disabled:bg-gray-300 text-white font-medium py-2 px-4 rounded-lg transition"
-          >
-            {isSubmitting ? "Registering..." : "Register"}
-          </button>
-        </form>
+                  <div className="space-y-2 sm:col-span-2">
+                    <label htmlFor="institutionName" className="text-sm font-medium text-slate-700">
+                      Institution name
+                    </label>
+                    <div className="relative">
+                      <Building2 className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="institutionName"
+                        type="text"
+                        value={formData.institutionName}
+                        onChange={(event) => setFormData({ ...formData, institutionName: event.target.value })}
+                        placeholder="University of Nairobi"
+                        className="h-11 pl-9 text-base"
+                        required
+                      />
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                      Password
+                    </label>
+                    <div className="relative">
+                      <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="password"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.password}
+                        onChange={(event) => setFormData({ ...formData, password: event.target.value })}
+                        placeholder="Create password"
+                        className="h-11 pl-9 pr-10 text-base"
+                        required
+                      />
+                      <button
+                        type="button"
+                        aria-label={showPassword ? "Hide password" : "Show password"}
+                        onClick={() => setShowPassword((value) => !value)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
+                      >
+                        {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+
+                  <div className="space-y-2">
+                    <label htmlFor="confirmPassword" className="text-sm font-medium text-slate-700">
+                      Confirm password
+                    </label>
+                    <div className="relative">
+                      <LockKeyhole className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                      <Input
+                        id="confirmPassword"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={formData.confirmPassword}
+                        onChange={(event) => setFormData({ ...formData, confirmPassword: event.target.value })}
+                        placeholder="Repeat password"
+                        className="h-11 pl-9 pr-10 text-base"
+                        required
+                      />
+                      <button
+                        type="button"
+                        aria-label={showConfirmPassword ? "Hide confirm password" : "Show confirm password"}
+                        onClick={() => setShowConfirmPassword((value) => !value)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
+                      >
+                        {showConfirmPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+
+                {formData.password.length > 0 && (
+                  <div className="grid gap-2 rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                    {passwordChecks.map((requirement) => (
+                      <div key={requirement.key} className="flex items-center gap-2">
+                        <span className={requirement.valid ? "text-emerald-600" : "text-slate-400"}>
+                          {requirement.valid ? "✓" : "○"}
+                        </span>
+                        <span className={requirement.valid ? "text-emerald-700" : "text-slate-600"}>{requirement.label}</span>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {error && (
+                  <div className="rounded-xl border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {error}
+                  </div>
+                )}
+
+                <Button type="submit" disabled={isSubmitting} className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700">
+                  {isSubmitting ? "Creating account..." : "Create account"}
+                  <ArrowRight className="ml-2 h-4 w-4" />
+                </Button>
+              </form>
+
+              <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-5 text-sm text-slate-600">
+                <span>Already have an account?</span>
+                <Link href="/admin/system-admin/login" className="font-medium text-emerald-700 transition hover:text-emerald-800">
+                  Sign in
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
+        </section>
       </div>
-    </div>
+    </main>
   );
-};
+}
 
-export default AdminRegisterPage;

@@ -27,7 +27,6 @@ function formatCourse(course: CourseWithYears): AcademicCourse {
     id: course.id,
     name: course.name,
     duration: course.years.length,
-    description: null,
     years: course.years.map((y) => ({
       id: y.id,
       yearNumber: y.yearNumber,
@@ -60,12 +59,31 @@ export async function POST(request: Request) {
       );
     }
 
+    if (!institutionId) {
+      return NextResponse.json(
+        { error: "Institution ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const institution = await prisma.institution.findUnique({
+      where: { id: institutionId },
+      select: { id: true },
+    });
+
+    if (!institution) {
+      return NextResponse.json(
+        { error: "Institution not found" },
+        { status: 404 }
+      );
+    }
+
     const results = await prisma.$transaction(async (tx: Omit<typeof prisma, "$connect" | "$disconnect" | "$on" | "$use" | "$extends">) => {
       const savedCourses: CourseWithYears[] = [];
 
       for (const course of courses) {
         const savedCourse = await tx.course.upsert({
-          where: { id: course.id.startsWith("imported-") ? `pending-${Date.now()}-${Math.random().toString(36).substr(2, 9)}` : course.id },
+          where: { id: course.id },
           update: {
             name: course.name,
             years: {
@@ -88,8 +106,9 @@ export async function POST(request: Request) {
             },
           },
           create: {
+            id: course.id,
             name: course.name,
-            institutionId: institutionId || "",
+            institutionId,
             years: {
               create: course.years.map((y) => ({
                 yearNumber: y.yearNumber,
@@ -136,13 +155,43 @@ export async function POST(request: Request) {
   }
 }
 
-export async function DELETE() {
+export async function DELETE(request: Request) {
   try {
-    await prisma.unit.deleteMany({});
-    await prisma.semester.deleteMany({});
-    await prisma.courseYear.deleteMany({});
-    await prisma.course.deleteMany({});
-    return NextResponse.json({ success: true });
+    const { searchParams } = new URL(request.url);
+    const institutionId = searchParams.get("institutionId");
+
+    if (!institutionId) {
+      return NextResponse.json(
+        { error: "Institution ID is required" },
+        { status: 400 }
+      );
+    }
+
+    const courses = await prisma.course.findMany({
+      where: { institutionId },
+      select: { id: true },
+    });
+
+    const courseIds = courses.map((course) => course.id);
+
+    if (courseIds.length === 0) {
+      return NextResponse.json({ success: true, deleted: 0 });
+    }
+
+    await prisma.unit.deleteMany({
+      where: { semester: { courseYear: { course: { id: { in: courseIds } } } } },
+    });
+    await prisma.semester.deleteMany({
+      where: { courseYear: { course: { id: { in: courseIds } } } },
+    });
+    await prisma.courseYear.deleteMany({
+      where: { course: { id: { in: courseIds } } },
+    });
+    await prisma.course.deleteMany({
+      where: { id: { in: courseIds } },
+    });
+
+    return NextResponse.json({ success: true, deleted: courseIds.length });
   } catch (err) {
     console.error("Error clearing courses:", err);
     return NextResponse.json({ error: "Failed to clear courses" }, { status: 500 });

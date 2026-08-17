@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef } from "react";
+import { Button } from "@/components/ui/button";
 import type { AcademicCourse } from "../types/academic";
 import { parseCsv } from "../lib/csvParser";
 
@@ -66,55 +67,47 @@ export function CsvImportForm({ onDataImported }: CsvImportFormProps) {
   };
 
   return (
-    <div className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Upload CSV File
-        </label>
+    <div className="space-y-5">
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">Upload CSV File</label>
         <input
           type="file"
           accept=".csv,text/csv"
           onChange={handleFileUpload}
           ref={fileInputRef}
-          className="w-full text-sm text-gray-700 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-semibold file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700 file:mr-4 file:rounded-lg file:border-0 file:bg-blue-50 file:px-3 file:py-2 file:text-sm file:font-semibold file:text-blue-700 hover:file:bg-blue-100"
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Or paste CSV data
-        </label>
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">Or paste CSV data</label>
         <textarea
           value={csvText}
           onChange={(e) => setCsvText(e.target.value)}
           placeholder={
-            `courseName,duration&#10;` +
-            `Computer Science,4&#10;` +
+            `courseName,duration\n` +
+            `Computer Science,4\n` +
             `Mathematics,3`
           }
           rows={8}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent font-mono text-sm"
+          className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         />
       </div>
 
-      <p className="text-sm text-gray-600">
+      <p className="text-sm leading-6 text-slate-600">
         Required columns: <strong>courseName</strong>, <strong>duration</strong> (years)
         <br />
         Optional columns: <strong>yearNumber</strong>, <strong>semesterNumber</strong>, <strong>unitName</strong>, <strong>unitCode</strong>
       </p>
 
-      {fileName && <p className="text-sm text-gray-600">Loaded: {fileName}</p>}
+      {fileName && <p className="text-sm text-slate-600">Loaded: {fileName}</p>}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
+      {successMessage && <p className="text-sm text-emerald-600">{successMessage}</p>}
 
-      <button
-        type="button"
-        onClick={handlePaste}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition"
-      >
+      <Button type="button" onClick={handlePaste} className="w-full justify-center" size="lg">
         Parse and Import CSV
-      </button>
+      </Button>
     </div>
   );
 }

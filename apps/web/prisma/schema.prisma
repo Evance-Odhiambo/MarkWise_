@@ -33,6 +33,7 @@ model Institution {
 model Course {
   id            String       @id @default(uuid())
   name          String
+  description   String?
   institutionId String
   students      Student[]
   years         CourseYear[]

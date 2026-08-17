@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import type { AcademicCourse } from "../types/academic";
 
 interface ApiImportFormProps {
@@ -69,29 +71,25 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          API Endpoint URL
-        </label>
-        <input
+    <form onSubmit={handleSubmit} className="space-y-5">
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">API Endpoint URL</label>
+        <Input
           type="url"
           value={apiUrl}
           onChange={(e) => setApiUrl(e.target.value)}
           placeholder="https://your-institution.com/api/academic-data"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="h-11 rounded-xl border-slate-200 bg-slate-50 focus-visible:ring-blue-100"
           required
         />
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          System / Format
-        </label>
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">System / Format</label>
         <select
           value={apiFormat}
           onChange={(e) => setApiFormat(e.target.value)}
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          className="h-11 w-full rounded-xl border border-slate-200 bg-slate-50 px-3 text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
         >
           <option value="">Select a system format</option>
           {commonApiFormats.map((format) => (
@@ -102,29 +100,23 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
         </select>
       </div>
 
-      <div>
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          API Key (optional, if required)
-        </label>
-        <input
+      <div className="space-y-2">
+        <label className="block text-sm font-medium text-slate-700">API Key (optional)</label>
+        <Input
           type="password"
           value={apiKey}
           onChange={(e) => setApiKey(e.target.value)}
-          placeholder="&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;&#8226;"
-          className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+          placeholder="••••••••••"
+          className="h-11 rounded-xl border-slate-200 bg-slate-50 focus-visible:ring-blue-100"
         />
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
+      {successMessage && <p className="text-sm text-emerald-600">{successMessage}</p>}
 
-      <button
-        type="submit"
-        disabled={isLoading}
-        className="w-full bg-blue-600 hover:bg-blue-700 text-white py-2 px-4 rounded-lg font-medium transition disabled:opacity-50"
-      >
+      <Button type="submit" disabled={isLoading} className="w-full justify-center" size="lg">
         {isLoading ? "Importing..." : "Import Academic Data"}
-      </button>
+      </Button>
     </form>
   );
 }
