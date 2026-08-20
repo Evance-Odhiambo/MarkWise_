@@ -1,0 +1,494 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+// Get a free hosted Postgres database in seconds: `npx create-db`
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ── Core identity ────────────────────────────────────────────────────────────
+
+model Institution {
+  id        String     @id @default(uuid())
+  name      String
+  metadata  Json?      @default("{}")
+  settings  Json?      @default("{}")
+  lecturers Lecturer[]
+  students  Student[]
+  courses   Course[]
+  admins    Admin[]
+  onboardingRequests OnboardingRequest[]
+  createdAt DateTime   @default(now())
+  updatedAt DateTime   @updatedAt
+
+  @@map("Institution")
+}
+
+model Admin {
+  id            String        @id @default(uuid())
+  fullName      String
+  email         String        @unique
+  passwordHash  String
+  role          AdminRole
+  institutionId String?
+  institution   Institution?  @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([institutionId])
+  @@index([role])
+  @@map("Admin")
+}
+
+model OnboardingRequest {
+  id            String           @id @default(uuid())
+  contactName   String
+  email         String
+  institutionName String
+  status        OnboardingStatus @default(PENDING)
+  institutionId String?
+  institution   Institution?     @relation(fields: [institutionId], references: [id], onDelete: SetNull)
+  reviewedAt    DateTime?
+  reviewedById  String?
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([status])
+  @@index([email])
+  @@index([institutionId])
+  @@map("OnboardingRequest")
+}
+
+// ── Academic structure ────────────────────────────────────────────────────────
+
+model Course {
+  id            String       @id @default(uuid())
+  name          String
+  description   String?
+  institutionId String
+  students      Student[]
+  years         CourseYear[]
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
+
+  institution Institution @relation(fields: [institutionId], references: [id])
+
+  @@index([institutionId])
+  @@map("Course")
+}
+
+model CourseYear {
+  id         String     @id @default(uuid())
+  yearNumber Int
+  courseId   String
+  course     Course     @relation(fields: [courseId], references: [id])
+  semester   Semester[]
+  createdAt  DateTime   @default(now())
+  updatedAt  DateTime   @updatedAt
+
+  @@unique([courseId, yearNumber])
+  @@index([courseId])
+  @@map("CourseYear")
+}
+
+model Semester {
+  id             String     @id @default(uuid())
+  name           String
+  semesterNumber Int
+  courseYearId   String
+  courseYear     CourseYear @relation(fields: [courseYearId], references: [id])
+  units          Unit[]
+  createdAt      DateTime   @default(now())
+  updatedAt      DateTime   @updatedAt
+
+  @@unique([courseYearId, semesterNumber])
+  @@index([courseYearId])
+  @@map("Semester")
+}
+
+model Unit {
+  id            String         @id @default(uuid())
+  name          String
+  code          String
+  bleId         String?        @unique
+  lastSyncAt    DateTime?
+  syncVersion   Int            @default(0)
+  lecturerUnits LecturerUnit[]
+  semesterId    String
+  semester      Semester       @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  enrollments   Enrollment[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
+
+  @@index([semesterId])
+  @@index([code])
+  @@index([bleId])
+  @@map("Unit")
+}
+
+model Student {
+  id                String                     @id @default(uuid())
+  name              String
+  admissionNumber   String                     @unique
+  courseId          String
+  institutionId     String
+  email             String?                    @unique
+  year              Int
+  pushToken         String?                    @map("push_token")
+  institution       Institution                @relation(fields: [institutionId], references: [id])
+  course            Course                     @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  auth              StudentAuth?
+  enrollments       Enrollment[]
+  attendanceRecords InPersonAttendanceRecord[]
+  createdAt         DateTime                   @default(now())
+  updatedAt         DateTime                   @updatedAt
+
+  @@unique([institutionId, admissionNumber])
+  @@index([institutionId])
+  @@index([courseId])
+  @@map("Student")
+}
+
+model StudentAuth {
+  id           String   @id @default(uuid())
+  studentId    String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  student      Student  @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@map("StudentAuth")
+}
+
+model Enrollment {
+  id        String  @id @default(uuid())
+  studentId String
+  unitId    String
+  student   Student @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  unit      Unit    @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([studentId, unitId])
+  @@index([unitId])
+  @@index([studentId])
+  @@map("Enrollment")
+}
+
+model StudentDevice {
+  id           String   @id @default(uuid())
+  userId       String
+  deviceKey    String   @unique
+  role         UserType @default(student)
+  registeredAt DateTime @default(now())
+  lastUsedAt   DateTime @default(now())
+
+  @@unique([userId, deviceKey])
+  @@index([userId])
+  @@index([deviceKey])
+  @@map("StudentDevice")
+}
+
+model DeviceCredential {
+  id              String   @id @default(uuid())
+  credentialId    String   @unique
+  userId          String
+  userType        UserType
+  studentId       String?
+  publicKey       Bytes
+  counter         Int      @default(0)
+  deviceName      String?
+  transports      String[] @default([])
+  fingerprintHash String?
+  createdAt       DateTime @default(now())
+  lastUsedAt      DateTime @default(now())
+
+  @@unique([userId, credentialId])
+  @@unique([studentId])
+  @@index([userId])
+  @@index([credentialId])
+  @@index([studentId])
+  @@map("DeviceCredential")
+}
+
+model Lecturer {
+  id            String         @id @default(uuid())
+  fullName      String
+  staffNumber   String         @unique
+  email         String         @unique
+  passwordHash  String
+  createdAt     DateTime       @default(now())
+  institutionId String
+  lecturerUnits LecturerUnit[]
+  fcmToken      String?        @map("fcm_token")
+  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  auth          LecturerAuth?
+
+  @@index([institutionId])
+  @@index([staffNumber])
+  @@map("Lecturer")
+}
+
+model LecturerAuth {
+  id           String   @id @default(uuid())
+  lecturerId   String   @unique
+  email        String   @unique
+  passwordHash String
+  createdAt    DateTime @default(now())
+  lecturer     Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+
+  @@map("LecturerAuth")
+}
+
+// ── Lecturer teaching units ──────────────────────────────────────────────
+
+model LecturerUnit {
+  id         String   @id @default(uuid())
+  lecturerId String
+  unitId     String
+  lecturer   Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
+  unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+
+  @@unique([lecturerId, unitId])
+  @@index([unitId])
+  @@index([lecturerId])
+  @@map("LecturerUnit")
+}
+
+// ── BLE unit mappings synced from institution ─────────────────────────────
+
+model BleMapping {
+  id            String   @id @default(uuid())
+  institutionId String
+  unitCode      String?
+  unitBleId     String?
+  syncedAt      DateTime @default(now())
+
+  @@index([institutionId])
+  @@index([unitCode])
+  @@map("BleMapping")
+}
+
+model BLESyncLog {
+  id            String    @id @default(uuid())
+  institutionId String
+  syncType      String
+  status        String
+  unitsSynced   Int?
+  errors        Json?
+  startedAt     DateTime  @default(now())
+  completedAt   DateTime?
+  triggeredBy   String?
+  deviceInfo    Json?
+
+  @@index([institutionId])
+  @@index([startedAt])
+  @@map("BLESyncLog")
+}
+
+// ── Attendance ───────────────────────────────────────────────────────────────
+
+model ConductedSession {
+  id              String    @id @default(uuid())
+  unitCode        String
+  sessionStart    DateTime
+  sessionEnd      DateTime?
+  lecturerId      String
+  sessionKey      String?
+  sessionNonce    BigInt    @default(0)
+  sessionDuration Int       @default(3600)
+  bleUnitId       String?
+  createdAt       DateTime  @default(now())
+
+  attendanceRecords InPersonAttendanceRecord[]
+
+  @@unique([unitCode, sessionStart])
+  @@index([unitCode])
+  @@index([lecturerId])
+  @@map("ConductedSession")
+}
+
+model InPersonAttendanceRecord {
+  id                 String       @id @default(uuid())
+  studentId          String
+  unitCode           String
+  sessionStart       DateTime
+  scannedAt          DateTime
+  deviceId           String?
+  rawPayload         String?
+  method             String
+  delegationId       String?
+  admissionNumber    String?
+  markedByLecturerId String?
+  institutionId      String?
+  conductedSessionId String?
+  token              String?
+  counter            Int?
+  pinCounter         Int?
+  submittedNonce     BigInt?
+  verificationStatus String       @default("pending")
+  rejectionReason    String?
+  delegations        Delegation[]
+  createdAt          DateTime     @default(now())
+
+  student          Student?          @relation(fields: [studentId], references: [id])
+  conductedSession ConductedSession? @relation(fields: [conductedSessionId], references: [id])
+
+  @@unique([studentId, unitCode, sessionStart])
+  @@index([studentId])
+  @@index([unitCode])
+  @@index([institutionId])
+  @@index([delegationId])
+  @@index([markedByLecturerId])
+  @@index([unitCode, sessionStart])
+  @@index([studentId, unitCode])
+  @@index([conductedSessionId])
+  @@index([deviceId, unitCode, sessionStart])
+  @@map("InPersonAttendanceRecord")
+}
+
+model OnlineAttendanceSession {
+  id         String    @id @default(uuid())
+  lecturerId String
+  unitCode   String
+  type       String    @default("online")
+  status     String    @default("active")
+  expiresAt  DateTime
+  endedAt    DateTime?
+  createdAt  DateTime  @default(now())
+
+  records OnlineAttendanceRecord[]
+
+  @@index([lecturerId])
+  @@index([status])
+  @@index([status, expiresAt])
+  @@map("OnlineAttendanceSession")
+}
+
+model OnlineAttendanceRecord {
+  id              String   @id @default(uuid())
+  sessionId       String
+  studentId       String
+  admissionNumber String
+  unitCode        String   @default("")
+  deviceId        String?
+  ipAddress       String?  @map("ip_address")
+  fingerprintHash String?  @map("fingerprint_hash")
+  markedAt        DateTime @default(now())
+
+  session OnlineAttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, studentId])
+  @@unique([sessionId, deviceId])
+  @@index([sessionId])
+  @@index([studentId])
+  @@index([unitCode])
+  @@index([unitCode, markedAt])
+  @@map("OnlineAttendanceRecord")
+}
+
+// ── Delegation (Class Attendance leader proxy) ───────────────────────────────
+
+model Delegation {
+  id              String    @id @default(uuid())
+  sessionRef      String
+  institutionId   String?
+  unitCode        String
+  unitId          Int
+  leaderStudentId String?
+  validFrom       BigInt
+  validUntil      BigInt
+  sessionToken    String?
+  used            Boolean   @default(false)
+  startedAt       DateTime?
+  endedAt         DateTime?
+  createdBy       String
+  createdAt       DateTime  @default(now())
+
+  attendanceRecords InPersonAttendanceRecord[]
+
+  @@index([leaderStudentId])
+  @@index([sessionRef])
+  @@index([unitCode])
+}
+
+// ── Notifications ────────────────────────────────────────────────────────────
+
+model Notification {
+  id        String   @id @default(uuid())
+  userId    String
+  userType  UserType
+  type      String?
+  title     String
+  message   String
+  data      Json?
+  read      Boolean  @default(false)
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+  @@index([userId, read])
+  @@map("Notification")
+}
+
+model MeetingInvite {
+  id           String   @id @default(uuid())
+  lecturerId   String
+  lecturerName String
+  unitCode     String
+  unitName     String
+  meetingLink  String
+  passcode     String?
+  scheduledAt  DateTime
+  message      String?
+  createdAt    DateTime @default(now())
+
+  @@index([unitCode, scheduledAt])
+  @@map("MeetingInvite")
+}
+
+// ── Enrollment snapshot & sync ───────────────────────────────────────────────
+
+model StudentEnrollmentSnapshot {
+  id           String   @id @default(uuid())
+  studentId    String   @unique
+  unitCodes    String[]
+  unitNamesMap Json     @default("{}")
+  year         String
+  semester     String
+  updatedAt    DateTime @updatedAt
+
+  @@map("StudentEnrollmentSnapshot")
+}
+
+model TokenBlocklist {
+  id        String   @id @default(uuid())
+  jti       String   @unique
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([expiresAt])
+  @@map("TokenBlocklist")
+}
+
+// ── Enums ────────────────────────────────────────────────────────────────────
+
+enum UserType {
+  student
+  lecturer
+  administrator
+}
+
+enum AdminRole {
+  SUPER_ADMIN
+  INSTITUTION_ADMIN
+}
+
+enum OnboardingStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}

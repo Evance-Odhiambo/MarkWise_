@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
-import { prisma } from "@/lib/prisma";
-import type { Institution } from "@/app/types/auth";
+
+const BACKEND_URL = process.env.BACKEND_URL ?? "http://localhost:4000";
 
 interface InstitutionCreateRequest {
   name: string;
@@ -8,23 +8,9 @@ interface InstitutionCreateRequest {
 
 export async function GET() {
   try {
-    const institutions = await prisma.institution.findMany({
-      orderBy: { createdAt: "desc" },
-    });
-
-    const formatted: Institution[] = institutions.map((inst) => {
-      let apiUrl: string | undefined;
-      if (inst.metadata && typeof inst.metadata === "object") {
-        apiUrl = (inst.metadata as Record<string, unknown>).apiUrl as string | undefined;
-      }
-      return {
-        id: inst.id,
-        name: inst.name,
-        apiUrl,
-      };
-    });
-
-    return NextResponse.json({ institutions: formatted });
+    const response = await fetch(`${BACKEND_URL}/api/v1/institutions`);
+    const data = await response.json();
+    return NextResponse.json(data);
   } catch (err) {
     console.error("Error fetching institutions:", err);
     return NextResponse.json({ error: "Failed to fetch institutions" }, { status: 500 });
@@ -43,13 +29,14 @@ export async function POST(request: Request) {
       );
     }
 
-    const institution = await prisma.institution.create({
-      data: {
-        name,
-      },
+    const response = await fetch(`${BACKEND_URL}/api/v1/institutions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
     });
 
-    return NextResponse.json({ institution });
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
   } catch (err) {
     console.error("Error creating institution:", err);
     return NextResponse.json(
@@ -71,11 +58,12 @@ export async function DELETE(request: Request) {
       );
     }
 
-    await prisma.institution.delete({
-      where: { id },
+    const response = await fetch(`${BACKEND_URL}/api/v1/institutions?id=${id}`, {
+      method: "DELETE",
     });
 
-    return NextResponse.json({ success: true });
+    const data = await response.json();
+    return NextResponse.json(data, { status: response.status });
   } catch (err) {
     console.error("Error deleting institution:", err);
     return NextResponse.json(

@@ -38,9 +38,28 @@ services:
       - "3000:3000"
     env_file:
       - apps/web/.env
+    environment:
+      BACKEND_URL: http://backend:4000
     depends_on:
+      - backend
       - postgres
       - redis
+    restart: unless-stopped
+
+  backend:
+    build:
+      context: ./apps/backend
+      dockerfile: Dockerfile
+    container_name: markwise-backend
+    ports:
+      - "4000:4000"
+    env_file:
+      - apps/backend/.env.local
+    environment:
+      DATABASE_URL: postgresql://markwise:markwise123@postgres:5432/markwise?schema=public
+    depends_on:
+      postgres:
+        condition: service_healthy
     restart: unless-stopped
 
   prisma-studio:

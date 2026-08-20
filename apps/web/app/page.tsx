@@ -231,10 +231,10 @@ const HomePage: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
-                href="/system-admin/register"
+                href="/admin/institution/register"
                 className="group relative inline-flex items-center gap-2 bg-white text-emerald-700 hover:bg-emerald-50 px-8 py-4 rounded-xl font-semibold text-lg transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
               >
-                <span>Get Started Free</span>
+                <span>Request institution onboarding</span>
                 <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
                 </svg>
@@ -544,7 +544,7 @@ const HomePage: React.FC = () => {
               href="/setup"
               className="inline-flex items-center gap-2 bg-white text-green-700 hover:bg-green-50 px-10 py-4 rounded-xl font-extrabold text-lg transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
             >
-              Get Started Free
+              Request institution onboarding
               <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path
                   strokeLinecap="round"

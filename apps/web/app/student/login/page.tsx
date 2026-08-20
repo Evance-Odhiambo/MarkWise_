@@ -3,6 +3,11 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { GraduationCap, Mail } from "lucide-react";
+import { AuthLayout } from "@/components/auth/AuthLayout";
+import { PasswordInput } from "@/components/auth/PasswordInput";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 
 export default function StudentLoginPage() {
   const router = useRouter();
@@ -50,67 +55,38 @@ export default function StudentLoginPage() {
   };
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-emerald-400 via-cyan-400 to-indigo-500 flex items-center justify-center py-8">
-      <div className="w-full max-w-md">
-        <div className="bg-white/90 backdrop-blur-sm p-8 rounded-xl shadow-xl border border-white/20">
-          <div className="text-center mb-6">
-            <h2 className="text-3xl font-bold text-gray-900">Student Login</h2>
-            <p className="text-sm text-gray-600 mt-1">Welcome back! Sign in to your account.</p>
-          </div>
-
-          <form onSubmit={handleSubmit} className="space-y-5">
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Email
-              </label>
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
-                placeholder="you@example.com"
-                required
-              />
-            </div>
-
-            <div>
-              <label className="block text-sm font-medium text-gray-700 mb-1">
-                Password
-              </label>
-              <input
-                type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                className="w-full px-4 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition"
-                placeholder="Enter your password"
-                required
-              />
-            </div>
-
-            {error && <p className="text-sm text-red-600">{error}</p>}
-
-            <button
-              type="submit"
-              disabled={isSubmitting || !email || !password}
-              className="w-full bg-linear-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 disabled:from-gray-300 disabled:to-gray-300 text-white font-medium py-2 px-4 rounded-lg transition transform hover:-translate-y-0.5"
-            >
-              {isSubmitting ? "Signing in..." : "Sign In"}
-            </button>
-          </form>
-
-          <div className="mt-6 text-center text-sm">
-            <p className="text-gray-600">
-              Don't have an account?{" "}
-              <Link
-                href="/student/register"
-                className="text-cyan-700 hover:text-cyan-900 font-medium"
-              >
-                Register
-              </Link>
-            </p>
+    <AuthLayout
+      role="student"
+      icon={GraduationCap}
+      eyebrow="Student access"
+      title="Welcome back"
+      description="Sign in to continue."
+      footer={
+        <p className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-600">
+          Don't have an account?{" "}
+          <Link href="/student/register" className="font-semibold text-emerald-700 hover:text-emerald-800">
+            Sign up
+          </Link>
+        </p>
+      }
+    >
+      <form onSubmit={handleSubmit} className="space-y-5">
+        <div className="space-y-2">
+          <label htmlFor="email" className="text-sm font-medium text-slate-700">Email address</label>
+          <div className="relative">
+            <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+            <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="h-11 pl-9 text-base" required />
           </div>
         </div>
-      </div>
-    </div>
+        <div className="space-y-2">
+          <label htmlFor="password" className="text-sm font-medium text-slate-700">Password</label>
+          <PasswordInput id="password" value={password} onChange={setPassword} className="h-11 text-base" placeholder="Enter your password" label="Password" required />
+        </div>
+        {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
+        <Button type="submit" disabled={isSubmitting || !email || !password} className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700">
+          {isSubmitting ? "Signing in..." : "Sign in"}
+        </Button>
+      </form>
+    </AuthLayout>
   );
 }

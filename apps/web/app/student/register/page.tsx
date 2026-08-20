@@ -3,9 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
+import { GraduationCap } from "lucide-react";
+import { AuthLayout } from "@/components/auth/AuthLayout";
 import { InstitutionSelector } from "@/components/auth/InstitutionSelector";
 import { NumberInput } from "@/components/auth/NumberInput";
 import type { VerificationResponse } from "@/app/types/auth";
+import { PasswordInput } from "@/components/auth/PasswordInput";
 
 export default function StudentRegisterPage() {
   const router = useRouter();
@@ -118,19 +121,19 @@ export default function StudentRegisterPage() {
     "w-full bg-linear-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 disabled:from-gray-300 disabled:to-gray-300 text-white font-medium py-2 px-4 rounded-lg transition transform hover:-translate-y-0.5";
 
   return (
-    <div className="min-h-screen bg-linear-to-br from-emerald-400 via-cyan-400 to-indigo-500 flex items-center justify-center py-8">
-      <div className="w-full max-w-md">
-        <div className="bg-white/90 backdrop-blur-sm p-8 rounded-xl shadow-xl border border-white/20">
-          <div className="text-center mb-6">
-            <h2 className="text-3xl font-bold text-gray-900">
-              {step === "verify" ? "Student Registration" : "Create Account"}
-            </h2>
-            <p className="text-sm text-gray-600 mt-1">
-              {step === "verify"
-                ? "Enter your institution and admission number to verify your identity"
-                : "Set up your account credentials"}
-            </p>
-          </div>
+    <AuthLayout
+      role="student"
+      icon={GraduationCap}
+      eyebrow="Student registration"
+      title={step === "verify" ? "Join your campus" : "Create your account"}
+      description={step === "verify" ? "Verify your student identity first, then set up secure access to MarkWise." : "Your identity is verified. Choose the credentials you will use to sign in."}
+      footer={
+        <p className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-600">
+          Already have an account?{" "}
+          <Link href="/student/login" className="font-semibold text-emerald-700 hover:text-emerald-800">Sign in</Link>
+        </p>
+      }
+    >
 
           {step === "verify" && verificationError && (
             <p className="text-sm text-red-600 text-center mb-4">{verificationError}</p>
@@ -168,7 +171,7 @@ export default function StudentRegisterPage() {
             <form onSubmit={handleRegister} className="space-y-5">
               <div>
                 <label className={labelClass}>
-                  Full Name (verified)
+                  Name (verified)
                 </label>
                 <input
                   type="text"
@@ -208,12 +211,13 @@ export default function StudentRegisterPage() {
                 <label className={labelClass}>
                   Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
+                  id="password"
                   value={password}
-                  onChange={(e) => setPassword(e.target.value)}
+                  onChange={setPassword}
                   className={inputClass}
                   placeholder="Enter a password"
+                  label="Password"
                   required
                 />
               </div>
@@ -222,19 +226,20 @@ export default function StudentRegisterPage() {
                 <label className={labelClass}>
                   Confirm Password
                 </label>
-                <input
-                  type="password"
+                <PasswordInput
+                  id="confirmPassword"
                   value={confirmPassword}
-                  onChange={(e) => setConfirmPassword(e.target.value)}
+                  onChange={setConfirmPassword}
                   className={inputClass}
                   placeholder="Confirm your password"
+                  label="Confirm Password"
                   required
                 />
               </div>
 
               {registerError && <p className="text-sm text-red-600">{registerError}</p>}
 
-              <div className="flex gap-3">
+              <div className="flex flex-col-reverse gap-3 sm:flex-row">
                 <button
                   type="button"
                   onClick={handleBack}
@@ -247,25 +252,12 @@ export default function StudentRegisterPage() {
                   disabled={isSubmitting || !email || !password}
                   className="flex-1 bg-linear-to-r from-emerald-500 to-cyan-600 hover:from-emerald-600 hover:to-cyan-700 disabled:from-gray-300 disabled:to-gray-300 text-white font-medium py-2 px-4 rounded-lg transition"
                 >
-                  {isSubmitting ? "Creating..." : "Create Account"}
+                  {isSubmitting ? "Signing up..." : "Sign Up"}
                 </button>
               </div>
             </form>
           )}
 
-          <div className="mt-6 text-center text-sm">
-            <p className="text-gray-600">
-              Already have an account?{" "}
-              <Link
-                href="/student/login"
-                className="text-cyan-700 hover:text-cyan-900 font-medium"
-              >
-                Sign In
-              </Link>
-            </p>
-          </div>
-        </div>
-      </div>
-    </div>
+    </AuthLayout>
   );
 }
