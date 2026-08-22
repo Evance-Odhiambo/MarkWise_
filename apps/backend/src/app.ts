@@ -2,6 +2,7 @@ import Fastify from "fastify";
 import { academicsModule } from "./modules/academics/index.js";
 import { adminModule } from "./modules/admin/index.js";
 import { bleModule } from "./modules/ble/index.js";
+import { contactModule } from "./modules/contact/index.js";
 import { institutionModule } from "./modules/institution/index.js";
 import { lecturerModule } from "./modules/lecturer/index.js";
 import { notificationModule } from "./modules/notification/index.js";
@@ -31,6 +32,7 @@ export function buildApp() {
 
 	app.register(academicsModule, { prefix: `${apiPrefix}/academics` });
 	app.register(bleModule, { prefix: `${apiPrefix}/ble` });
+	app.register(contactModule, { prefix: `${apiPrefix}/contact` });
 	app.register(institutionModule, { prefix: `${apiPrefix}/institutions` });
 	app.register(lecturerModule, { prefix: `${apiPrefix}/lecturers` });
 	app.register(notificationModule, { prefix: `${apiPrefix}/notifications` });

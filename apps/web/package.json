@@ -1,12 +1,13 @@
 {
-  "name": "web",
+  "name": "@markwise/web",
   "version": "0.1.0",
   "private": true,
   "scripts": {
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "prisma:generate": "prisma generate --schema=../backend/prisma/schema.prisma"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

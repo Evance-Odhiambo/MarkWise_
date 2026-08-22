@@ -21,3 +21,10 @@ secrets/
 
 # Build artifacts
 *.log
+
+# Workspace node_modules
+apps/*/node_modules
+node_modules
+
+# Turbo cache
+.turbo
