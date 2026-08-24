@@ -16,6 +16,14 @@ export default function SetupPage() {
   const [institutionId, setInstitutionId] = useState<string>("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
   const [loadingInstitutions, setLoadingInstitutions] = useState(true);
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveMessage, setSaveMessage] = useState<string | null>(null);
+
+  const authHeaders = () => {
+    const storedUser = localStorage.getItem("user");
+    const token = storedUser ? (JSON.parse(storedUser) as { token?: string }).token : undefined;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  };
 
   const totalUnits = data.reduce(
     (sum, course) =>
@@ -35,7 +43,7 @@ export default function SetupPage() {
   useEffect(() => {
     const fetchInstitutions = async () => {
       try {
-        const response = await fetch("/api/institutions");
+        const response = await fetch("/api/v1/institutions", { headers: authHeaders() });
         if (response.ok) {
           const result = await response.json();
           setInstitutions(result.institutions || []);
@@ -48,12 +56,14 @@ export default function SetupPage() {
     };
 
     const fetchCourses = async () => {
+      if (!institutionId) return;
       try {
-        const requestUrl = institutionId ? `/api/courses?institutionId=${encodeURIComponent(institutionId)}` : "/api/courses";
-        const response = await fetch(requestUrl);
+        const response = await fetch(`/api/v1/institutions/${encodeURIComponent(institutionId)}/setup`, { headers: authHeaders() });
         if (response.ok) {
           const result = await response.json();
           setData(result.courses || []);
+        } else {
+          setSaveMessage("Unable to load the institution's academic setup.");
         }
       } catch (err) {
         console.error("Failed to fetch courses:", err);
@@ -65,7 +75,7 @@ export default function SetupPage() {
       setInstitutionId(storedInstitution);
     }
 
-    fetchInstitutions();
+    if (institutions.length === 0) fetchInstitutions();
     fetchCourses();
   }, [institutionId]);
 
@@ -77,20 +87,26 @@ export default function SetupPage() {
 
   const handleDataChange = async (updatedData: AcademicCourse[]) => {
     setData(updatedData);
+    setSaveMessage(null);
+  };
 
+  const saveSetup = async () => {
     if (!institutionId) return;
-
+    setIsSaving(true);
+    setSaveMessage(null);
     try {
-      await fetch("/api/courses/batch", {
+      const response = await fetch(`/api/v1/institutions/${encodeURIComponent(institutionId)}/setup`, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          courses: updatedData,
-          institutionId,
-        }),
+        headers: { "Content-Type": "application/json", ...authHeaders() },
+        body: JSON.stringify({ courses: data }),
       });
-    } catch (err) {
-      console.error("Failed to save courses:", err);
+      const result = await response.json().catch(() => ({}));
+      if (!response.ok) throw new Error(result.error || "Unable to save academic setup");
+      setSaveMessage("Academic setup saved successfully.");
+    } catch (error) {
+      setSaveMessage(error instanceof Error ? error.message : "Unable to save academic setup");
+    } finally {
+      setIsSaving(false);
     }
   };
 
@@ -186,6 +202,19 @@ export default function SetupPage() {
                 {method === "api" && <ApiImportForm onDataImported={handleDataChange} />}
                 {method === "csv" && <CsvImportForm onDataImported={handleDataChange} />}
                 {method === "manual" && <ManualEntryForm data={data} onDataChange={handleDataChange} />}
+                <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
+                  <p className={`text-sm ${saveMessage?.includes("successfully") ? "text-emerald-600" : "text-slate-500"}`}>
+                    {saveMessage ?? "Changes are kept in this form until you save them."}
+                  </p>
+                  <button
+                    type="button"
+                    onClick={saveSetup}
+                    disabled={isSaving}
+                    className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
+                  >
+                    {isSaving ? "Saving..." : "Save academic setup"}
+                  </button>
+                </div>
               </CardContent>
             </Card>
           </div>

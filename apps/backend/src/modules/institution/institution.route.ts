@@ -1,60 +1,103 @@
 import type { FastifyPluginAsync } from "fastify";
-import { prismaPlugin } from "../../plugins/index.js";
+import { requireRoles } from "../../plugins/index.js";
 
-interface InstitutionCreateBody {
-  name: string;
+interface InstitutionCreateBody { name: string; }
+interface InstitutionQueryParams { id?: string; }
+interface SetupUnitInput { name: string; code: string; }
+interface SetupSemesterInput { name: string; semesterNum: number; units?: SetupUnitInput[]; }
+interface SetupYearInput { yearNumber: number; semesters?: SetupSemesterInput[]; }
+interface SetupCourseInput { name: string; duration: number; years?: SetupYearInput[]; }
+interface SetupBody { courses: SetupCourseInput[]; }
+interface SetupParams { institutionId: string; }
+
+const setupAccess = { preHandler: requireRoles("INSTITUTION_ADMIN", "SUPER_ADMIN") };
+
+function canAccessInstitution(request: { user: { role: string; institutionId: string | null } }, institutionId: string) {
+  return request.user.role === "SUPER_ADMIN" || request.user.institutionId === institutionId;
 }
 
-interface InstitutionQueryParams {
-  id: string;
-}
+function clean(value: string | undefined) { return value?.trim() ?? ""; }
 
 export const institutionRoutes: FastifyPluginAsync = async (app) => {
-	app.get("/institutions", async (request, reply) => {
-		const institutions = await app.prisma.institution.findMany({
-			orderBy: { createdAt: "desc" },
-		});
+  const listInstitutions = async (_request: unknown, reply: { send: (value: unknown) => unknown }) => {
+    const institutions = await app.prisma.institution.findMany({ orderBy: { createdAt: "desc" } });
+    return reply.send({ institutions: institutions.map((institution) => ({ id: institution.id, name: institution.name, metadata: institution.metadata })) });
+  };
 
-		const formatted = institutions.map((inst) => ({
-			id: inst.id,
-			name: inst.name,
-			metadata: inst.metadata,
-		}));
+  app.get("/", listInstitutions);
+  app.get("/institutions", listInstitutions);
 
-		return reply.send({ institutions: formatted });
-	});
+  const createInstitution = async (request: { body: InstitutionCreateBody }, reply: { code: (status: number) => { send: (value: unknown) => unknown } }) => {
+    const name = clean(request.body.name);
+    if (!name) return reply.code(400).send({ error: "Institution name is required" });
+    const institution = await app.prisma.institution.create({ data: { name } });
+    return reply.code(201).send({ institution });
+  };
 
-	app.post<{ Body: InstitutionCreateBody }>(
-		"/institutions",
-		async (request, reply) => {
-			const { name } = request.body;
+  app.post<{ Body: InstitutionCreateBody }>("/", createInstitution);
+  app.post<{ Body: InstitutionCreateBody }>("/institutions", createInstitution);
 
-			if (!name) {
-				return reply.code(400).send({ error: "Institution name is required" });
-			}
+  const deleteInstitution = async (request: { query: InstitutionQueryParams }, reply: { code: (status: number) => { send: (value: unknown) => unknown }; send: (value: unknown) => unknown }) => {
+    if (!request.query.id) return reply.code(400).send({ error: "Institution ID is required" });
+    await app.prisma.institution.delete({ where: { id: request.query.id } });
+    return reply.send({ success: true });
+  };
 
-			const institution = await app.prisma.institution.create({
-				data: { name },
-			});
+  app.delete<{ Querystring: InstitutionQueryParams }>("/", deleteInstitution);
+  app.delete<{ Querystring: InstitutionQueryParams }>("/institutions", deleteInstitution);
 
-			return reply.code(201).send({ institution });
-		},
-	);
+  app.get<{ Params: SetupParams }>("/:institutionId/setup", setupAccess, async (request, reply) => {
+    if (!canAccessInstitution(request, request.params.institutionId)) return reply.code(403).send({ error: "You can only access your institution setup" });
 
-	app.delete<{ Querystring: InstitutionQueryParams }>(
-		"/institutions",
-		async (request, reply) => {
-			const { id } = request.query;
+    const courses = await app.prisma.course.findMany({
+      where: { institutionId: request.params.institutionId }, orderBy: { name: "asc" },
+      include: { years: { orderBy: { yearNumber: "asc" }, include: { semester: { orderBy: { semesterNumber: "asc" }, include: { units: { orderBy: { code: "asc" } } } } } } },
+    });
 
-			if (!id) {
-				return reply.code(400).send({ error: "Institution ID is required" });
-			}
+    return reply.send({ courses: courses.map((course) => ({
+      id: course.id, name: course.name, duration: course.years.length || 1,
+      years: course.years.map((year) => ({ id: year.id, yearNumber: year.yearNumber, courseId: course.id,
+        semesters: year.semester.map((semester) => ({ id: semester.id, name: semester.name, semesterNum: semester.semesterNumber, yearId: year.id,
+          units: semester.units.map((unit) => ({ id: unit.id, name: unit.name, code: unit.code, semesterId: semester.id })),
+        })),
+      })),
+    })) });
+  });
 
-			await app.prisma.institution.delete({
-				where: { id },
-			});
+  app.post<{ Params: SetupParams; Body: SetupBody }>("/:institutionId/setup", setupAccess, async (request, reply) => {
+    const institutionId = request.params.institutionId;
+    if (!canAccessInstitution(request, institutionId)) return reply.code(403).send({ error: "You can only update your institution setup" });
+    if (!Array.isArray(request.body.courses)) return reply.code(400).send({ error: "Courses must be an array" });
 
-			return reply.send({ success: true });
-		},
-	);
+    await app.prisma.$transaction(async (transaction) => {
+      for (const courseInput of request.body.courses) {
+        const courseName = clean(courseInput.name);
+        if (!courseName) continue;
+        let course = await transaction.course.findFirst({ where: { institutionId, name: courseName } });
+        if (!course) course = await transaction.course.create({ data: { name: courseName, institutionId } });
+
+        for (const yearInput of courseInput.years ?? []) {
+          if (!Number.isInteger(yearInput.yearNumber) || yearInput.yearNumber < 1) continue;
+          const year = await transaction.courseYear.upsert({ where: { courseId_yearNumber: { courseId: course.id, yearNumber: yearInput.yearNumber } }, update: {}, create: { courseId: course.id, yearNumber: yearInput.yearNumber } });
+          for (const semesterInput of yearInput.semesters ?? []) {
+            const semesterNumber = Number.isInteger(semesterInput.semesterNum) && semesterInput.semesterNum > 0 ? semesterInput.semesterNum : 1;
+            const semester = await transaction.semester.upsert({
+              where: { courseYearId_semesterNumber: { courseYearId: year.id, semesterNumber } },
+              update: { name: clean(semesterInput.name) || `Semester ${semesterNumber}` },
+              create: { courseYearId: year.id, semesterNumber, name: clean(semesterInput.name) || `Semester ${semesterNumber}` },
+            });
+            for (const unitInput of semesterInput.units ?? []) {
+              const code = clean(unitInput.code).toUpperCase(); const name = clean(unitInput.name);
+              if (!code || !name) continue;
+              const existingUnit = await transaction.unit.findFirst({ where: { semesterId: semester.id, code } });
+              if (existingUnit) await transaction.unit.update({ where: { id: existingUnit.id }, data: { code, name } });
+              else await transaction.unit.create({ data: { semesterId: semester.id, code, name } });
+            }
+          }
+        }
+      }
+    });
+
+    return reply.send({ success: true, message: "Academic setup saved" });
+  });
 };
