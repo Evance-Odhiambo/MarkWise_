@@ -35,4 +35,6 @@ export const env = {
 		.filter(Boolean),
 	rateLimitMax: positiveNumber("RATE_LIMIT_MAX", 100),
 	rateLimitWindow: process.env.RATE_LIMIT_WINDOW ?? "1 minute",
+	webauthnRpId: process.env.WEBAUTHN_RP_ID?.trim() || "localhost",
+	webauthnOrigin: process.env.WEBAUTHN_ORIGIN?.trim() || "http://localhost:3000",
 } as const;

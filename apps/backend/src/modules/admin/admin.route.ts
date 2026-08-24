@@ -9,6 +9,7 @@ interface LoginBody {
 
 interface OnboardingBody {
 	contactName: string;
+	contactTitle: string;
 	email: string;
 	institutionName: string;
 }
@@ -23,6 +24,7 @@ interface ApprovalBody {
 
 interface RegistrationBody {
 	contactName: string;
+	contactTitle: string;
 	email: string;
 	institutionName: string;
 	password: string;
@@ -45,6 +47,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 		return reply.send({
 			id: admin.id,
 			name: admin.fullName,
+			contactTitle: admin.contactTitle,
 			email: admin.email,
 			role: admin.role,
 			institutionId: admin.institutionId,
@@ -59,12 +62,13 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
 	app.post<{ Body: OnboardingBody }>("/onboarding", async (request, reply) => {
 		const contactName = request.body.contactName?.trim();
+		const contactTitle = request.body.contactTitle?.trim();
 		const email = request.body.email?.trim().toLowerCase();
 		const institutionName = request.body.institutionName?.trim();
 
-		if (!contactName || !email || !institutionName) {
+		if (!contactName || !contactTitle || !email || !institutionName) {
 			return reply.code(400).send({
-				error: "Contact name, email, and institution name are required",
+				error: "Contact name, title/position, email, and institution name are required",
 			});
 		}
 
@@ -78,7 +82,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 		}
 
 		const onboardingRequest = await app.prisma.onboardingRequest.create({
-			data: { contactName, email, institutionName },
+			data: { contactName, contactTitle, email, institutionName },
 			select: { id: true, status: true },
 		});
 
@@ -101,7 +105,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 
 		const onboardingRequest = await app.prisma.onboardingRequest.findFirst({
 			where: { email, institutionName, status: "APPROVED" },
-			select: { institutionId: true },
+			select: { institutionId: true, contactName: true, contactTitle: true, email: true, institutionName: true },
 		});
 
 		if (!onboardingRequest?.institutionId) {
@@ -116,12 +120,13 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 		const admin = await app.prisma.admin.create({
 			data: {
 				fullName: contactName,
+				contactTitle: onboardingRequest.contactTitle,
 				email,
 				passwordHash: await hashPassword(password),
 				role: "INSTITUTION_ADMIN",
 				institutionId: onboardingRequest.institutionId,
 			},
-			select: { id: true, email: true, institutionId: true },
+			select: { id: true, email: true, contactTitle: true, institutionId: true },
 		});
 
 		return reply.code(201).send({
@@ -145,6 +150,7 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 				select: {
 					id: true,
 					contactName: true,
+					contactTitle: true,
 					email: true,
 					institutionName: true,
 					status: true,
@@ -184,7 +190,15 @@ export const adminRoutes: FastifyPluginAsync = async (app) => {
 				return { institution };
 			});
 
-			return reply.code(201).send(result);
+			return reply.code(201).send({
+				...result,
+				requester: {
+					contactName: onboardingRequest.contactName,
+					contactTitle: onboardingRequest.contactTitle,
+					email: onboardingRequest.email,
+					institutionName: onboardingRequest.institutionName,
+				},
+			});
 		},
 	);
 };

@@ -1,0 +1,2 @@
+ALTER TABLE "Admin"
+ADD COLUMN IF NOT EXISTS "contactTitle" TEXT;

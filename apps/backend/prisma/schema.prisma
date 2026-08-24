@@ -33,6 +33,7 @@ model Institution {
 model Admin {
   id            String        @id @default(uuid())
   fullName      String
+  contactTitle  String?
   email         String        @unique
   passwordHash  String
   role          AdminRole
@@ -49,6 +50,7 @@ model Admin {
 model OnboardingRequest {
   id            String           @id @default(uuid())
   contactName   String
+  contactTitle  String
   email         String
   institutionName String
   status        OnboardingStatus @default(PENDING)
@@ -193,6 +195,25 @@ model StudentDevice {
   @@map("StudentDevice")
 }
 
+model AuditLog {
+  id        String   @id @default(uuid())
+  event     String
+  actorId   String?
+  role      UserType?
+  sessionId String?
+  deviceId  String?
+  ipAddress String?
+  success   Boolean
+  reason    String?
+  metadata  Json?
+  createdAt DateTime @default(now())
+
+  @@index([event, createdAt])
+  @@index([actorId, createdAt])
+  @@index([sessionId, createdAt])
+  @@map("AuditLog")
+}
+
 model DeviceCredential {
   id              String   @id @default(uuid())
   credentialId    String   @unique
@@ -213,6 +234,20 @@ model DeviceCredential {
   @@index([credentialId])
   @@index([studentId])
   @@map("DeviceCredential")
+}
+
+model WebAuthnChallenge {
+  id        String   @id @default(uuid())
+  userId    String
+  purpose   String
+  challenge String
+  sessionId String?
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([userId, purpose, expiresAt])
+  @@index([sessionId, purpose, expiresAt])
+  @@map("WebAuthnChallenge")
 }
 
 model Lecturer {

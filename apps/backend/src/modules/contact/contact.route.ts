@@ -28,7 +28,7 @@ export const contactRoute: FastifyPluginAsync = async (app) => {
 
       return reply.send({ message: "Message received." });
     } catch (err) {
-      app.log.error("Contact API error:", err);
+      app.log.error({ err }, "Contact API error");
       return reply.code(400).send({ message: "Invalid request." });
     }
   });

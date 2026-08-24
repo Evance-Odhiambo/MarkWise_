@@ -7,12 +7,12 @@ declare module "@fastify/jwt" {
 	interface FastifyJWT {
 		payload: {
 			id: string;
-			role: "SUPER_ADMIN" | "INSTITUTION_ADMIN";
+			role: "SUPER_ADMIN" | "INSTITUTION_ADMIN" | "student" | "lecturer";
 			institutionId: string | null;
 		};
 		user: {
 			id: string;
-			role: "SUPER_ADMIN" | "INSTITUTION_ADMIN";
+			role: "SUPER_ADMIN" | "INSTITUTION_ADMIN" | "student" | "lecturer";
 			institutionId: string | null;
 		};
 	}
@@ -42,4 +42,32 @@ export function requireSuperAdmin() {
 
 export function requireInstitutionAdmin() {
 	return requireRoles("INSTITUTION_ADMIN");
+}
+
+export function requireAttendanceRole(...roles: Array<"lecturer" | "student">) {
+	return async (request: FastifyRequest, reply: FastifyReply) => {
+		try {
+			await request.jwtVerify();
+		} catch {
+			return reply.code(401).send({ error: "Authentication required" });
+		}
+
+		if (!roles.includes(request.user.role as "lecturer" | "student")) {
+			return reply.code(403).send({ error: "Attendance role required" });
+		}
+	};
+}
+
+export function requireBleMappingAccess(...roles: Array<"SUPER_ADMIN" | "INSTITUTION_ADMIN" | "student" | "lecturer">) {
+	const allowed = roles.length > 0 ? roles : ["SUPER_ADMIN", "INSTITUTION_ADMIN", "student", "lecturer"];
+	return async (request: FastifyRequest, reply: FastifyReply) => {
+		try {
+			await request.jwtVerify();
+		} catch {
+			return reply.code(401).send({ error: "Authentication required" });
+		}
+		if (!allowed.includes(request.user.role as typeof allowed[number])) {
+			return reply.code(403).send({ error: "BLE mapping access required" });
+		}
+	};
 }

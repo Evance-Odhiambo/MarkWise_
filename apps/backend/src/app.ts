@@ -1,5 +1,6 @@
 import Fastify from "fastify";
-import { academicsModule } from "./modules/academics/index.js";
+import { attendanceRoutes } from "./modules/attendance/index.js";
+
 import { adminModule } from "./modules/admin/index.js";
 import { bleModule } from "./modules/ble/index.js";
 import { contactModule } from "./modules/contact/index.js";
@@ -29,8 +30,9 @@ export function buildApp() {
 	app.register(adminModule, { prefix: `${apiPrefix}/admin` });
 
 	app.get(`${apiPrefix}/health`, async () => ({ status: "ok" }));
+	app.register(attendanceRoutes, { prefix: `${apiPrefix}/attendance` });
 
-	app.register(academicsModule, { prefix: `${apiPrefix}/academics` });
+
 	app.register(bleModule, { prefix: `${apiPrefix}/ble` });
 	app.register(contactModule, { prefix: `${apiPrefix}/contact` });
 	app.register(institutionModule, { prefix: `${apiPrefix}/institutions` });

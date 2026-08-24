@@ -1,7 +1,12 @@
 import type { FastifyPluginAsync } from "fastify";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
-import { importStudents, type ImportRequest } from "./student.import.js";
+import { verifyPassword } from "../admin/admin.service.js";
+
+interface LoginBody {
+  email: string;
+  password: string;
+}
 
 function getPrismaClient() {
   const databaseUrl = process.env.DATABASE_URL;
@@ -63,6 +68,27 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
 
   await prisma.$connect();
 
+  app.post<{ Body: LoginBody }>("/login", async (request, reply) => {
+    const email = request.body.email?.trim().toLowerCase();
+    const password = request.body.password;
+    if (!email || !password) return reply.code(400).send({ error: "Email and password are required" });
+
+    const auth = await prisma.studentAuth.findUnique({
+      where: { email },
+      include: { student: true },
+    });
+    if (!auth || !(await verifyPassword(password, auth.passwordHash))) {
+      return reply.code(401).send({ error: "Invalid credentials" });
+    }
+
+    return reply.send({
+      userId: auth.student.id,
+      name: auth.student.name,
+      institutionId: auth.student.institutionId,
+      token: await app.jwt.sign({ id: auth.student.id, role: "student", institutionId: auth.student.institutionId }),
+    });
+  });
+
   app.get(
     "/",
     async (_request, reply) => {
@@ -90,7 +116,7 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
 
         return reply.send(response);
       } catch (err) {
-        app.log.error("Error fetching students:", err);
+        app.log.error({ err }, "Error fetching students");
         return reply.code(500).send({ error: "Failed to fetch students" });
       }
     }
@@ -115,7 +141,7 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
 
         return reply.code(201).send(student);
       } catch (err) {
-        app.log.error("Error creating student:", err);
+        app.log.error({ err }, "Error creating student");
         return reply.code(500).send({ error: "Failed to create student" });
       }
     }
@@ -165,7 +191,7 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
 
         return reply.send(response);
       } catch (err) {
-        app.log.error("Error saving students:", err);
+        app.log.error({ err }, "Error saving students");
         return reply.code(500).send({ error: "Failed to save students" });
       }
     }

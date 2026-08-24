@@ -28,6 +28,7 @@ export async function findAdminByEmail(prisma: PrismaClient, email: string) {
 		select: {
 			id: true,
 			fullName: true,
+			contactTitle: true,
 			email: true,
 			passwordHash: true,
 			role: true,
