@@ -86,6 +86,26 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
   await prisma.$connect();
 
   app.get(
+    "/me",
+    { preHandler: requireAttendanceRole("student") },
+    async (request, reply) => {
+      const student = await prisma.student.findUnique({
+        where: { id: request.user.id },
+        include: { course: { select: { name: true } } },
+      });
+      if (!student) return reply.code(404).send({ error: "Student record not found" });
+
+      return reply.send({
+        userId: student.id,
+        name: student.name,
+        institutionId: student.institutionId,
+        admissionNumber: student.admissionNumber,
+        course: student.course.name,
+      });
+    },
+  );
+
+  app.get(
     "/units",
     { preHandler: requireAttendanceRole("student") },
     async (request, reply) => {
