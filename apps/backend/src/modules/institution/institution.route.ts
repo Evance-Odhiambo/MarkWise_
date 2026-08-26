@@ -1,5 +1,6 @@
 import type { FastifyPluginAsync } from "fastify";
-import { requireRoles } from "../../plugins/index.js";
+import { buildAvailableUnitBleIds } from "../ble/mappings/mapping.service.js";
+import { requireRoles, requireSuperAdmin } from "../../plugins/index.js";
 
 interface InstitutionCreateBody { name: string; }
 interface InstitutionQueryParams { id?: string; }
@@ -10,22 +11,49 @@ interface SetupCourseInput { name: string; duration: number; years?: SetupYearIn
 interface SetupBody { courses: SetupCourseInput[]; }
 interface SetupParams { institutionId: string; }
 
-const setupAccess = { preHandler: requireRoles("INSTITUTION_ADMIN", "SUPER_ADMIN") };
+const superAdminAccess = { preHandler: requireSuperAdmin() };
+const institutionListAccess = { preHandler: requireRoles("SUPER_ADMIN", "INSTITUTION_ADMIN") };
+const institutionSetupAccess = { preHandler: requireRoles("SUPER_ADMIN", "INSTITUTION_ADMIN") };
 
-function canAccessInstitution(request: { user: { role: string; institutionId: string | null } }, institutionId: string) {
+export function canAccessInstitution(request: { user: { role: string; institutionId: string | null } }, institutionId: string) {
   return request.user.role === "SUPER_ADMIN" || request.user.institutionId === institutionId;
+}
+
+export function canListInstitutions(user: { role: string; institutionId: string | null }) {
+  return user.role === "SUPER_ADMIN" || user.role === "INSTITUTION_ADMIN";
+}
+
+export function buildInstitutionListWhere(user: { role: string; institutionId: string | null }) {
+  if (user.role === "SUPER_ADMIN") return {};
+  if (user.role === "INSTITUTION_ADMIN" && user.institutionId) return { id: user.institutionId };
+  return { id: "__no_institution__" };
 }
 
 function clean(value: string | undefined) { return value?.trim() ?? ""; }
 
 export const institutionRoutes: FastifyPluginAsync = async (app) => {
-  const listInstitutions = async (_request: unknown, reply: { send: (value: unknown) => unknown }) => {
-    const institutions = await app.prisma.institution.findMany({ orderBy: { createdAt: "desc" } });
+  app.get("/public", async (_request, reply) => {
+    const institutions = await app.prisma.institution.findMany({
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    });
+
+    return reply.send({ institutions });
+  });
+
+  const listInstitutions = async (request: { user: { role: string; institutionId: string | null } }, reply: { send: (value: unknown) => unknown }) => {
+    if (!canListInstitutions(request.user)) return reply.send({ institutions: [] });
+
+    const institutions = await app.prisma.institution.findMany({
+      where: buildInstitutionListWhere(request.user),
+      orderBy: { createdAt: "desc" },
+    });
+
     return reply.send({ institutions: institutions.map((institution) => ({ id: institution.id, name: institution.name, metadata: institution.metadata })) });
   };
 
-  app.get("/", listInstitutions);
-  app.get("/institutions", listInstitutions);
+  app.get("/", institutionListAccess, listInstitutions);
+  app.get("/institutions", institutionListAccess, listInstitutions);
 
   const createInstitution = async (request: { body: InstitutionCreateBody }, reply: { code: (status: number) => { send: (value: unknown) => unknown } }) => {
     const name = clean(request.body.name);
@@ -34,8 +62,8 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
     return reply.code(201).send({ institution });
   };
 
-  app.post<{ Body: InstitutionCreateBody }>("/", createInstitution);
-  app.post<{ Body: InstitutionCreateBody }>("/institutions", createInstitution);
+  app.post<{ Body: InstitutionCreateBody }>("/", superAdminAccess, createInstitution);
+  app.post<{ Body: InstitutionCreateBody }>("/institutions", superAdminAccess, createInstitution);
 
   const deleteInstitution = async (request: { query: InstitutionQueryParams }, reply: { code: (status: number) => { send: (value: unknown) => unknown }; send: (value: unknown) => unknown }) => {
     if (!request.query.id) return reply.code(400).send({ error: "Institution ID is required" });
@@ -43,11 +71,11 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({ success: true });
   };
 
-  app.delete<{ Querystring: InstitutionQueryParams }>("/", deleteInstitution);
-  app.delete<{ Querystring: InstitutionQueryParams }>("/institutions", deleteInstitution);
+  app.delete<{ Querystring: InstitutionQueryParams }>("/", superAdminAccess, deleteInstitution);
+  app.delete<{ Querystring: InstitutionQueryParams }>("/institutions", superAdminAccess, deleteInstitution);
 
-  app.get<{ Params: SetupParams }>("/:institutionId/setup", setupAccess, async (request, reply) => {
-    if (!canAccessInstitution(request, request.params.institutionId)) return reply.code(403).send({ error: "You can only access your institution setup" });
+  app.get<{ Params: SetupParams }>('/:institutionId/setup', institutionSetupAccess, async (request, reply) => {
+    if (!canAccessInstitution(request, request.params.institutionId)) return reply.code(403).send({ error: "Only a super admin or the owning institution admin can access institution setup" });
 
     const courses = await app.prisma.course.findMany({
       where: { institutionId: request.params.institutionId }, orderBy: { name: "asc" },
@@ -64,12 +92,19 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
     })) });
   });
 
-  app.post<{ Params: SetupParams; Body: SetupBody }>("/:institutionId/setup", setupAccess, async (request, reply) => {
+  app.post<{ Params: SetupParams; Body: SetupBody }>('/:institutionId/setup', institutionSetupAccess, async (request, reply) => {
     const institutionId = request.params.institutionId;
-    if (!canAccessInstitution(request, institutionId)) return reply.code(403).send({ error: "You can only update your institution setup" });
+    if (!canAccessInstitution(request, institutionId)) return reply.code(403).send({ error: "Only a super admin or the owning institution admin can update institution setup" });
     if (!Array.isArray(request.body.courses)) return reply.code(400).send({ error: "Courses must be an array" });
 
     await app.prisma.$transaction(async (transaction) => {
+      const allUsedBleIds = new Set(
+        (await transaction.unit.findMany({
+          where: { bleId: { not: null } },
+          select: { bleId: true },
+        })).flatMap((unit) => (unit.bleId ? [unit.bleId] : [])),
+      );
+
       for (const courseInput of request.body.courses) {
         const courseName = clean(courseInput.name);
         if (!courseName) continue;
@@ -86,12 +121,30 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
               update: { name: clean(semesterInput.name) || `Semester ${semesterNumber}` },
               create: { courseYearId: year.id, semesterNumber, name: clean(semesterInput.name) || `Semester ${semesterNumber}` },
             });
+
             for (const unitInput of semesterInput.units ?? []) {
               const code = clean(unitInput.code).toUpperCase(); const name = clean(unitInput.name);
               if (!code || !name) continue;
+
               const existingUnit = await transaction.unit.findFirst({ where: { semesterId: semester.id, code } });
-              if (existingUnit) await transaction.unit.update({ where: { id: existingUnit.id }, data: { code, name } });
-              else await transaction.unit.create({ data: { semesterId: semester.id, code, name } });
+              if (existingUnit) {
+                const nextBleId = existingUnit.bleId ?? buildAvailableUnitBleIds(allUsedBleIds, 1)[0];
+                await transaction.unit.update({
+                  where: { id: existingUnit.id },
+                  data: {
+                    code,
+                    name,
+                    bleId: existingUnit.bleId ?? nextBleId,
+                  },
+                });
+                if (!existingUnit.bleId) allUsedBleIds.add(nextBleId);
+              } else {
+                const [nextBleId] = buildAvailableUnitBleIds(allUsedBleIds, 1);
+                await transaction.unit.create({
+                  data: { semesterId: semester.id, code, name, bleId: nextBleId },
+                });
+                allUsedBleIds.add(nextBleId);
+              }
             }
           }
         }

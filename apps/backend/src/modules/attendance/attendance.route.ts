@@ -12,7 +12,7 @@ import {
 } from "./attendance.schema.js";
 
 export const attendanceRoutes: FastifyPluginAsync = async (app) => {
-  const attendance = new AttendanceService(app.prisma);
+  const attendance = new AttendanceService(app.prisma, app.redis);
   const webauthn = new WebAuthnService(app.prisma);
 
   app.post(
@@ -57,7 +57,14 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: requireAttendanceRole("student"), config: { rateLimit: { max: 5, timeWindow: "1 minute" } } },
     async (request, reply) => {
       if (!request.body.response || typeof request.body.response !== "object") return reply.code(400).send({ error: "Passkey response is required" });
-      const proof = await webauthn.verifyAttendance(request.user.id, request.params.sessionId, request.body.response as AuthenticationResponseJSON);
+      let proof;
+      try {
+        proof = await webauthn.verifyAttendance(request.user.id, request.params.sessionId, request.body.response as AuthenticationResponseJSON);
+      } catch (error) {
+        const reason = error instanceof Error ? error.message : "ASSERTION_FAILED";
+        await attendance.audit({ event: "ONLINE_PASSKEY_VERIFY", actorId: request.user.id, role: "student", sessionId: request.params.sessionId, success: false, reason, ipAddress: request.ip });
+        return reply.code(400).send({ error: "Passkey verification failed", reason });
+      }
       if (!proof.verified) {
         await attendance.audit({ event: "ONLINE_PASSKEY_VERIFY", actorId: request.user.id, role: "student", sessionId: request.params.sessionId, success: false, reason: proof.reason, ipAddress: request.ip });
         return reply.code(403).send({ error: "Passkey verification failed", reason: proof.reason });

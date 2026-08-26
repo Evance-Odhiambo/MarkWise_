@@ -27,6 +27,7 @@ export const env = {
 	databaseUrl: required("DATABASE_URL"),
 	databasePoolMax: positiveNumber("DATABASE_POOL_MAX", 10),
 	jwtSecret: required("JWT_SECRET"),
+	redisUrl: process.env.REDIS_URL?.trim() || "redis://localhost:6379",
 	host: process.env.HOST?.trim() || "0.0.0.0",
 	port: positiveNumber("PORT", 4000),
 	corsOrigins: (process.env.CORS_ORIGIN ?? "http://localhost:3000")

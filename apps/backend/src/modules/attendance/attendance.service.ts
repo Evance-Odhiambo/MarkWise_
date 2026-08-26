@@ -1,8 +1,21 @@
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
+import type { RedisClientType } from "redis";
 import { MAX_ONLINE_SESSION_MINUTES, normalizeUnitCode } from "./attendance.schema.js";
 
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaClient) {}
+  constructor(private readonly prisma: PrismaClient, private readonly redis: RedisClientType | null = null) {}
+
+  private async findUnitByCode(code: string, select: { id: true; name: true; code: true }) {
+    const exact = await this.prisma.unit.findFirst({ where: { code }, select });
+    if (exact) return exact;
+
+    const units = await this.prisma.unit.findMany({ select });
+    return units.find((unit) => normalizeUnitCode(unit.code) === normalizeUnitCode(code)) ?? null;
+  }
+
+  private sessionCacheKey(sessionId: string) {
+    return `markwise:attendance:session:${sessionId}`;
+  }
 
   async audit(input: {
     event: string;
@@ -35,7 +48,8 @@ export class AttendanceService {
       where: { lecturerId: input.lecturerId },
       select: { unit: { select: { code: true } } },
     });
-    if (!assignment.some(({ unit }) => normalizeUnitCode(unit.code) === unitCode)) {
+    const assignedUnit = assignment.find(({ unit }) => normalizeUnitCode(unit.code) === unitCode);
+    if (!assignedUnit) {
       await this.audit({ event: "ONLINE_SESSION_CREATE", actorId: input.lecturerId, role: "lecturer", success: false, reason: "UNIT_NOT_ASSIGNED", metadata: { unitCode } });
       throw new Error("You are not assigned to this unit");
     }
@@ -44,7 +58,7 @@ export class AttendanceService {
     const expiresAt = input.expiresAt < maximumExpiry ? input.expiresAt : maximumExpiry;
 
     const session = await this.prisma.onlineAttendanceSession.create({
-      data: { lecturerId: input.lecturerId, unitCode, expiresAt },
+      data: { lecturerId: input.lecturerId, unitCode: assignedUnit.unit.code, expiresAt },
     });
     await this.audit({ event: "ONLINE_SESSION_CREATE", actorId: input.lecturerId, role: "lecturer", sessionId: session.id, success: true, metadata: { unitCode } });
     return session;
@@ -59,14 +73,40 @@ export class AttendanceService {
   }
 
   async getOnlineSession(sessionId: string) {
+    const cacheKey = this.sessionCacheKey(sessionId);
+    if (this.redis?.isReady) {
+      try {
+        const cached = await this.redis.get(cacheKey);
+        if (cached) return JSON.parse(cached) as Record<string, unknown>;
+      } catch {
+        // Cache failure must never block attendance.
+      }
+    }
+
     const session = await this.prisma.onlineAttendanceSession.findUnique({
       where: { id: sessionId },
       include: { _count: { select: { records: true } } },
     });
 
     if (!session) return null;
+    const unit = await this.findUnitByCode(session.unitCode, { id: true, name: true, code: true });
     const expired = session.endedAt !== null || session.expiresAt <= new Date();
-    return { ...session, status: expired ? "expired" : session.status };
+    const result = {
+      ...session,
+      unitName: unit?.name ?? null,
+      unitCode: unit?.code ?? session.unitCode,
+      status: expired ? "expired" : session.status,
+    };
+
+    if (this.redis?.isReady && !expired) {
+      try {
+        const ttl = Math.max(1, Math.min(10, Math.ceil((session.expiresAt.getTime() - Date.now()) / 1000)));
+        await this.redis.set(cacheKey, JSON.stringify(result), { EX: ttl });
+      } catch {
+        // Cache failure must never block attendance.
+      }
+    }
+    return result;
   }
 
   async submitOnlineAttendance(input: {
@@ -123,10 +163,7 @@ export class AttendanceService {
       await this.prisma.studentDevice.update({ where: { userId_deviceKey: { userId: input.studentId, deviceKey: input.deviceId } }, data: { lastUsedAt: new Date() } });
     }
 
-    const unit = await this.prisma.unit.findFirst({
-      where: { code: session.unitCode },
-      select: { id: true, code: true },
-    });
+    const unit = await this.findUnitByCode(session.unitCode, { id: true, name: true, code: true });
     if (!unit) {
       await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "UNIT_NOT_FOUND" });
       return { success: false, blocked: true as const };
@@ -175,10 +212,14 @@ export class AttendanceService {
   }
 
   async endOnlineSession(sessionId: string, lecturerId: string) {
-    return this.prisma.onlineAttendanceSession.updateMany({
+    const result = await this.prisma.onlineAttendanceSession.updateMany({
       where: { id: sessionId, lecturerId, endedAt: null },
       data: { status: "ended", endedAt: new Date() },
     });
+    if (result.count > 0 && this.redis?.isReady) {
+      await this.redis.del(this.sessionCacheKey(sessionId)).catch(() => undefined);
+    }
+    return result;
   }
 
   async getOnlineSessionAttendees(sessionId: string, lecturerId: string) {

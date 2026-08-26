@@ -1,5 +1,6 @@
 import Fastify from "fastify";
-import { attendanceRoutes } from "./modules/attendance/index.js";
+import { attendanceRoutes, inPersonRoutes } from "./modules/attendance/index.js";
+import { academicsModule } from "./modules/academics/index.js";
 
 import { adminModule } from "./modules/admin/index.js";
 import { bleModule } from "./modules/ble/index.js";
@@ -14,6 +15,7 @@ import {
 	securityHeadersPlugin,
 	rateLimitOptions,
 	rateLimitPlugin,
+	redisPlugin,
 	prismaPlugin,
 	authPlugin,
 } from "./plugins/index.js";
@@ -26,11 +28,14 @@ export function buildApp() {
 	app.register(securityHeadersPlugin);
 	app.register(rateLimitPlugin, rateLimitOptions);
 	app.register(prismaPlugin);
+	app.register(redisPlugin);
 	app.register(authPlugin);
 	app.register(adminModule, { prefix: `${apiPrefix}/admin` });
 
 	app.get(`${apiPrefix}/health`, async () => ({ status: "ok" }));
 	app.register(attendanceRoutes, { prefix: `${apiPrefix}/attendance` });
+	app.register(inPersonRoutes, { prefix: `${apiPrefix}/attendance/in-person` });
+	app.register(academicsModule, { prefix: apiPrefix });
 
 
 	app.register(bleModule, { prefix: `${apiPrefix}/ble` });

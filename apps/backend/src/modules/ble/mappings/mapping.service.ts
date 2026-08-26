@@ -48,6 +48,24 @@ export async function getBleMappings(
   };
 }
 
+export function buildAvailableUnitBleIds(usedIds: Set<string>, count: number): string[] {
+  const available: string[] = [];
+
+  for (let id = UNIT_BLE_ID_MIN; id <= UNIT_BLE_ID_MAX; id += 1) {
+    const bleId = formatBleId(id);
+    if (!usedIds.has(bleId)) {
+      available.push(bleId);
+      if (available.length >= count) return available;
+    }
+  }
+
+  if (available.length < count) {
+    throw new Error(`No available BLE ID in range ${formatBleId(UNIT_BLE_ID_MIN)}-${formatBleId(UNIT_BLE_ID_MAX)}`);
+  }
+
+  return available;
+}
+
 export async function getNextUnitBleId(prisma: PrismaClient): Promise<string> {
   const units = await prisma.unit.findMany({
     where: { bleId: { not: null } },
@@ -55,12 +73,7 @@ export async function getNextUnitBleId(prisma: PrismaClient): Promise<string> {
   });
   const usedIds = new Set(units.flatMap((unit) => (unit.bleId ? [unit.bleId] : [])));
 
-  for (let id = UNIT_BLE_ID_MIN; id <= UNIT_BLE_ID_MAX; id += 1) {
-    const bleId = formatBleId(id);
-    if (!usedIds.has(bleId)) return bleId;
-  }
-
-  throw new Error(`No available BLE ID in range ${formatBleId(UNIT_BLE_ID_MIN)}-${formatBleId(UNIT_BLE_ID_MAX)}`);
+  return buildAvailableUnitBleIds(usedIds, 1)[0];
 }
 
 export async function getLecturerBleMappings(prisma: PrismaClient, lecturerId: string) {
