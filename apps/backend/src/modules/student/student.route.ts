@@ -3,6 +3,7 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
 import { hashPassword, verifyPassword } from "../admin/admin.service.js";
 import { requireAttendanceRole, requireRoles, requireSuperAdmin } from "../../plugins/index.js";
+import { cleanIdentifier } from "../../shared/identifiers.js";
 
 interface LoginBody {
   email: string;
@@ -105,6 +106,19 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
+  app.delete(
+    "/me",
+    { preHandler: requireAttendanceRole("student") },
+    async (request, reply) => {
+      await prisma.$transaction(async (transaction) => {
+        await transaction.studentAuth.deleteMany({ where: { studentId: request.user.id } });
+        // Keep the institutional student record and attendance history, but remove account credentials.
+        await transaction.student.update({ where: { id: request.user.id }, data: { email: null } });
+      });
+      return reply.send({ success: true });
+    },
+  );
+
   app.get(
     "/units",
     { preHandler: requireAttendanceRole("student") },
@@ -167,7 +181,7 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: StudentVerificationBody }>("/verify", async (request, reply) => {
     const institutionId = request.body.institutionId?.trim();
-    const admissionNumber = request.body.admissionNumber?.trim();
+    const admissionNumber = cleanIdentifier(request.body.admissionNumber);
     if (!institutionId || !admissionNumber) {
       return reply.code(400).send({ error: "Institution ID and admission number are required" });
     }
@@ -183,7 +197,10 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
   });
 
   app.post<{ Body: StudentRegistrationBody }>("/register", async (request, reply) => {
-    const { institutionId, admissionNumber, name, course, email, password } = request.body;
+    const { name, course, password } = request.body;
+    const institutionId = request.body.institutionId?.trim();
+    const admissionNumber = cleanIdentifier(request.body.admissionNumber);
+    const email = request.body.email;
     const normalizedEmail = email?.trim().toLowerCase();
     if (!institutionId || !admissionNumber || !name || !course || !normalizedEmail || !password) {
       return reply.code(400).send({ error: "All registration fields are required" });

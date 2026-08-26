@@ -6,6 +6,7 @@ import {
 } from "./lecturer.service.js";
 import { hashPassword, verifyPassword } from "../admin/admin.service.js";
 import { requireAttendanceRole, requireRoles, requireSuperAdmin } from "../../plugins/index.js";
+import { cleanIdentifier } from "../../shared/identifiers.js";
 
 interface LoginBody {
   email: string;
@@ -33,6 +34,22 @@ interface TeachingUnitSelectionBody {
 }
 
 export const lecturerRoutes: FastifyPluginAsync = async (app) => {
+  app.delete(
+    "/me",
+    { preHandler: requireAttendanceRole("lecturer") },
+    async (request, reply) => {
+      await app.prisma.$transaction(async (transaction) => {
+        await transaction.lecturerAuth.deleteMany({ where: { lecturerId: request.user.id } });
+        // Keep the institutional lecturer record and teaching history, but remove account credentials.
+        await transaction.lecturer.update({
+          where: { id: request.user.id },
+          data: { email: null, passwordHash: null },
+        });
+      });
+      return reply.send({ success: true });
+    },
+  );
+
   app.get(
     "/units/catalog",
     { preHandler: requireAttendanceRole("lecturer") },
@@ -89,7 +106,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: LecturerVerificationBody }>("/verify", async (request, reply) => {
     const institutionId = request.body.institutionId?.trim();
-    const staffNumber = request.body.staffNumber?.trim();
+    const staffNumber = cleanIdentifier(request.body.staffNumber);
     if (!institutionId || !staffNumber) {
       return reply.code(400).send({ error: "Institution ID and staff number are required" });
     }
@@ -105,7 +122,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
 
   app.post<{ Body: LecturerRegistrationBody }>("/register", async (request, reply) => {
     const institutionId = request.body.institutionId?.trim();
-    const staffNumber = request.body.staffNumber?.trim();
+    const staffNumber = cleanIdentifier(request.body.staffNumber);
     const name = request.body.name?.trim();
     const email = request.body.email;
     const password = request.body.password;
@@ -205,7 +222,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
     const createdLecturers = [];
     for (const lecturerInput of lecturers) {
       const name = lecturerInput.name?.trim();
-      const staffNumber = lecturerInput.staffNumber?.trim();
+      const staffNumber = cleanIdentifier(lecturerInput.staffNumber);
       if (!name || !staffNumber) continue;
 
       const lecturer = await app.prisma.lecturer.upsert({
