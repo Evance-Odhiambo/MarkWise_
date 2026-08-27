@@ -17,18 +17,21 @@ export const mappingRoutes: FastifyPluginAsync = async (app) => {
   app.get(
     "/next-id",
     { preHandler: requireBleMappingAccess("SUPER_ADMIN", "INSTITUTION_ADMIN") },
-    async (_request, reply) => reply.send({ bleId: await bleManager.getNextUnitBleId() }),
+    async (_request, reply) =>
+      reply.send({ bleId: await bleManager.getNextUnitBleId() }),
   );
 
   app.get(
     "/lecturer",
     { preHandler: requireBleMappingAccess("lecturer") },
-    async (request, reply) => reply.send(await bleManager.getLecturerMappings(request.user.id)),
+    async (request, reply) =>
+      reply.send(await bleManager.getLecturerMappings(request.user.id)),
   );
 
   app.get(
     "/student",
     { preHandler: requireBleMappingAccess("student") },
-    async (request, reply) => reply.send(await bleManager.getStudentMappings(request.user.id)),
+    async (request, reply) =>
+      reply.send(await bleManager.getStudentMappings(request.user.id)),
   );
 };

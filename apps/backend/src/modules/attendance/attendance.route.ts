@@ -19,6 +19,64 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
   const webauthn = new WebAuthnService(app.prisma);
 
   app.get(
+    "/lecturer/summary",
+    { preHandler: requireAttendanceRole("lecturer") },
+    async (request, reply) => {
+      const lecturerId = request.user.id;
+      const since = new Date();
+      since.setDate(since.getDate() - 29);
+      since.setHours(0, 0, 0, 0);
+
+      const selectedUnits = await app.prisma.lecturerUnit.findMany({
+        where: { lecturerId },
+        select: { unit: { select: { code: true, name: true } } },
+      });
+      const selectedCodes = new Set(selectedUnits.map(({ unit }) => unit.code.toUpperCase()));
+      const [inPersonSessions, onlineSessions] = await Promise.all([
+        app.prisma.conductedSession.findMany({
+          where: { lecturerId },
+          select: { unitCode: true, sessionStart: true, attendanceRecords: { select: { id: true } } },
+        }),
+        app.prisma.onlineAttendanceSession.findMany({
+          where: { lecturerId },
+          select: { unitCode: true, createdAt: true, records: { select: { id: true } } },
+        }),
+      ]);
+
+      const sessions = [
+        ...inPersonSessions.map((session) => ({ unitCode: session.unitCode, date: session.sessionStart, checkIns: session.attendanceRecords.length, method: "inPerson" })),
+        ...onlineSessions.map((session) => ({ unitCode: session.unitCode, date: session.createdAt, checkIns: session.records.length, method: "online" })),
+      ].filter((session) => selectedCodes.has(session.unitCode.toUpperCase()));
+      const trend = Array.from({ length: 30 }, (_, index) => {
+        const day = new Date(since);
+        day.setDate(since.getDate() + index);
+        const nextDay = new Date(day);
+        nextDay.setDate(day.getDate() + 1);
+        const daySessions = sessions.filter((session) => session.date >= day && session.date < nextDay);
+        return { date: day.toISOString().slice(0, 10), sessions: daySessions.length, checkIns: daySessions.reduce((sum, session) => sum + session.checkIns, 0) };
+      });
+      const unitStats = selectedUnits.map(({ unit }) => {
+        const unitSessions = sessions.filter((session) => session.unitCode.toUpperCase() === unit.code.toUpperCase());
+        const checkIns = unitSessions.reduce((sum, session) => sum + session.checkIns, 0);
+        return { unitCode: unit.code, unitName: unit.name, sessions: unitSessions.length, checkIns, averageAttendance: unitSessions.length ? Math.round(checkIns / unitSessions.length) : 0 };
+      });
+      const methodStats = ["inPerson", "online"].map((method) => ({ method, sessions: sessions.filter((session) => session.method === method).length, checkIns: sessions.filter((session) => session.method === method).reduce((sum, session) => sum + session.checkIns, 0) }));
+      const usedUnits = unitStats.filter((unit) => unit.sessions > 0).length;
+      const rankedUnits = [...unitStats].filter((unit) => unit.sessions > 0).sort((a, b) => b.averageAttendance - a.averageAttendance);
+      const totalCheckIns = sessions.reduce((sum, session) => sum + session.checkIns, 0);
+
+      return reply.send({
+        trend,
+        units: unitStats,
+        methods: methodStats,
+        totals: { sessions: sessions.length, checkIns: totalCheckIns },
+        coverage: { selected: selectedUnits.length, used: usedUnits },
+        insights: { highestUnit: rankedUnits[0]?.unitCode ?? null, lowestUnit: rankedUnits.at(-1)?.unitCode ?? null },
+      });
+    },
+  );
+
+  app.get(
     "/student/summary",
     { preHandler: requireAttendanceRole("student") },
     async (request, reply) => {
@@ -35,7 +93,7 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
             select: {
               years: {
                 orderBy: { yearNumber: "desc" },
-                select: { yearNumber: true, semester: { orderBy: { semesterNumber: "desc" }, select: { name: true, units: { select: { id: true } } } } },
+                select: { yearNumber: true, semester: { orderBy: { semesterNumber: "desc" }, select: { id: true, name: true, units: { select: { id: true } } } } },
               },
             },
           },
@@ -43,8 +101,13 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
       });
       if (!student) return reply.code(404).send({ error: "Student record not found" });
       const currentYear = student.course.years.find(({ yearNumber }) => yearNumber === student.year) ?? student.course.years[0];
-      const currentSemester = currentYear?.semester[0];
-      const enrolledUnits = await app.prisma.enrollment.findMany({ where: { studentId }, select: { unit: { select: { id: true, code: true, name: true } } } });
+      const fallbackSemester = currentYear?.semester[0];
+      const enrolledUnits = await app.prisma.enrollment.findMany({ where: { studentId }, select: { unit: { select: { id: true, code: true, name: true, semesterId: true } } } });
+      const semesterCounts = new Map<string, number>();
+      enrolledUnits.forEach(({ unit }) => semesterCounts.set(unit.semesterId, (semesterCounts.get(unit.semesterId) ?? 0) + 1));
+      const selectedSemesterId = [...semesterCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
+      const selectedSemester = student.course.years.flatMap(({ semester }) => semester).find(({ id }) => id === selectedSemesterId) ?? fallbackSemester;
+      const selectedSemesterUnitCount = enrolledUnits.filter(({ unit }) => unit.semesterId === selectedSemester?.id).length;
       const enrolledUnitCodes = enrolledUnits.map(({ unit }) => unit.code);
 
       const [inPersonCount, onlineCount, recentInPerson, recentOnline, weeklyInPerson, weeklyOnline, unitInPerson, unitOnline, conductedInPerson, conductedOnline] = await Promise.all([
@@ -111,9 +174,9 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
         trend,
         units,
         currentSemester: {
-          name: currentSemester?.name ?? "Current semester",
-          unitsTotal: currentSemester?.units.length ?? 0,
-          unitsEnrolled: enrolledUnits.length,
+          name: selectedSemester?.name ?? "Current semester",
+          unitsTotal: selectedSemester?.units.length ?? 0,
+          unitsEnrolled: selectedSemester ? selectedSemesterUnitCount : enrolledUnits.length,
         },
         health: { conducted, attended, missed, projectedPercentage: conducted > 0 ? Math.round((attended / conducted) * 100) : 0, goalPercentage: 75, streak },
         unitHealth,

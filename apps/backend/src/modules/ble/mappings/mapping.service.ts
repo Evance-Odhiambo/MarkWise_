@@ -8,7 +8,9 @@ import {
   type UnitBleMapping,
 } from "./mapping.schema.js";
 
-function createMappingVersion(unitMappings: Record<string, UnitBleMapping>): string {
+function createMappingVersion(
+  unitMappings: Record<string, UnitBleMapping>,
+): string {
   return crypto
     .createHash("sha256")
     .update(JSON.stringify({ unitMappings }))
@@ -48,7 +50,10 @@ export async function getBleMappings(
   };
 }
 
-export function buildAvailableUnitBleIds(usedIds: Set<string>, count: number): string[] {
+export function buildAvailableUnitBleIds(
+  usedIds: Set<string>,
+  count: number,
+): string[] {
   const available: string[] = [];
 
   for (let id = UNIT_BLE_ID_MIN; id <= UNIT_BLE_ID_MAX; id += 1) {
@@ -60,7 +65,9 @@ export function buildAvailableUnitBleIds(usedIds: Set<string>, count: number): s
   }
 
   if (available.length < count) {
-    throw new Error(`No available BLE ID in range ${formatBleId(UNIT_BLE_ID_MIN)}-${formatBleId(UNIT_BLE_ID_MAX)}`);
+    throw new Error(
+      `No available BLE ID in range ${formatBleId(UNIT_BLE_ID_MIN)}-${formatBleId(UNIT_BLE_ID_MAX)}`,
+    );
   }
 
   return available;
@@ -71,12 +78,17 @@ export async function getNextUnitBleId(prisma: PrismaClient): Promise<string> {
     where: { bleId: { not: null } },
     select: { bleId: true },
   });
-  const usedIds = new Set(units.flatMap((unit) => (unit.bleId ? [unit.bleId] : [])));
+  const usedIds = new Set(
+    units.flatMap((unit) => (unit.bleId ? [unit.bleId] : [])),
+  );
 
   return buildAvailableUnitBleIds(usedIds, 1)[0];
 }
 
-export async function getLecturerBleMappings(prisma: PrismaClient, lecturerId: string) {
+export async function getLecturerBleMappings(
+  prisma: PrismaClient,
+  lecturerId: string,
+) {
   const units = await prisma.unit.findMany({
     where: { lecturerUnits: { some: { lecturerId } }, bleId: { not: null } },
     select: { code: true, bleId: true },
@@ -90,7 +102,10 @@ export async function getLecturerBleMappings(prisma: PrismaClient, lecturerId: s
   };
 }
 
-export async function getStudentBleMappings(prisma: PrismaClient, studentId: string) {
+export async function getStudentBleMappings(
+  prisma: PrismaClient,
+  studentId: string,
+) {
   const units = await prisma.unit.findMany({
     where: {
       enrollments: { some: { studentId } },

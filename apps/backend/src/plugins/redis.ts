@@ -14,15 +14,23 @@ export const redisPlugin = fp(async (app) => {
     socket: { reconnectStrategy: false },
   });
 
-  client.on("error", (error) => app.log.warn({ error }, "Redis unavailable; continuing without cache"));
+  client.on("error", (error) =>
+    app.log.warn({ error }, "Redis unavailable; continuing without cache"),
+  );
   app.decorate("redis", null);
 
   try {
     await client.connect();
     app.redis = client;
-    app.log.info({ url: env.redisUrl.replace(/:\/\/.*@/, "://***@") }, "Redis connected");
+    app.log.info(
+      { url: env.redisUrl.replace(/:\/\/.*@/, "://***@") },
+      "Redis connected",
+    );
   } catch (error) {
-    app.log.warn({ error }, "Redis connection failed; continuing without cache");
+    app.log.warn(
+      { error },
+      "Redis connection failed; continuing without cache",
+    );
 
     // A failed initial connection may already have closed the client.
     // Calling disconnect() in that state emits a ClientClosedError.

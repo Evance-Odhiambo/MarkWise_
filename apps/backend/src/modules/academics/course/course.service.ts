@@ -1,3 +1,3 @@
 export function createCourseService() {
-	return {} as const;
+  return {} as const;
 }

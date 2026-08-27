@@ -29,7 +29,7 @@ function readList(payload: unknown): unknown[] {
 }
 
 export async function importLecturers(
-  request: ImportRequest
+  request: ImportRequest,
 ): Promise<{ status: number; body: ImportResponse | ApiError }> {
   if (!request.apiUrl) {
     return { status: 400, body: { error: "API URL is required" } };
@@ -46,20 +46,23 @@ export async function importLecturers(
     };
   }
 
-  const payload = await response.json() as unknown;
+  const payload = (await response.json()) as unknown;
   const data = readList(payload).flatMap((item) => {
     if (!item || typeof item !== "object") return [];
     const lecturer = item as Record<string, unknown>;
     const name = lecturer.name ?? lecturer.fullName ?? lecturer.full_name;
-    const staffNumber = lecturer.staffNumber ?? lecturer.staff_number ?? lecturer.staffId;
+    const staffNumber =
+      lecturer.staffNumber ?? lecturer.staff_number ?? lecturer.staffId;
     if (typeof name !== "string" || typeof staffNumber !== "string") return [];
 
     const email = lecturer.email;
-    return [{
-      name,
-      staffNumber,
-      ...(typeof email === "string" ? { email } : {}),
-    }];
+    return [
+      {
+        name,
+        staffNumber,
+        ...(typeof email === "string" ? { email } : {}),
+      },
+    ];
   });
 
   return {

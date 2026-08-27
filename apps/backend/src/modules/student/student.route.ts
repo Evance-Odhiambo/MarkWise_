@@ -2,7 +2,11 @@ import type { FastifyPluginAsync } from "fastify";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "../../generated/prisma/client.js";
 import { hashPassword, verifyPassword } from "../admin/admin.service.js";
-import { requireAttendanceRole, requireRoles, requireSuperAdmin } from "../../plugins/index.js";
+import {
+  requireAttendanceRole,
+  requireRoles,
+  requireSuperAdmin,
+} from "../../plugins/index.js";
 import { cleanIdentifier } from "../../shared/identifiers.js";
 
 interface LoginBody {
@@ -94,7 +98,8 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
         where: { id: request.user.id },
         include: { course: { select: { name: true } } },
       });
-      if (!student) return reply.code(404).send({ error: "Student record not found" });
+      if (!student)
+        return reply.code(404).send({ error: "Student record not found" });
 
       return reply.send({
         userId: student.id,
@@ -111,9 +116,14 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
     { preHandler: requireAttendanceRole("student") },
     async (request, reply) => {
       await prisma.$transaction(async (transaction) => {
-        await transaction.studentAuth.deleteMany({ where: { studentId: request.user.id } });
+        await transaction.studentAuth.deleteMany({
+          where: { studentId: request.user.id },
+        });
         // Keep the institutional student record and attendance history, but remove account credentials.
-        await transaction.student.update({ where: { id: request.user.id }, data: { email: null } });
+        await transaction.student.update({
+          where: { id: request.user.id },
+          data: { email: null },
+        });
       });
       return reply.send({ success: true });
     },
@@ -136,8 +146,12 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
     "/units/catalog",
     { preHandler: requireAttendanceRole("student") },
     async (request, reply) => {
-      const student = await prisma.student.findUnique({ where: { id: request.user.id }, select: { courseId: true } });
-      if (!student) return reply.code(404).send({ error: "Student record not found" });
+      const student = await prisma.student.findUnique({
+        where: { id: request.user.id },
+        select: { courseId: true },
+      });
+      if (!student)
+        return reply.code(404).send({ error: "Student record not found" });
 
       const course = await prisma.course.findUnique({
         where: { id: student.courseId },
@@ -149,7 +163,14 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
               yearNumber: true,
               semester: {
                 orderBy: { semesterNumber: "asc" },
-                select: { semesterNumber: true, name: true, units: { orderBy: { code: "asc" }, select: { id: true, code: true, name: true } } },
+                select: {
+                  semesterNumber: true,
+                  name: true,
+                  units: {
+                    orderBy: { code: "asc" },
+                    select: { id: true, code: true, name: true },
+                  },
+                },
               },
             },
           },
@@ -157,8 +178,15 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
       });
       if (!course) return reply.code(404).send({ error: "Course not found" });
 
-      const enrolled = await prisma.enrollment.findMany({ where: { studentId: request.user.id }, select: { unitId: true } });
-      return reply.send({ course: course.name, years: course.years, enrolledUnitIds: enrolled.map(({ unitId }) => unitId) });
+      const enrolled = await prisma.enrollment.findMany({
+        where: { studentId: request.user.id },
+        select: { unitId: true },
+      });
+      return reply.send({
+        course: course.name,
+        years: course.years,
+        enrolledUnitIds: enrolled.map(({ unitId }) => unitId),
+      });
     },
   );
 
@@ -166,81 +194,154 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
     "/units/enroll",
     { preHandler: requireAttendanceRole("student") },
     async (request, reply) => {
-      const unitIds = Array.isArray(request.body.unitIds) ? [...new Set(request.body.unitIds.filter((id): id is string => typeof id === "string"))] : null;
-      if (!unitIds || unitIds.length === 0) return reply.code(400).send({ error: "Select at least one unit" });
+      const unitIds = Array.isArray(request.body.unitIds)
+        ? [
+            ...new Set(
+              request.body.unitIds.filter(
+                (id): id is string => typeof id === "string",
+              ),
+            ),
+          ]
+        : null;
+      if (!unitIds || unitIds.length === 0)
+        return reply.code(400).send({ error: "Select at least one unit" });
 
-      const student = await prisma.student.findUnique({ where: { id: request.user.id }, select: { courseId: true } });
-      if (!student) return reply.code(404).send({ error: "Student record not found" });
-      const validUnits = await prisma.unit.findMany({ where: { id: { in: unitIds }, semester: { courseYear: { courseId: student.courseId } } }, select: { id: true } });
-      if (validUnits.length !== unitIds.length) return reply.code(400).send({ error: "One or more units are not available on your course" });
+      const student = await prisma.student.findUnique({
+        where: { id: request.user.id },
+        select: { courseId: true },
+      });
+      if (!student)
+        return reply.code(404).send({ error: "Student record not found" });
+      const validUnits = await prisma.unit.findMany({
+        where: {
+          id: { in: unitIds },
+          semester: { courseYear: { courseId: student.courseId } },
+        },
+        select: { id: true },
+      });
+      if (validUnits.length !== unitIds.length)
+        return reply
+          .code(400)
+          .send({
+            error: "One or more units are not available on your course",
+          });
 
-      await prisma.enrollment.createMany({ data: unitIds.map((unitId) => ({ studentId: request.user.id, unitId })), skipDuplicates: true });
+      await prisma.enrollment.createMany({
+        data: unitIds.map((unitId) => ({ studentId: request.user.id, unitId })),
+        skipDuplicates: true,
+      });
       return reply.send({ success: true, enrolledUnitIds: unitIds });
     },
   );
 
-  app.post<{ Body: StudentVerificationBody }>("/verify", async (request, reply) => {
-    const institutionId = request.body.institutionId?.trim();
-    const admissionNumber = cleanIdentifier(request.body.admissionNumber);
-    if (!institutionId || !admissionNumber) {
-      return reply.code(400).send({ error: "Institution ID and admission number are required" });
-    }
+  app.post<{ Body: StudentVerificationBody }>(
+    "/verify",
+    async (request, reply) => {
+      const institutionId = request.body.institutionId?.trim();
+      const admissionNumber = cleanIdentifier(request.body.admissionNumber);
+      if (!institutionId || !admissionNumber) {
+        return reply
+          .code(400)
+          .send({ error: "Institution ID and admission number are required" });
+      }
 
-    const student = await prisma.student.findFirst({
-      where: { institutionId, admissionNumber },
-      include: { course: { select: { name: true } } },
-    });
-
-    if (!student) return reply.code(404).send({ error: "Student record not found" });
-
-    return reply.send({ valid: true, name: student.name, course: student.course.name });
-  });
-
-  app.post<{ Body: StudentRegistrationBody }>("/register", async (request, reply) => {
-    const { name, course, password } = request.body;
-    const institutionId = request.body.institutionId?.trim();
-    const admissionNumber = cleanIdentifier(request.body.admissionNumber);
-    const email = request.body.email;
-    const normalizedEmail = email?.trim().toLowerCase();
-    if (!institutionId || !admissionNumber || !name || !course || !normalizedEmail || !password) {
-      return reply.code(400).send({ error: "All registration fields are required" });
-    }
-    if (password.length < 8) return reply.code(400).send({ error: "Password must be at least 8 characters" });
-
-    const student = await prisma.student.findFirst({
-      where: { institutionId, admissionNumber },
-      include: { course: { select: { name: true } }, auth: true },
-    });
-    if (!student) return reply.code(404).send({ error: "Student record not found" });
-    if (student.course.name !== course) return reply.code(400).send({ error: "Course does not match the student record" });
-    if (student.auth) return reply.code(409).send({ error: "This student account is already registered" });
-
-    try {
-      const registeredStudent = await prisma.$transaction(async (transaction) => {
-        const updatedStudent = await transaction.student.update({
-          where: { id: student.id },
-          data: { email: normalizedEmail },
-          select: { id: true },
-        });
-        await transaction.studentAuth.create({
-          data: { studentId: updatedStudent.id, email: normalizedEmail, passwordHash: await hashPassword(password) },
-        });
-        return updatedStudent;
+      const student = await prisma.student.findFirst({
+        where: { institutionId, admissionNumber },
+        include: { course: { select: { name: true } } },
       });
 
-      return reply.code(201).send({ success: true, userId: registeredStudent.id });
-    } catch (error) {
-      if (error instanceof Error && error.message.includes("Unique constraint")) {
-        return reply.code(409).send({ error: "That email address is already in use" });
+      if (!student)
+        return reply.code(404).send({ error: "Student record not found" });
+
+      return reply.send({
+        valid: true,
+        name: student.name,
+        course: student.course.name,
+      });
+    },
+  );
+
+  app.post<{ Body: StudentRegistrationBody }>(
+    "/register",
+    async (request, reply) => {
+      const { name, course, password } = request.body;
+      const institutionId = request.body.institutionId?.trim();
+      const admissionNumber = cleanIdentifier(request.body.admissionNumber);
+      const email = request.body.email;
+      const normalizedEmail = email?.trim().toLowerCase();
+      if (
+        !institutionId ||
+        !admissionNumber ||
+        !name ||
+        !course ||
+        !normalizedEmail ||
+        !password
+      ) {
+        return reply
+          .code(400)
+          .send({ error: "All registration fields are required" });
       }
-      throw error;
-    }
-  });
+      if (password.length < 8)
+        return reply
+          .code(400)
+          .send({ error: "Password must be at least 8 characters" });
+
+      const student = await prisma.student.findFirst({
+        where: { institutionId, admissionNumber },
+        include: { course: { select: { name: true } }, auth: true },
+      });
+      if (!student)
+        return reply.code(404).send({ error: "Student record not found" });
+      if (student.course.name !== course)
+        return reply
+          .code(400)
+          .send({ error: "Course does not match the student record" });
+      if (student.auth)
+        return reply
+          .code(409)
+          .send({ error: "This student account is already registered" });
+
+      try {
+        const registeredStudent = await prisma.$transaction(
+          async (transaction) => {
+            const updatedStudent = await transaction.student.update({
+              where: { id: student.id },
+              data: { email: normalizedEmail },
+              select: { id: true },
+            });
+            await transaction.studentAuth.create({
+              data: {
+                studentId: updatedStudent.id,
+                email: normalizedEmail,
+                passwordHash: await hashPassword(password),
+              },
+            });
+            return updatedStudent;
+          },
+        );
+
+        return reply
+          .code(201)
+          .send({ success: true, userId: registeredStudent.id });
+      } catch (error) {
+        if (
+          error instanceof Error &&
+          error.message.includes("Unique constraint")
+        ) {
+          return reply
+            .code(409)
+            .send({ error: "That email address is already in use" });
+        }
+        throw error;
+      }
+    },
+  );
 
   app.post<{ Body: LoginBody }>("/login", async (request, reply) => {
     const email = request.body.email?.trim().toLowerCase();
     const password = request.body.password;
-    if (!email || !password) return reply.code(400).send({ error: "Email and password are required" });
+    if (!email || !password)
+      return reply.code(400).send({ error: "Email and password are required" });
 
     const auth = await prisma.studentAuth.findUnique({
       where: { email },
@@ -253,22 +354,35 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
     return reply.send({
       userId: auth.student.id,
       name: auth.student.name,
+      email: auth.email,
       institutionId: auth.student.institutionId,
       admissionNumber: auth.student.admissionNumber,
       course: auth.student.course.name,
-      token: await app.jwt.sign({ id: auth.student.id, role: "student", institutionId: auth.student.institutionId }),
+      token: await app.jwt.sign({
+        id: auth.student.id,
+        role: "student",
+        institutionId: auth.student.institutionId,
+      }),
     });
   });
 
   app.get<{ Querystring: { institutionId?: string } }>(
     "/",
-    { preHandler: requireRoles('SUPER_ADMIN', 'INSTITUTION_ADMIN') },
+    { preHandler: requireRoles("SUPER_ADMIN", "INSTITUTION_ADMIN") },
     async (_request, reply) => {
       try {
         const institutionId = _request.query.institutionId;
-        if (!institutionId) return reply.code(400).send({ error: "Institution ID is required" });
-        if (_request.user.role !== 'SUPER_ADMIN' && _request.user.institutionId !== institutionId) {
-          return reply.code(403).send({ error: "You can only view students for your own institution" });
+        if (!institutionId)
+          return reply.code(400).send({ error: "Institution ID is required" });
+        if (
+          _request.user.role !== "SUPER_ADMIN" &&
+          _request.user.institutionId !== institutionId
+        ) {
+          return reply
+            .code(403)
+            .send({
+              error: "You can only view students for your own institution",
+            });
         }
 
         const students = await prisma.student.findMany({
@@ -298,40 +412,83 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
         app.log.error({ err }, "Error fetching students");
         return reply.code(500).send({ error: "Failed to fetch students" });
       }
-    }
+    },
   );
 
   app.post<{ Body: StudentCreateBody }>(
     "/",
-    { preHandler: requireRoles('SUPER_ADMIN', 'INSTITUTION_ADMIN') },
+    { preHandler: requireRoles("SUPER_ADMIN", "INSTITUTION_ADMIN") },
     async (request, reply) => {
       try {
         const body = request.body as StudentCreateBody & BulkCreateBody;
         if (Array.isArray(body.students)) {
-          if (!body.institutionId) return reply.code(400).send({ error: "Institution ID is required" });
-          if (request.user.role !== 'SUPER_ADMIN' && request.user.institutionId !== body.institutionId) {
-            return reply.code(403).send({ error: "You can only save students for your own institution" });
+          if (!body.institutionId)
+            return reply
+              .code(400)
+              .send({ error: "Institution ID is required" });
+          if (
+            request.user.role !== "SUPER_ADMIN" &&
+            request.user.institutionId !== body.institutionId
+          ) {
+            return reply
+              .code(403)
+              .send({
+                error: "You can only save students for your own institution",
+              });
           }
 
           const createdStudents = [];
           for (const studentInput of body.students) {
-            const course = await prisma.course.findFirst({ where: { name: studentInput.course, institutionId: body.institutionId } });
-            if (!course) return reply.code(400).send({ error: `Course "${studentInput.course}" not found` });
+            const course = await prisma.course.findFirst({
+              where: {
+                name: studentInput.course,
+                institutionId: body.institutionId,
+              },
+            });
+            if (!course)
+              return reply
+                .code(400)
+                .send({ error: `Course "${studentInput.course}" not found` });
             const student = await prisma.student.upsert({
               where: { admissionNumber: studentInput.admissionNumber },
-              update: { name: studentInput.name, courseId: course.id, institutionId: body.institutionId, year: 1 },
-              create: { name: studentInput.name, admissionNumber: studentInput.admissionNumber, courseId: course.id, institutionId: body.institutionId, year: 1 },
+              update: {
+                name: studentInput.name,
+                courseId: course.id,
+                institutionId: body.institutionId,
+                year: 1,
+              },
+              create: {
+                name: studentInput.name,
+                admissionNumber: studentInput.admissionNumber,
+                courseId: course.id,
+                institutionId: body.institutionId,
+                year: 1,
+              },
               select: { id: true, name: true, admissionNumber: true },
             });
             createdStudents.push(student);
           }
-          return reply.code(201).send({ importedStudents: createdStudents.length, data: createdStudents });
+          return reply
+            .code(201)
+            .send({
+              importedStudents: createdStudents.length,
+              data: createdStudents,
+            });
         }
 
-        const { name, admissionNumber, courseId, institutionId, year } = request.body;
-        if (!name || !admissionNumber || !courseId || !institutionId) return reply.code(400).send({ error: "Student fields are required" });
-        if (request.user.role !== 'SUPER_ADMIN' && request.user.institutionId !== institutionId) {
-          return reply.code(403).send({ error: "You can only save students for your own institution" });
+        const { name, admissionNumber, courseId, institutionId, year } =
+          request.body;
+        if (!name || !admissionNumber || !courseId || !institutionId)
+          return reply.code(400).send({ error: "Student fields are required" });
+        if (
+          request.user.role !== "SUPER_ADMIN" &&
+          request.user.institutionId !== institutionId
+        ) {
+          return reply
+            .code(403)
+            .send({
+              error: "You can only save students for your own institution",
+            });
         }
 
         const student = await prisma.student.create({
@@ -349,18 +506,25 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
         app.log.error({ err }, "Error creating student");
         return reply.code(500).send({ error: "Failed to create student" });
       }
-    }
+    },
   );
 
   app.post<{ Body: BulkCreateBody }>(
     "/import",
-    { preHandler: requireRoles('SUPER_ADMIN', 'INSTITUTION_ADMIN') },
+    { preHandler: requireRoles("SUPER_ADMIN", "INSTITUTION_ADMIN") },
     async (request, reply) => {
       try {
         const { students, institutionId } = request.body;
 
-        if (request.user.role !== 'SUPER_ADMIN' && request.user.institutionId !== institutionId) {
-          return reply.code(403).send({ error: "You can only import students for your own institution" });
+        if (
+          request.user.role !== "SUPER_ADMIN" &&
+          request.user.institutionId !== institutionId
+        ) {
+          return reply
+            .code(403)
+            .send({
+              error: "You can only import students for your own institution",
+            });
         }
 
         if (!students || students.length === 0) {
@@ -390,7 +554,11 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
             },
           });
 
-          createdStudents.push({ id: savedStudent.id, name: savedStudent.name, admissionNumber: savedStudent.admissionNumber });
+          createdStudents.push({
+            id: savedStudent.id,
+            name: savedStudent.name,
+            admissionNumber: savedStudent.admissionNumber,
+          });
         }
 
         const response: BulkCreateResponse = {
@@ -403,6 +571,6 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
         app.log.error({ err }, "Error saving students");
         return reply.code(500).send({ error: "Failed to save students" });
       }
-    }
+    },
   );
 };

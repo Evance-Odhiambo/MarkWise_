@@ -48,19 +48,34 @@ export class WebAuthnService {
         userVerification: "required",
       },
     });
-    await this.prisma.webAuthnChallenge.deleteMany({ where: { userId: studentId, purpose: REGISTRATION_PURPOSE } });
+    await this.prisma.webAuthnChallenge.deleteMany({
+      where: { userId: studentId, purpose: REGISTRATION_PURPOSE },
+    });
     await this.prisma.webAuthnChallenge.create({
-      data: { userId: studentId, purpose: REGISTRATION_PURPOSE, challenge: options.challenge, expiresAt: this.expiresAt() },
+      data: {
+        userId: studentId,
+        purpose: REGISTRATION_PURPOSE,
+        challenge: options.challenge,
+        expiresAt: this.expiresAt(),
+      },
     });
     return options;
   }
 
-  async verifyRegistration(studentId: string, response: RegistrationResponseJSON) {
+  async verifyRegistration(
+    studentId: string,
+    response: RegistrationResponseJSON,
+  ) {
     const challenge = await this.prisma.webAuthnChallenge.findFirst({
-      where: { userId: studentId, purpose: REGISTRATION_PURPOSE, expiresAt: { gt: new Date() } },
+      where: {
+        userId: studentId,
+        purpose: REGISTRATION_PURPOSE,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: "desc" },
     });
-    if (!challenge) return { verified: false as const, reason: "CHALLENGE_EXPIRED" };
+    if (!challenge)
+      return { verified: false as const, reason: "CHALLENGE_EXPIRED" };
 
     try {
       const verification = await verifyRegistrationResponse({
@@ -70,7 +85,8 @@ export class WebAuthnService {
         expectedRPID: env.webauthnRpId,
         requireUserVerification: true,
       });
-      if (!verification.verified) return { verified: false as const, reason: "REGISTRATION_FAILED" };
+      if (!verification.verified)
+        return { verified: false as const, reason: "REGISTRATION_FAILED" };
       const info = verification.registrationInfo;
       await this.prisma.deviceCredential.create({
         data: {
@@ -85,33 +101,68 @@ export class WebAuthnService {
       });
       return { verified: true as const };
     } finally {
-      await this.prisma.webAuthnChallenge.delete({ where: { id: challenge.id } });
+      await this.prisma.webAuthnChallenge.delete({
+        where: { id: challenge.id },
+      });
     }
   }
 
   async attendanceOptions(studentId: string, sessionId: string) {
-    const session = await this.prisma.onlineAttendanceSession.findUnique({ where: { id: sessionId }, select: { expiresAt: true, endedAt: true } });
-    if (!session || session.endedAt || session.expiresAt <= new Date()) return null;
-    const credentials = await this.prisma.deviceCredential.findMany({ where: { studentId }, select: { credentialId: true, transports: true } });
+    const session = await this.prisma.onlineAttendanceSession.findUnique({
+      where: { id: sessionId },
+      select: { expiresAt: true, endedAt: true },
+    });
+    if (!session || session.endedAt || session.expiresAt <= new Date())
+      return null;
+    const credentials = await this.prisma.deviceCredential.findMany({
+      where: { studentId },
+      select: { credentialId: true, transports: true },
+    });
     if (credentials.length === 0) return { noCredential: true as const };
     const options = await generateAuthenticationOptions({
       rpID: env.webauthnRpId,
-      allowCredentials: credentials.map((credential) => ({ id: credential.credentialId, transports: credential.transports as WebAuthnCredential["transports"] })),
+      allowCredentials: credentials.map((credential) => ({
+        id: credential.credentialId,
+        transports: credential.transports as WebAuthnCredential["transports"],
+      })),
       userVerification: "required",
     });
-    await this.prisma.webAuthnChallenge.deleteMany({ where: { userId: studentId, sessionId, purpose: ATTENDANCE_PURPOSE } });
-    await this.prisma.webAuthnChallenge.create({ data: { userId: studentId, sessionId, purpose: ATTENDANCE_PURPOSE, challenge: options.challenge, expiresAt: this.expiresAt() } });
+    await this.prisma.webAuthnChallenge.deleteMany({
+      where: { userId: studentId, sessionId, purpose: ATTENDANCE_PURPOSE },
+    });
+    await this.prisma.webAuthnChallenge.create({
+      data: {
+        userId: studentId,
+        sessionId,
+        purpose: ATTENDANCE_PURPOSE,
+        challenge: options.challenge,
+        expiresAt: this.expiresAt(),
+      },
+    });
     return options;
   }
 
-  async verifyAttendance(studentId: string, sessionId: string, response: AuthenticationResponseJSON) {
+  async verifyAttendance(
+    studentId: string,
+    sessionId: string,
+    response: AuthenticationResponseJSON,
+  ) {
     const challenge = await this.prisma.webAuthnChallenge.findFirst({
-      where: { userId: studentId, sessionId, purpose: ATTENDANCE_PURPOSE, expiresAt: { gt: new Date() } },
+      where: {
+        userId: studentId,
+        sessionId,
+        purpose: ATTENDANCE_PURPOSE,
+        expiresAt: { gt: new Date() },
+      },
       orderBy: { createdAt: "desc" },
     });
-    if (!challenge) return { verified: false as const, reason: "CHALLENGE_EXPIRED" };
-    const stored = await this.prisma.deviceCredential.findFirst({ where: { studentId, credentialId: response.id } });
-    if (!stored) return { verified: false as const, reason: "CREDENTIAL_NOT_REGISTERED" };
+    if (!challenge)
+      return { verified: false as const, reason: "CHALLENGE_EXPIRED" };
+    const stored = await this.prisma.deviceCredential.findFirst({
+      where: { studentId, credentialId: response.id },
+    });
+    if (!stored)
+      return { verified: false as const, reason: "CREDENTIAL_NOT_REGISTERED" };
 
     try {
       const verification = await verifyAuthenticationResponse({
@@ -127,11 +178,23 @@ export class WebAuthnService {
           transports: stored.transports as WebAuthnCredential["transports"],
         },
       });
-      if (!verification.verified) return { verified: false as const, reason: "ASSERTION_FAILED" };
-      await this.prisma.deviceCredential.update({ where: { id: stored.id }, data: { counter: verification.authenticationInfo.newCounter, lastUsedAt: new Date() } });
-      return { verified: true as const, deviceId: `webauthn:${stored.credentialId}` };
+      if (!verification.verified)
+        return { verified: false as const, reason: "ASSERTION_FAILED" };
+      await this.prisma.deviceCredential.update({
+        where: { id: stored.id },
+        data: {
+          counter: verification.authenticationInfo.newCounter,
+          lastUsedAt: new Date(),
+        },
+      });
+      return {
+        verified: true as const,
+        deviceId: `webauthn:${stored.credentialId}`,
+      };
     } finally {
-      await this.prisma.webAuthnChallenge.delete({ where: { id: challenge.id } });
+      await this.prisma.webAuthnChallenge.delete({
+        where: { id: challenge.id },
+      });
     }
   }
 }

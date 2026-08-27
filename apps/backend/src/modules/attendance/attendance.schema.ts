@@ -17,7 +17,9 @@ export interface WebAuthnResponseBody {
   response?: unknown;
 }
 
-export function validateCreateOnlineSession(body: Partial<CreateOnlineSessionBody>): Record<string, string> {
+export function validateCreateOnlineSession(
+  body: Partial<CreateOnlineSessionBody>,
+): Record<string, string> {
   const errors: Record<string, string> = {};
 
   if (!body.unitCode || !body.unitCode.trim()) {

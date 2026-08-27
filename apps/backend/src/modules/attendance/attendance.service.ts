@@ -1,16 +1,29 @@
 import type { Prisma, PrismaClient } from "../../generated/prisma/client.js";
 import type { RedisClientType } from "redis";
-import { MAX_ONLINE_SESSION_MINUTES, normalizeUnitCode } from "./attendance.schema.js";
+import {
+  MAX_ONLINE_SESSION_MINUTES,
+  normalizeUnitCode,
+} from "./attendance.schema.js";
 
 export class AttendanceService {
-  constructor(private readonly prisma: PrismaClient, private readonly redis: RedisClientType | null = null) {}
+  constructor(
+    private readonly prisma: PrismaClient,
+    private readonly redis: RedisClientType | null = null,
+  ) {}
 
-  private async findUnitByCode(code: string, select: { id: true; name: true; code: true }) {
+  private async findUnitByCode(
+    code: string,
+    select: { id: true; name: true; code: true },
+  ) {
     const exact = await this.prisma.unit.findFirst({ where: { code }, select });
     if (exact) return exact;
 
     const units = await this.prisma.unit.findMany({ select });
-    return units.find((unit) => normalizeUnitCode(unit.code) === normalizeUnitCode(code)) ?? null;
+    return (
+      units.find(
+        (unit) => normalizeUnitCode(unit.code) === normalizeUnitCode(code),
+      ) ?? null
+    );
   }
 
   private sessionCacheKey(sessionId: string) {
@@ -48,19 +61,42 @@ export class AttendanceService {
       where: { lecturerId: input.lecturerId },
       select: { unit: { select: { code: true } } },
     });
-    const assignedUnit = assignment.find(({ unit }) => normalizeUnitCode(unit.code) === unitCode);
+    const assignedUnit = assignment.find(
+      ({ unit }) => normalizeUnitCode(unit.code) === unitCode,
+    );
     if (!assignedUnit) {
-      await this.audit({ event: "ONLINE_SESSION_CREATE", actorId: input.lecturerId, role: "lecturer", success: false, reason: "UNIT_NOT_ASSIGNED", metadata: { unitCode } });
+      await this.audit({
+        event: "ONLINE_SESSION_CREATE",
+        actorId: input.lecturerId,
+        role: "lecturer",
+        success: false,
+        reason: "UNIT_NOT_ASSIGNED",
+        metadata: { unitCode },
+      });
       throw new Error("You are not assigned to this unit");
     }
 
-    const maximumExpiry = new Date(Date.now() + MAX_ONLINE_SESSION_MINUTES * 60 * 1000);
-    const expiresAt = input.expiresAt < maximumExpiry ? input.expiresAt : maximumExpiry;
+    const maximumExpiry = new Date(
+      Date.now() + MAX_ONLINE_SESSION_MINUTES * 60 * 1000,
+    );
+    const expiresAt =
+      input.expiresAt < maximumExpiry ? input.expiresAt : maximumExpiry;
 
     const session = await this.prisma.onlineAttendanceSession.create({
-      data: { lecturerId: input.lecturerId, unitCode: assignedUnit.unit.code, expiresAt },
+      data: {
+        lecturerId: input.lecturerId,
+        unitCode: assignedUnit.unit.code,
+        expiresAt,
+      },
     });
-    await this.audit({ event: "ONLINE_SESSION_CREATE", actorId: input.lecturerId, role: "lecturer", sessionId: session.id, success: true, metadata: { unitCode } });
+    await this.audit({
+      event: "ONLINE_SESSION_CREATE",
+      actorId: input.lecturerId,
+      role: "lecturer",
+      sessionId: session.id,
+      success: true,
+      metadata: { unitCode },
+    });
     return session;
   }
 
@@ -89,7 +125,11 @@ export class AttendanceService {
     });
 
     if (!session) return null;
-    const unit = await this.findUnitByCode(session.unitCode, { id: true, name: true, code: true });
+    const unit = await this.findUnitByCode(session.unitCode, {
+      id: true,
+      name: true,
+      code: true,
+    });
     const expired = session.endedAt !== null || session.expiresAt <= new Date();
     const result = {
       ...session,
@@ -100,7 +140,13 @@ export class AttendanceService {
 
     if (this.redis?.isReady && !expired) {
       try {
-        const ttl = Math.max(1, Math.min(10, Math.ceil((session.expiresAt.getTime() - Date.now()) / 1000)));
+        const ttl = Math.max(
+          1,
+          Math.min(
+            10,
+            Math.ceil((session.expiresAt.getTime() - Date.now()) / 1000),
+          ),
+        );
         await this.redis.set(cacheKey, JSON.stringify(result), { EX: ttl });
       } catch {
         // Cache failure must never block attendance.
@@ -121,7 +167,16 @@ export class AttendanceService {
       select: { admissionNumber: true },
     });
     if (!student) {
-      await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "STUDENT_NOT_FOUND" });
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "STUDENT_NOT_FOUND",
+      });
       return { success: false, blocked: true as const };
     }
 
@@ -130,51 +185,148 @@ export class AttendanceService {
       select: { unitCode: true, expiresAt: true, endedAt: true },
     });
     if (!session || session.endedAt || session.expiresAt <= new Date()) {
-      await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "SESSION_CLOSED" });
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "SESSION_CLOSED",
+      });
       return { success: false, blocked: true as const };
     }
 
     if (!input.deviceId?.trim()) {
-      await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, ipAddress: input.ipAddress, success: false, reason: "DEVICE_REQUIRED" });
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "DEVICE_REQUIRED",
+      });
       return { success: false, blocked: true as const };
     }
 
-    const boundDevices = await this.prisma.studentDevice.findMany({ where: { userId: input.studentId, role: "student" }, select: { deviceKey: true } });
-    if (!input.deviceVerified && boundDevices.length > 0 && !boundDevices.some(device => device.deviceKey === input.deviceId)) {
-      await this.audit({ event: "ONLINE_DEVICE_CONFLICT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "DIFFERENT_DEVICE" });
+    const boundDevices = await this.prisma.studentDevice.findMany({
+      where: { userId: input.studentId, role: "student" },
+      select: { deviceKey: true },
+    });
+    if (
+      !input.deviceVerified &&
+      boundDevices.length > 0 &&
+      !boundDevices.some((device) => device.deviceKey === input.deviceId)
+    ) {
+      await this.audit({
+        event: "ONLINE_DEVICE_CONFLICT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "DIFFERENT_DEVICE",
+      });
       return { success: false, blocked: true as const };
     }
     if (!input.deviceVerified && boundDevices.length === 0) {
-      const deviceOwner = await this.prisma.studentDevice.findUnique({ where: { deviceKey: input.deviceId }, select: { userId: true } });
+      const deviceOwner = await this.prisma.studentDevice.findUnique({
+        where: { deviceKey: input.deviceId },
+        select: { userId: true },
+      });
       if (deviceOwner && deviceOwner.userId !== input.studentId) {
-        await this.audit({ event: "ONLINE_DEVICE_CONFLICT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "DEVICE_BOUND_TO_OTHER_ACCOUNT" });
+        await this.audit({
+          event: "ONLINE_DEVICE_CONFLICT",
+          actorId: input.studentId,
+          role: "student",
+          sessionId: input.sessionId,
+          deviceId: input.deviceId,
+          ipAddress: input.ipAddress,
+          success: false,
+          reason: "DEVICE_BOUND_TO_OTHER_ACCOUNT",
+        });
         return { success: false, blocked: true as const };
       }
       try {
-        await this.prisma.studentDevice.create({ data: { userId: input.studentId, deviceKey: input.deviceId, role: "student" } });
+        await this.prisma.studentDevice.create({
+          data: {
+            userId: input.studentId,
+            deviceKey: input.deviceId,
+            role: "student",
+          },
+        });
       } catch (error: unknown) {
-        if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
-          await this.audit({ event: "ONLINE_DEVICE_CONFLICT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "DEVICE_BOUND_TO_OTHER_ACCOUNT" });
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "P2002"
+        ) {
+          await this.audit({
+            event: "ONLINE_DEVICE_CONFLICT",
+            actorId: input.studentId,
+            role: "student",
+            sessionId: input.sessionId,
+            deviceId: input.deviceId,
+            ipAddress: input.ipAddress,
+            success: false,
+            reason: "DEVICE_BOUND_TO_OTHER_ACCOUNT",
+          });
           return { success: false, blocked: true as const };
         }
         throw error;
       }
     } else if (!input.deviceVerified) {
-      await this.prisma.studentDevice.update({ where: { userId_deviceKey: { userId: input.studentId, deviceKey: input.deviceId } }, data: { lastUsedAt: new Date() } });
+      await this.prisma.studentDevice.update({
+        where: {
+          userId_deviceKey: {
+            userId: input.studentId,
+            deviceKey: input.deviceId,
+          },
+        },
+        data: { lastUsedAt: new Date() },
+      });
     }
 
-    const unit = await this.findUnitByCode(session.unitCode, { id: true, name: true, code: true });
+    const unit = await this.findUnitByCode(session.unitCode, {
+      id: true,
+      name: true,
+      code: true,
+    });
     if (!unit) {
-      await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "UNIT_NOT_FOUND" });
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "UNIT_NOT_FOUND",
+      });
       return { success: false, blocked: true as const };
     }
 
     const enrolled = await this.prisma.enrollment.findUnique({
-      where: { studentId_unitId: { studentId: input.studentId, unitId: unit.id } },
+      where: {
+        studentId_unitId: { studentId: input.studentId, unitId: unit.id },
+      },
       select: { id: true },
     });
     if (!enrolled) {
-      await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "NOT_ENROLLED" });
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "NOT_ENROLLED",
+      });
       return { success: false, blocked: true as const };
     }
 
@@ -185,7 +337,16 @@ export class AttendanceService {
         })
       : null;
     if (existingDevice && existingDevice.studentId !== input.studentId) {
-      await this.audit({ event: "ONLINE_DEVICE_CONFLICT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "DEVICE_USED_BY_OTHER_STUDENT" });
+      await this.audit({
+        event: "ONLINE_DEVICE_CONFLICT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "DEVICE_USED_BY_OTHER_STUDENT",
+      });
       return { success: false, blocked: true as const };
     }
 
@@ -200,11 +361,33 @@ export class AttendanceService {
           ipAddress: input.ipAddress,
         },
       });
-      await this.audit({ event: "ONLINE_ATTENDANCE_SUBMIT", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: true });
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: true,
+      });
       return { success: true as const, record };
     } catch (error: unknown) {
-      if (typeof error === "object" && error !== null && "code" in error && error.code === "P2002") {
-        await this.audit({ event: "ONLINE_ATTENDANCE_DUPLICATE", actorId: input.studentId, role: "student", sessionId: input.sessionId, deviceId: input.deviceId, ipAddress: input.ipAddress, success: false, reason: "DUPLICATE_SUBMISSION" });
+      if (
+        typeof error === "object" &&
+        error !== null &&
+        "code" in error &&
+        error.code === "P2002"
+      ) {
+        await this.audit({
+          event: "ONLINE_ATTENDANCE_DUPLICATE",
+          actorId: input.studentId,
+          role: "student",
+          sessionId: input.sessionId,
+          deviceId: input.deviceId,
+          ipAddress: input.ipAddress,
+          success: false,
+          reason: "DUPLICATE_SUBMISSION",
+        });
         return { success: false, duplicate: true as const };
       }
       throw error;
@@ -217,7 +400,9 @@ export class AttendanceService {
       data: { status: "ended", endedAt: new Date() },
     });
     if (result.count > 0 && this.redis?.isReady) {
-      await this.redis.del(this.sessionCacheKey(sessionId)).catch(() => undefined);
+      await this.redis
+        .del(this.sessionCacheKey(sessionId))
+        .catch(() => undefined);
     }
     return result;
   }
