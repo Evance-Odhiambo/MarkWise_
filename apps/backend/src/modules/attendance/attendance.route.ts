@@ -113,7 +113,7 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
         currentSemester: {
           name: currentSemester?.name ?? "Current semester",
           unitsTotal: currentSemester?.units.length ?? 0,
-          unitsEnrolled: enrolledUnits.filter(({ unit }) => currentSemester?.units.some(({ id }) => id === unit.id)).length,
+          unitsEnrolled: enrolledUnits.length,
         },
         health: { conducted, attended, missed, projectedPercentage: conducted > 0 ? Math.round((attended / conducted) * 100) : 0, goalPercentage: 75, streak },
         unitHealth,
