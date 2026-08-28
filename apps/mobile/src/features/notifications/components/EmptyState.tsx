@@ -12,8 +12,7 @@ const EmptyState: React.FC = () => {
         All caught up
       </Text>
       <Text className="text-sm text-slate-500 dark:text-slate-400 text-center">
-        You have no unread notifications.
-        Check back later for updates.
+        You have no unread notifications. Check back later for updates.
       </Text>
     </View>
   );

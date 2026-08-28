@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "128986175",
+    "project_id": "markwise-ecb56",
+    "storage_bucket": "markwise-ecb56.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:128986175:android:f3af4aec503485ec391c8a",
+        "android_client_info": {
+          "package_name": "com.markwise"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyApCUlDMJLfHYyAv1IZmYmjt7dn4Q_6n0s"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

@@ -1,4 +1,8 @@
-export type NotificationType = 'attendance' | 'unit' | 'system' | 'announcement';
+export type NotificationType =
+  | 'attendance'
+  | 'unit'
+  | 'system'
+  | 'announcement';
 
 export type NotificationPriority = 'low' | 'medium' | 'high';
 

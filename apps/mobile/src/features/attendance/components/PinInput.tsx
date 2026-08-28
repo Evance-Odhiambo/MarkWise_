@@ -8,12 +8,17 @@ type PinInputProps = {
   length?: number;
 };
 
-export const PinInput = ({ value, onChangeText, length = 4 }: PinInputProps) => {
+export const PinInput = ({
+  value,
+  onChangeText,
+  length = 6,
+}: PinInputProps) => {
   const { isDark } = useTheme();
   const inputs = useRef<Array<any>>([]);
 
   const handleChange = (text: string, index: number) => {
-    const newValue = value.substring(0, index) + text + value.substring(index + 1);
+    const newValue =
+      value.substring(0, index) + text + value.substring(index + 1);
     onChangeText(newValue);
 
     if (text.length === 1 && index < length - 1) {
@@ -36,12 +41,16 @@ export const PinInput = ({ value, onChangeText, length = 4 }: PinInputProps) => 
       {Array.from({ length }).map((_, index) => (
         <TextInput
           key={index}
-          ref={(ref) => { inputs.current[index] = ref; }}
+          ref={ref => {
+            inputs.current[index] = ref;
+          }}
           style={styles.input}
           className={inputClasses}
           value={value.length > index ? value[index] : ''}
-          onChangeText={(text) => handleChange(text, index)}
-          onKeyPress={({ nativeEvent }) => handleKeyPress(index, nativeEvent.key)}
+          onChangeText={text => handleChange(text, index)}
+          onKeyPress={({ nativeEvent }) =>
+            handleKeyPress(index, nativeEvent.key)
+          }
           keyboardType="number-pad"
           maxLength={1}
           textAlign="center"

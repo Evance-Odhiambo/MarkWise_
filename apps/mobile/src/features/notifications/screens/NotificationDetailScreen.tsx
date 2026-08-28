@@ -1,14 +1,21 @@
 import React, { useEffect } from 'react';
-import { View, Text, ScrollView } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { NotificationStackParamList } from '../../../navigation/types';
 import { useTheme } from '../../../features/theme/context/ThemeContext';
 import { useResponsive } from '../../../features/theme/hooks/useResponsive';
 import { useNotifications } from '../hooks/useNotifications';
-import { formatTimestamp, getNotificationIcon, getPriorityColor } from '../utils/formatter';
+import {
+  formatTimestamp,
+  getNotificationIcon,
+  getPriorityColor,
+} from '../utils/formatter';
 
-type Props = NativeStackScreenProps<NotificationStackParamList, 'NotificationDetail'>;
+type Props = NativeStackScreenProps<
+  NotificationStackParamList,
+  'NotificationDetail'
+>;
 
 const NotificationDetailScreen = ({ route, navigation }: Props) => {
   const { notificationId } = route.params;
@@ -25,7 +32,11 @@ const NotificationDetailScreen = ({ route, navigation }: Props) => {
 
   if (!notification) {
     return (
-      <SafeAreaView className={`flex-1 ${isDark ? 'bg-slate-950' : 'bg-slate-50'} items-center justify-center`}>
+      <SafeAreaView
+        className={`flex-1 ${
+          isDark ? 'bg-slate-950' : 'bg-slate-50'
+        } items-center justify-center`}
+      >
         <Text className="text-slate-500">Notification not found</Text>
       </SafeAreaView>
     );
@@ -36,14 +47,18 @@ const NotificationDetailScreen = ({ route, navigation }: Props) => {
   const icon = getNotificationIcon(type);
 
   const screenClasses = isDark ? 'bg-slate-950' : 'bg-slate-50';
-  const cardClasses = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+  const cardClasses = isDark
+    ? 'bg-slate-900 border-slate-800'
+    : 'bg-white border-slate-200';
   const titleClasses = isDark ? 'text-white' : 'text-slate-900';
   const bodyTextClasses = isDark ? 'text-slate-300' : 'text-slate-600';
   const metaTextClasses = isDark ? 'text-slate-400' : 'text-slate-400';
 
   return (
     <SafeAreaView className={`flex-1 ${screenClasses}`}>
-      <View className={`px-${isTablet ? '8' : '5'} py-6 border-b ${cardClasses}`}>
+      <View
+        className={`px-${isTablet ? '8' : '5'} py-6 border-b ${cardClasses}`}
+      >
         <Text className={`text-xl font-bold ${titleClasses}`}>Details</Text>
       </View>
 
@@ -76,6 +91,20 @@ const NotificationDetailScreen = ({ route, navigation }: Props) => {
               {body}
             </Text>
           </View>
+          {notification.metadata?.action === 'accept-attendance-delegation' && (
+            <TouchableOpacity
+              onPress={() =>
+                (navigation.getParent() as any)?.navigate('Attendance', {
+                  screen: 'StudentDelegation',
+                })
+              }
+              className="mt-4 rounded-xl bg-emerald-600 py-4"
+            >
+              <Text className="text-center font-bold text-white">
+                Review authorization
+              </Text>
+            </TouchableOpacity>
+          )}
         </View>
       </ScrollView>
     </SafeAreaView>

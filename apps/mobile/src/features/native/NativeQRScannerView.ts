@@ -1,6 +1,4 @@
-import { requireNativeComponent, NativeEventEmitter, NativeModules, ViewProps } from 'react-native';
-
-const { QRScannerView } = NativeModules;
+import { requireNativeComponent, ViewProps } from 'react-native';
 
 export type QRScannerEvent = {
   data: string;
@@ -16,36 +14,9 @@ export type QRScannerError = {
 export type QRScannerViewProps = ViewProps & {
   torch?: boolean;
   pause?: boolean;
-  onQRScan?: (event: QRScannerEvent) => void;
-  onError?: (error: QRScannerError) => void;
+  onBarcodeScan?: (event: { nativeEvent: QRScannerEvent }) => void;
 };
 
-const NativeQRScannerView = requireNativeComponent<QRScannerViewProps>(
-  'QRScannerView'
-);
-
-class QRScannerEventEmitter {
-  private emitter: NativeEventEmitter | null = null;
-
-  addScanListener(callback: (event: QRScannerEvent) => void): { remove: () => void } {
-    if (!this.emitter) {
-      this.emitter = new NativeEventEmitter(QRScannerView);
-    }
-    const handler = callback as (data: any) => void;
-    const subscription = this.emitter.addListener('QRScannerEvent', handler);
-    return { remove: () => subscription.remove() };
-  }
-
-  addErrorListener(callback: (error: QRScannerError) => void): { remove: () => void } {
-    if (!this.emitter) {
-      this.emitter = new NativeEventEmitter(QRScannerView);
-    }
-    const handler = callback as (data: any) => void;
-    const subscription = this.emitter.addListener('QRScannerError', handler);
-    return { remove: () => subscription.remove() };
-  }
-}
-
-const eventEmitter = new QRScannerEventEmitter();
-
-export { NativeQRScannerView, eventEmitter };
+const NativeQRScannerView =
+  requireNativeComponent<QRScannerViewProps>('QRScannerView');
+export { NativeQRScannerView };

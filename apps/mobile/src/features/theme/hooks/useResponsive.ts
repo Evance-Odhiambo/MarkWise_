@@ -1,6 +1,11 @@
 import { useState, useEffect } from 'react';
 import { useWindowDimensions, ScaledSize } from 'react-native';
-import { breakpoints, BreakpointKey, getScreenSize, ScreenSize } from '../utils/breakpoints';
+import {
+  breakpoints,
+  BreakpointKey,
+  getScreenSize,
+  ScreenSize,
+} from '../utils/breakpoints';
 
 interface ResponsiveState {
   width: number;
@@ -23,7 +28,10 @@ export const useResponsive = (): ResponsiveState => {
   };
 
   const screenSize = getScreenSize(width);
-  const [dimensions, setDimensions] = useState<{ width: number; height: number }>({
+  const [dimensions, setDimensions] = useState<{
+    width: number;
+    height: number;
+  }>({
     width,
     height,
   });
@@ -41,7 +49,10 @@ export const useResponsive = (): ResponsiveState => {
   };
 
   const between = (min: BreakpointKey, max: BreakpointKey): boolean => {
-    return dimensions.width >= breakpoints[min] && dimensions.width < breakpoints[max];
+    return (
+      dimensions.width >= breakpoints[min] &&
+      dimensions.width < breakpoints[max]
+    );
   };
 
   return {
@@ -60,10 +71,4 @@ export const useResponsive = (): ResponsiveState => {
   };
 };
 
-export const {
-  sm,
-  md,
-  lg,
-  xl,
-  xl2,
-} = breakpoints;
+export const { sm, md, lg, xl, xl2 } = breakpoints;

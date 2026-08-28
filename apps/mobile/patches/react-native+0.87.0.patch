@@ -5,7 +5,7 @@ diff --git a/node_modules/react-native/package.json b/node_modules/react-native/
        "default": "./src/unstable-internals-do-not-use.js"
      },
      "./src/fb_internal/*": "./src/fb_internal/*",
-+    "./src/private/featureflags/*": "./src/private/featureflags/*",
++    "./src/private/featureflags/*": "./src/private/featureflags/*.js",
      "./package.json": "./package.json"
    },
    "jest-junit": {

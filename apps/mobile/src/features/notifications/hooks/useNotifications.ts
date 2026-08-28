@@ -1,82 +1,21 @@
 import { useState, useCallback, useEffect } from 'react';
 import { Notification, NotificationRole } from '../types/notification';
-
-
-const mockNotifications: Notification[] = [
-  {
-    id: '1',
-    title: 'Attendance marked for CS203',
-    body: 'Your attendance was successfully marked for Object Oriented Programming (CS203) on 15 Aug 2026 at 10:00 AM. Current attendance: 92%.',
-    type: 'attendance',
-    priority: 'low',
-    role: 'student',
-    isRead: false,
-    timestamp: new Date(Date.now() - 30 * 60000).toISOString(),
-    unitName: 'Object Oriented Programming CS203',
-  },
-  {
-    id: '2',
-    title: 'New announcement: Holiday on Friday',
-    body: 'The university has announced a holiday on Friday 18th August 2026. All scheduled classes are cancelled. Please check your email for official communication.',
-    type: 'announcement',
-    priority: 'high',
-    role: 'both',
-    isRead: false,
-    timestamp: new Date(Date.now() - 5 * 60 * 60000).toISOString(),
-  },
-  {
-    id: '3',
-    title: 'Unit registration deadline approaching',
-    body: 'The deadline for unit registration for the next semester is 31st August 2026. Ensure all your units are registered.',
-    type: 'system',
-    priority: 'medium',
-    role: 'student',
-    isRead: true,
-    timestamp: new Date(Date.now() - 2 * 24 * 60 * 60000).toISOString(),
-  },
-  {
-    id: '4',
-    title: 'Attendance below threshold for MA101',
-    body: 'Your attendance for Mathematics I (MA101) has dropped below 75%. Please attend the next scheduled class to improve your attendance.',
-    type: 'attendance',
-    priority: 'high',
-    role: 'student',
-    isRead: false,
-    timestamp: new Date(Date.now() - 3 * 24 * 60 * 60000).toISOString(),
-    unitName: 'Mathematics I MA101',
-  },
-  {
-    id: '5',
-    title: 'Attendance session started: CS203',
-    body: 'An attendance session has been started for Object Oriented Programming (CS203). 24 students have marked attendance so far.',
-    type: 'attendance',
-    priority: 'medium',
-    role: 'lecturer',
-    isRead: false,
-    timestamp: new Date(Date.now() - 15 * 60000).toISOString(),
-    unitName: 'Object Oriented Programming CS203',
-  },
-  {
-    id: '6',
-    title: 'Weekly attendance report ready',
-    body: 'Your weekly attendance report is available. 87% average attendance across all units.',
-    type: 'system',
-    priority: 'medium',
-    role: 'lecturer',
-    isRead: true,
-    timestamp: new Date(Date.now() - 6 * 60 * 60000).toISOString(),
-  },
-];
+import { useAuth } from '../../auth/context/AuthContext';
+import { API_BASE_URL } from '../../../shared/constants';
+import { onNotificationReceived } from '../notificationEvents';
 
 const getFilteredNotifications = (
   notifications: Notification[],
-  role: NotificationRole
+  role: NotificationRole,
 ): Notification[] => {
-  return notifications.filter((n) => n.role === role || n.role === 'both');
+  return notifications.filter(n => n.role === role || n.role === 'both');
 };
 
 export const useNotifications = (role?: NotificationRole) => {
-  const [roleFilter, setRoleFilter] = useState<NotificationRole | undefined>(role);
+  const { token } = useAuth();
+  const [roleFilter, setRoleFilter] = useState<NotificationRole | undefined>(
+    role,
+  );
 
   useEffect(() => {
     if (role) {
@@ -84,50 +23,115 @@ export const useNotifications = (role?: NotificationRole) => {
     }
   }, [role]);
 
-  const [allNotifications, setAllNotifications] = useState<Notification[]>(mockNotifications);
-  const [loading, setLoading] = useState(false);
+  const [allNotifications, setAllNotifications] = useState<Notification[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
-  const notifications = getFilteredNotifications(allNotifications, roleFilter ?? 'both');
-  const unreadCount = notifications.filter((n) => !n.isRead).length;
+  const notifications = getFilteredNotifications(
+    allNotifications,
+    roleFilter ?? 'both',
+  );
+  const unreadCount = notifications.filter(n => !n.isRead).length;
 
-  const markAsRead = useCallback(async (id: string) => {
-    setAllNotifications((prev) =>
-      prev.map((n) => (n.id === id ? { ...n, isRead: true } : n))
-    );
-  }, []);
+  const markAsRead = useCallback(
+    async (id: string) => {
+      if (token)
+        await fetch(
+          `${API_BASE_URL}/notifications/${encodeURIComponent(id)}/read`,
+          { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+        ).catch(() => undefined);
+      setAllNotifications(prev =>
+        prev.map(n => (n.id === id ? { ...n, isRead: true } : n)),
+      );
+    },
+    [token],
+  );
 
   const markAllAsRead = useCallback(async () => {
-    setAllNotifications((prev) =>
-      prev.map((n) =>
-        n.role === roleFilter || n.role === 'both'
-          ? { ...n, isRead: true }
-          : n
-      )
+    if (token)
+      await fetch(`${API_BASE_URL}/notifications/read-all`, {
+        method: 'POST',
+        headers: { Authorization: `Bearer ${token}` },
+      }).catch(() => undefined);
+    setAllNotifications(prev =>
+      prev.map(n =>
+        n.role === roleFilter || n.role === 'both' ? { ...n, isRead: true } : n,
+      ),
     );
-  }, [roleFilter]);
+  }, [roleFilter, token]);
 
   const getNotificationById = useCallback(
     (id: string): Notification | undefined => {
-      return allNotifications.find((n) => n.id === id);
+      return allNotifications.find(n => n.id === id);
     },
-    [allNotifications]
+    [allNotifications],
   );
 
   const refetch = useCallback(async () => {
     setLoading(true);
-    await new Promise<void>((r) => setTimeout(() => r(), 800));
-    setAllNotifications(mockNotifications);
-    setLoading(false);
-  }, []);
+    setError(null);
+    try {
+      if (!token) {
+        setAllNotifications([]);
+        return;
+      }
+      const response = await fetch(`${API_BASE_URL}/notifications`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!response.ok)
+        throw new Error(`Notifications request failed (${response.status})`);
+      const body = (await response.json()) as { notifications?: unknown[] };
+      setAllNotifications(
+        (body.notifications || []).map(item => {
+          const notification = item as {
+            id: string;
+            title: string;
+            message?: string;
+            type?: Notification['type'];
+            userType?: NotificationRole;
+            read?: boolean;
+            createdAt: string;
+            data?: Record<string, unknown>;
+          };
+          return {
+            id: notification.id,
+            title: notification.title,
+            body: notification.message || '',
+            type: notification.type || 'system',
+            priority:
+              notification.data?.outcome === 'rejected' ? 'high' : 'low',
+            role: notification.userType || roleFilter || 'both',
+            isRead: Boolean(notification.read),
+            timestamp: notification.createdAt,
+            metadata: notification.data,
+          };
+        }),
+      );
+    } catch (requestError) {
+      setError(
+        requestError instanceof Error
+          ? requestError.message
+          : 'Unable to load notifications',
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, [roleFilter, token]);
 
   useEffect(() => {
     void refetch();
+  }, [refetch]);
+
+  useEffect(() => {
+    const subscription = onNotificationReceived(() => void refetch());
+    return () => subscription.remove();
   }, [refetch]);
 
   return {
     notifications,
     unreadCount,
     loading,
+    error,
     markAsRead,
     markAllAsRead,
     getNotificationById,

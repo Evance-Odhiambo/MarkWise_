@@ -18,7 +18,9 @@ export const AttendanceModeCard = ({
 }: AttendanceModeCardProps) => {
   const { isDark } = useTheme();
   const { isTablet } = useResponsive();
-  const cardClasses = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+  const cardClasses = isDark
+    ? 'bg-slate-900 border-slate-800'
+    : 'bg-white border-slate-200';
   const titleClasses = isDark ? 'text-white' : 'text-slate-900';
   const subtitleClasses = isDark ? 'text-slate-400' : 'text-slate-500';
 
@@ -27,7 +29,11 @@ export const AttendanceModeCard = ({
       onPress={onPress}
       className={`p-5 rounded-2xl border ${cardClasses} flex-row items-center gap-4`}
     >
-      <View className={`w-${isTablet ? '14' : '12'} h-${isTablet ? '14' : '12'} items-center justify-center flex-none`}>
+      <View
+        className={`w-${isTablet ? '14' : '12'} h-${
+          isTablet ? '14' : '12'
+        } items-center justify-center flex-none`}
+      >
         {icon}
       </View>
       <View className="flex-1">

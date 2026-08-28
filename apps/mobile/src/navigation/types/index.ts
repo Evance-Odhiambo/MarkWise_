@@ -2,8 +2,14 @@ import { NavigatorScreenParams } from '@react-navigation/native';
 
 export type RootStackParamList = {
   AppEntry: undefined;
+  StudentSignIn: undefined;
+  StudentSignUp: undefined;
+  LecturerSignIn: undefined;
+  LecturerSignUp: undefined;
   StudentApp: NavigatorScreenParams<StudentTabParamList> | undefined;
   LecturerApp: NavigatorScreenParams<LecturerTabParamList> | undefined;
+  StudentUnitSelection: undefined;
+  LecturerUnitSelection: undefined;
 };
 
 export type NotificationStackParamList = {
@@ -12,23 +18,38 @@ export type NotificationStackParamList = {
 };
 
 export type AttendanceStackParamList = {
+  StudentProgress: undefined;
+  LecturerProgress: undefined;
+  LecturerDelegation: undefined;
+  StudentDelegation: undefined;
   AttendanceMode: undefined;
-  TakeInPerson: { method?: 'qr' | 'ble' | 'pin' };
-  MarkInPerson: { sessionId: string };
-  TakeOnline: { method?: 'qr' | 'ble' | 'pin' };
-  MarkOnline: { sessionId: string };
+  StudentUnitSelection: { next?: 'MarkInPerson' | 'MarkOnline' };
+  LecturerUnitSelection: { next?: 'TakeInPerson' | 'TakeOnline' };
+  TakeInPerson: {
+    method?: 'qr' | 'ble' | 'pin';
+    unitCode?: string;
+    unitName?: string;
+    delegatedSessionId?: string;
+  };
+  MarkInPerson: { sessionId?: string; unitCode?: string; unitName?: string };
+  TakeOnline: {
+    method?: 'qr' | 'ble' | 'pin';
+    unitCode: string;
+    unitName?: string;
+  };
+  MarkOnline: { sessionId: string; unitCode?: string; unitName?: string };
 };
 
 export type StudentTabParamList = {
   Home: undefined;
   Settings: undefined;
-  Notifications: NavigatorScreenParams<NotificationStackParamList> | undefined;
+  Alerts: NavigatorScreenParams<NotificationStackParamList> | undefined;
   Attendance: NavigatorScreenParams<AttendanceStackParamList> | undefined;
 };
 
 export type LecturerTabParamList = {
   Home: undefined;
   Settings: undefined;
-  Notifications: NavigatorScreenParams<NotificationStackParamList> | undefined;
+  Alerts: NavigatorScreenParams<NotificationStackParamList> | undefined;
   Attendance: NavigatorScreenParams<AttendanceStackParamList> | undefined;
 };

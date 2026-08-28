@@ -52,11 +52,7 @@ export interface ThemeContextType {
 
 const ThemeContext = createContext<ThemeContextType | undefined>(undefined);
 
-export const ThemeProvider = ({
-  children,
-}: {
-  children: ReactNode;
-}) => {
+export const ThemeProvider = ({ children }: { children: ReactNode }) => {
   const systemScheme = useColorScheme();
   const [theme, setTheme] = useState<Theme>('light');
 
@@ -68,7 +64,7 @@ export const ThemeProvider = ({
 
   const colors = useMemo(
     () => (theme === 'dark' ? darkPalette : lightPalette),
-    [theme]
+    [theme],
   );
 
   const value = useMemo(
@@ -76,9 +72,9 @@ export const ThemeProvider = ({
       theme,
       colors,
       isDark: theme === 'dark',
-      toggleTheme: () => setTheme((t) => (t === 'dark' ? 'light' : 'dark')),
+      toggleTheme: () => setTheme(t => (t === 'dark' ? 'light' : 'dark')),
     }),
-    [theme, colors]
+    [theme, colors],
   );
 
   return (

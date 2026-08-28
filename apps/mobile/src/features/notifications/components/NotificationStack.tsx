@@ -11,17 +11,29 @@ const NotificationStack = () => {
   const { role } = useAuth();
 
   const renderNotifications = (
-    props: React.ComponentProps<typeof NotificationsScreen>
+    props: React.ComponentProps<typeof NotificationsScreen>,
   ) => <NotificationsScreen {...props} role={role ?? 'both'} />;
 
   return (
     <Stack.Navigator
-      screenOptions={{ headerShown: false, animation: 'slide_from_right' }}
+      screenOptions={{
+        headerShown: false,
+        animation: 'slide_from_right',
+        animationMatchesGesture: true,
+        gestureEnabled: true,
+      }}
     >
       <Stack.Screen name="NotificationList">
-        {(props) => renderNotifications(props as React.ComponentProps<typeof NotificationsScreen>)}
+        {props =>
+          renderNotifications(
+            props as React.ComponentProps<typeof NotificationsScreen>,
+          )
+        }
       </Stack.Screen>
-      <Stack.Screen name="NotificationDetail" component={NotificationDetailScreen} />
+      <Stack.Screen
+        name="NotificationDetail"
+        component={NotificationDetailScreen}
+      />
     </Stack.Navigator>
   );
 };

@@ -39,7 +39,7 @@ const NotificationList: React.FC<NotificationListProps> = ({
 
   return (
     <View>
-      {notifications.map((notification) => (
+      {notifications.map(notification => (
         <NotificationItem
           key={notification.id}
           notification={notification}

@@ -1,12 +1,46 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import React, {
+  createContext,
+  useContext,
+  useEffect,
+  useState,
+  ReactNode,
+} from 'react';
+import { adaptiveConfig } from '../../../shared/utils/adaptiveAttendanceConfig';
+import { clearSelectedUnitSelections } from '../../../shared/storage/unitMappings';
+import BLEScanner from '../../native/NativeBLEScanner';
+import BLEAdvertiser from '../../native/NativeBLEAdvertiser';
+import { API_BASE_URL } from '../../../shared/constants';
 
 export type UserRole = 'student' | 'lecturer';
 
-interface AuthContextType {
-  role: UserRole | null;
-  setRole: (role: UserRole) => void;
+export interface AuthSession {
+  token: string;
+  userId: string;
+  role: UserRole;
+  institutionId?: string | null;
+  name?: string;
+  email?: string;
+  course?: string;
+  admissionNumber?: string;
+  staffNumber?: string;
 }
 
+interface AuthContextType {
+  role: UserRole | null;
+  session: AuthSession | null;
+  token: string | null;
+  userId: string | null;
+  institutionId: string | null;
+  isAuthenticated: boolean;
+  isHydrated: boolean;
+  setRole: (role: UserRole) => void;
+  setSession: (session: AuthSession) => Promise<void>;
+  signOut: () => Promise<void>;
+  deleteAccount: () => Promise<void>;
+}
+
+const SESSION_STORAGE_KEY = '@markwise/auth-session-v1';
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
 export const useAuth = (): AuthContextType => {
@@ -23,9 +57,167 @@ interface AuthProviderProps {
 
 export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [role, setRole] = useState<UserRole | null>(null);
+  const [session, setSessionState] = useState<AuthSession | null>(null);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  useEffect(() => {
+    AsyncStorage.getItem(SESSION_STORAGE_KEY)
+      .then(raw => {
+        if (!raw) return;
+        const stored = JSON.parse(raw) as AuthSession;
+        if (
+          stored?.token &&
+          stored?.userId &&
+          (stored.role === 'student' || stored.role === 'lecturer')
+        ) {
+          setSessionState(stored);
+          setRole(stored.role);
+
+          if (stored.role === 'student') {
+            fetch(`${API_BASE_URL}/students/me`, {
+              headers: { Authorization: `Bearer ${stored.token}` },
+            })
+              .then(async response => {
+                if (!response.ok) return;
+                const profile = (await response.json()) as {
+                  userId?: string;
+                  name?: string;
+                  institutionId?: string | null;
+                  admissionNumber?: string;
+                  course?: string;
+                };
+                const refreshed: AuthSession = {
+                  ...stored,
+                  userId: profile.userId || stored.userId,
+                  name: profile.name || stored.name,
+                  institutionId:
+                    profile.institutionId || stored.institutionId || null,
+                  admissionNumber:
+                    profile.admissionNumber || stored.admissionNumber,
+                  course: profile.course || stored.course,
+                };
+                setSessionState(refreshed);
+                await AsyncStorage.setItem(
+                  SESSION_STORAGE_KEY,
+                  JSON.stringify(refreshed),
+                );
+              })
+              .catch(() => undefined);
+          }
+        }
+      })
+      .catch(() => undefined)
+      .finally(() => setIsHydrated(true));
+  }, []);
+
+  const selectRole = (nextRole: UserRole) => {
+    setRole(nextRole);
+    setSessionState(current =>
+      current && current.role === nextRole ? current : null,
+    );
+  };
+
+  const setSession = async (nextSession: AuthSession) => {
+    const normalized: AuthSession = {
+      ...nextSession,
+      role: nextSession.role,
+      token: nextSession.token.trim(),
+      userId: nextSession.userId.trim(),
+      institutionId: nextSession.institutionId || null,
+    };
+    setSessionState(normalized);
+    setRole(normalized.role);
+    await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalized));
+  };
+
+  const signOut = async () => {
+    const currentSession = session;
+    const cleanupErrors: unknown[] = [];
+    try {
+      await BLEScanner.stopScan();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    try {
+      await BLEAdvertiser.stopAdvertising();
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (currentSession) {
+      try {
+        await adaptiveConfig.clearForUser({
+          userId: currentSession.userId,
+          role: currentSession.role,
+          institutionId: currentSession.institutionId,
+        });
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+      try {
+        await clearSelectedUnitSelections(
+          currentSession.userId,
+          currentSession.role,
+          currentSession.institutionId,
+        );
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    } else if (role) {
+      try {
+        await clearSelectedUnitSelections('anonymous', role);
+      } catch (error) {
+        cleanupErrors.push(error);
+      }
+    }
+    setSessionState(null);
+    setRole(null);
+    try {
+      await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+    } catch (error) {
+      cleanupErrors.push(error);
+    }
+    if (cleanupErrors.length)
+      console.warn(
+        '[Auth] Logout completed with local cleanup warnings',
+        cleanupErrors,
+      );
+  };
+
+  const deleteAccount = async () => {
+    const currentSession = session;
+    if (!currentSession) throw new Error('No active account');
+
+    const endpoint =
+      currentSession.role === 'student' ? '/students/me' : '/lecturers/me';
+    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
+      method: 'DELETE',
+      headers: { Authorization: `Bearer ${currentSession.token}` },
+    });
+    const result = (await response.json().catch(() => ({}))) as {
+      error?: string;
+    };
+    if (!response.ok)
+      throw new Error(result.error || 'Unable to delete account');
+
+    await signOut();
+  };
 
   return (
-    <AuthContext.Provider value={{ role, setRole }}>
+    <AuthContext.Provider
+      value={{
+        role,
+        session,
+        token: session?.token ?? null,
+        userId: session?.userId ?? null,
+        institutionId: session?.institutionId ?? null,
+        isAuthenticated: Boolean(session?.token),
+        isHydrated,
+        setRole: selectRole,
+        setSession,
+        signOut,
+        deleteAccount,
+      }}
+    >
       {children}
     </AuthContext.Provider>
   );

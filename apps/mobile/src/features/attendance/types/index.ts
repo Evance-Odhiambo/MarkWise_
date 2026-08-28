@@ -19,6 +19,7 @@ export interface AttendanceSession {
   lecturerName?: string;
   attendedCount?: number;
   expectedCount?: number;
+  endedAt?: string | null;
 }
 
 export interface StudentAttendance {

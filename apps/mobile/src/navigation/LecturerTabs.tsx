@@ -1,6 +1,11 @@
 import React from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
-import { Home as HomeIcon, Settings as SettingsIcon, Bell, CalendarClock } from 'lucide-react-native';
+import {
+  Home as HomeIcon,
+  Settings as SettingsIcon,
+  Bell,
+  CalendarClock,
+} from 'lucide-react-native';
 import { useNavigation, useFocusEffect } from '@react-navigation/native';
 import { BackHandler } from 'react-native';
 import LecturerHomeScreen from '../features/dashboard/screens/lecturer/HomeScreen';
@@ -48,15 +53,18 @@ export default function LecturerTabNavigator() {
       };
       const subscription = BackHandler.addEventListener(
         'hardwareBackPress',
-        onBackPress
+        onBackPress,
       );
       return () => subscription.remove();
-    }, [navigation])
+    }, [navigation]),
   );
 
   return (
     <Tab.Navigator
+      detachInactiveScreens
       screenOptions={{
+        lazy: true,
+        freezeOnBlur: true,
         tabBarActiveTintColor: activeColor,
         tabBarInactiveTintColor: inactiveColor,
         tabBarStyle: {
@@ -81,12 +89,10 @@ export default function LecturerTabNavigator() {
         }}
       />
       <Tab.Screen
-        name="Notifications"
+        name="Alerts"
         component={NotificationStack}
         options={{
-          tabBarIcon: ({ color, size }) => (
-            <Bell color={color} size={size} />
-          ),
+          tabBarIcon: ({ color, size }) => <Bell color={color} size={size} />,
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#ef4444',

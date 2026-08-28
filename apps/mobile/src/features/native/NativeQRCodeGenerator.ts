@@ -12,17 +12,23 @@ class QRCodeGeneratorAPI {
   generate(
     text: string,
     width: number = 300,
-    height: number = 300
+    height: number = 300,
   ): Promise<QRCodeResult> {
-    return QRCodeGenerator.generate(text, width, height);
+    return this.generateBase64(text, width, height).then(base64 => ({
+      uri: `data:image/png;base64,${base64}`,
+      width,
+      height,
+    }));
   }
 
   generateBase64(
     text: string,
     width: number = 300,
-    height: number = 300
+    height: number = 300,
   ): Promise<string> {
-    return QRCodeGenerator.generateBase64(text, width, height);
+    void width;
+    void height;
+    return QRCodeGenerator.generateQRCode(text);
   }
 }
 

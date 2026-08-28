@@ -28,7 +28,7 @@ export const getColorsForTheme = (theme: Theme): ColorPalette => {
 
 export const getStatusColor = (
   status: 'success' | 'warning' | 'error' | 'info',
-  theme: Theme
+  theme: Theme,
 ): string => {
   const colors: Record<Theme, Record<typeof status, string>> = {
     light: {

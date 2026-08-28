@@ -34,6 +34,14 @@
 		<key>NSAllowsLocalNetworking</key>
 		<true/>
 	</dict>
+	<key>NSCameraUsageDescription</key>
+	<string>MarkWise uses the camera to scan attendance QR codes.</string>
+	<key>NSBluetoothAlwaysUsageDescription</key>
+	<string>MarkWise uses Bluetooth for proximity attendance.</string>
+	<key>NSBluetoothPeripheralUsageDescription</key>
+	<string>MarkWise uses Bluetooth to broadcast attendance presence.</string>
+	<key>NSMotionUsageDescription</key>
+	<string>MarkWise uses motion data to help verify physical attendance.</string>
 	<key>NSLocationWhenInUseUsageDescription</key>
 	<string></string>
 	<key>UILaunchStoryboardName</key>

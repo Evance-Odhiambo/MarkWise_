@@ -20,14 +20,18 @@ class AccelerometerAPI {
     Accelerometer?.stop?.();
   }
 
-  addListener(
-    callback: (data: AccelerometerData) => void
-  ): { remove: () => void } {
+  addListener(callback: (data: AccelerometerData) => void): {
+    remove: () => void;
+  } {
     if (!this.emitter) {
       this.emitter = new NativeEventEmitter(Accelerometer);
     }
     const handler = callback as (data: any) => void;
-    const subscription = this.emitter.addListener('AccelerometerData', handler);
+    // Keep this event name aligned with AccelerometerModule.kt.
+    const subscription = this.emitter.addListener(
+      'onAccelerometerData',
+      handler,
+    );
     return {
       remove: () => subscription.remove(),
     };

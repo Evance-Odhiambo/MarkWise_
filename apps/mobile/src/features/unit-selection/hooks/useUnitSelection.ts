@@ -1,0 +1,502 @@
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { StudentYear, Unit, UnitSelectionRole } from '../types';
+import { adaptiveConfig } from '../../../shared/utils/adaptiveAttendanceConfig';
+import {
+  loadUnitMappings,
+  loadSelectedUnitCodes,
+  saveSelectedUnitCodes,
+} from '../../../shared/storage/unitMappings';
+import { useAuth } from '../../auth/context/AuthContext';
+import { API_BASE_URL } from '../../../shared/constants';
+import { saveUnitStudents } from '../../../shared/storage/cachedUnitStudents';
+
+const storageKey = (role: UnitSelectionRole, userId?: string | null) =>
+  `@markwise/${role}-unit-selection/${userId || 'anonymous'}/v1`;
+const selectionInitializedKey = (
+  role: UnitSelectionRole,
+  userId?: string | null,
+) => `@markwise/${role}-unit-selection/${userId || 'anonymous'}/initialized-v1`;
+
+const normalizeCode = (code: string) =>
+  code.trim().toUpperCase().replace(/\s+/g, '');
+
+const cacheLecturerRosters = async (token: string, unitCodes: string[]) => {
+  await Promise.all(
+    unitCodes.map(async unitCode => {
+      try {
+        const response = await fetch(
+          `${API_BASE_URL}/lecturers/units/${encodeURIComponent(
+            unitCode,
+          )}/roster`,
+          {
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+        if (!response.ok) return;
+        const body = (await response.json()) as {
+          students?: Array<{
+            studentId?: string;
+            studentName?: string;
+            admissionNumber?: string;
+          }>;
+        };
+        await saveUnitStudents(
+          unitCode,
+          (body.students || [])
+            .filter(student => student.studentId && student.admissionNumber)
+            .map(student => ({
+              studentId: student.studentId!,
+              studentName: student.studentName || 'Unnamed student',
+              admissionNumber: student.admissionNumber!,
+            })),
+        );
+      } catch {
+        // Keep the previous roster if the device is offline.
+      }
+    }),
+  );
+};
+
+export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
+  const { token, userId, institutionId } = useAuth();
+  const [selectedCodes, setSelectedCodes] = useState<string[]>([]);
+  const [catalogue, setCatalogue] = useState<Unit[]>([]);
+  const [enrolledUnitIds, setEnrolledUnitIds] = useState<string[]>([]);
+  const [years, setYears] = useState<StudentYear[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    const load = async () => {
+      if (!token || !userId) {
+        setCatalogue([]);
+        setYears([]);
+        setSelectedCodes([]);
+        setLoading(false);
+        return;
+      }
+
+      // Restore the local selection before contacting the API. This keeps
+      // attendance usable when the device is offline or the API is down.
+      const localCodes = await loadSelectedUnitCodes({
+        userId,
+        role,
+        institutionId,
+      }).catch(() => [] as string[]);
+      const localMappings = await loadUnitMappings({
+        userId,
+        role,
+        institutionId,
+      }).catch(() => []);
+      if (!mounted) return;
+      if (localCodes.length) setSelectedCodes(localCodes);
+      const localMappingByCode = new Map(
+        localMappings.map(unit => [normalizeCode(unit.unitCode), unit]),
+      );
+      const cachedCodes = localCodes.length
+        ? localCodes
+        : localMappings.map(unit => normalizeCode(unit.unitCode));
+      const cachedUnits = cachedCodes.map(code => ({
+        code,
+        name: localMappingByCode.get(code)?.unitName || 'Saved teaching unit',
+      }));
+      if (cachedUnits.length) {
+        setCatalogue(cachedUnits);
+        setSelectedCodes(cachedCodes);
+        setLoading(false);
+      }
+      let hasLocalSelection = localCodes.length > 0;
+      if (
+        !hasLocalSelection &&
+        (await AsyncStorage.getItem(selectionInitializedKey(role, userId))) ===
+          '1'
+      )
+        hasLocalSelection = true;
+      await adaptiveConfig.initialize(role, localCodes, institutionId, userId);
+
+      const query =
+        role === 'lecturer' && searchQuery.trim()
+          ? `?q=${encodeURIComponent(searchQuery.trim())}&limit=50`
+          : '';
+      let unitsResponse: Response;
+      try {
+        unitsResponse = await fetch(
+          `${API_BASE_URL}/${
+            role === 'student'
+              ? 'students/units/catalog'
+              : 'lecturers/units/catalog'
+          }${query}`,
+          {
+            headers: {
+              Accept: 'application/json',
+              Authorization: `Bearer ${token}`,
+            },
+          },
+        );
+        if (!unitsResponse.ok)
+          throw new Error(`Units request failed (${unitsResponse.status})`);
+      } catch {
+        // Attendance must remain usable without the API. The selected unit
+        // records and BLE mappings are already persisted locally.
+        if (!mounted) return;
+        setCatalogue(cachedUnits);
+        setYears([]);
+        setEnrolledUnitIds([]);
+        setSelectedCodes(cachedCodes);
+        await adaptiveConfig.initialize(
+          role,
+          cachedCodes,
+          institutionId,
+          userId,
+        );
+        return;
+      }
+      const unitsBody = (await unitsResponse.json()) as {
+        units?: Array<{
+          id?: string;
+          code?: string;
+          unitCode?: string;
+          name?: string;
+          unitName?: string;
+        }>;
+        years?: Array<{
+          yearNumber: number;
+          semester: Array<{
+            semesterNumber: number;
+            name: string;
+            units: Array<{ id?: string; code?: string; name?: string }>;
+          }>;
+        }>;
+        enrolledUnitIds?: string[];
+        selectedUnitIds?: string[];
+      };
+      const catalogUnits: Array<{
+        id?: string;
+        code?: string;
+        unitCode?: string;
+        name?: string;
+        unitName?: string;
+      }> =
+        role === 'student'
+          ? (unitsBody.years || []).flatMap(year =>
+              year.semester.flatMap(semester => semester.units),
+            )
+          : unitsBody.units || [];
+      if (role === 'student') {
+        setYears(
+          (unitsBody.years || []).map(year => ({
+            yearNumber: year.yearNumber,
+            semester: year.semester.map(semester => ({
+              semesterNumber: semester.semesterNumber,
+              name: semester.name,
+              units: semester.units.map(unit => ({
+                id: unit.id,
+                code: normalizeCode(unit.code || ''),
+                name: unit.name || 'Unnamed unit',
+              })),
+            })),
+          })),
+        );
+      } else {
+        setYears([]);
+      }
+      const remoteUnits = catalogUnits
+        .map(unit => ({
+          id: unit.id,
+          code: normalizeCode(unit.code || unit.unitCode || ''),
+          name: unit.name || unit.unitName || 'Unnamed unit',
+        }))
+        .filter(unit => unit.code);
+      if (!mounted) return;
+      setCatalogue(remoteUnits);
+      const remoteEnrolledIds =
+        role === 'student'
+          ? unitsBody.enrolledUnitIds || []
+          : unitsBody.selectedUnitIds || [];
+      setEnrolledUnitIds(remoteEnrolledIds);
+
+      const storedCodes = await loadSelectedUnitCodes({
+        userId: userId || '',
+        role,
+        institutionId,
+      });
+      if (!mounted) return;
+      const remoteCodes = new Set(remoteUnits.map(unit => unit.code));
+      let codes = storedCodes
+        .map(normalizeCode)
+        .filter(code => remoteCodes.has(code));
+      if (!codes.length) {
+        const value = await AsyncStorage.getItem(storageKey(role, userId));
+        if (value) {
+          const parsed = JSON.parse(value);
+          if (Array.isArray(parsed))
+            codes = parsed
+              .map(String)
+              .map(normalizeCode)
+              .filter(code => remoteCodes.has(code));
+          if (codes.length) {
+            hasLocalSelection = true;
+            await saveSelectedUnitCodes(
+              { userId: userId || '', role, institutionId },
+              codes,
+            );
+            await AsyncStorage.removeItem(storageKey(role, userId));
+          }
+        }
+      }
+      if (role === 'student' && !codes.length && !hasLocalSelection)
+        codes = remoteUnits
+          .filter(unit => unit.id && remoteEnrolledIds.includes(unit.id))
+          .map(unit => unit.code);
+      if (role === 'lecturer' && !codes.length && !hasLocalSelection)
+        codes = remoteUnits
+          .filter(unit => unit.id && remoteEnrolledIds.includes(unit.id))
+          .map(unit => unit.code);
+      setSelectedCodes(codes);
+      // Persist server selections locally so the next launch and offline
+      // attendance use the same units without forcing setup again.
+      if (codes.length)
+        await saveSelectedUnitCodes(
+          { userId: userId || '', role, institutionId },
+          codes,
+        );
+      await adaptiveConfig.initialize(role, codes, institutionId, userId);
+      await adaptiveConfig
+        .syncSelectedUnits(token, codes, userId)
+        .catch(() => undefined);
+
+      // Roster data is part of the lecturer's offline attendance workspace.
+      // Refresh every selected unit independently so one failed request does
+      // not prevent the other unit rosters from being cached.
+      if (role === 'lecturer' && codes.length) {
+        await Promise.all(
+          codes.map(async unitCode => {
+            try {
+              const response = await fetch(
+                `${API_BASE_URL}/lecturers/units/${encodeURIComponent(
+                  unitCode,
+                )}/roster`,
+                {
+                  headers: {
+                    Accept: 'application/json',
+                    Authorization: `Bearer ${token}`,
+                  },
+                },
+              );
+              if (!response.ok) return;
+              const body = (await response.json()) as {
+                students?: Array<{
+                  studentId?: string;
+                  studentName?: string;
+                  admissionNumber?: string;
+                }>;
+              };
+              const students = (body.students || [])
+                .filter(student => student.studentId && student.admissionNumber)
+                .map(student => ({
+                  studentId: student.studentId!,
+                  studentName: student.studentName || 'Unnamed student',
+                  admissionNumber: student.admissionNumber!,
+                }));
+              await saveUnitStudents(unitCode, students);
+            } catch {
+              // Existing roster remains available for offline attendance.
+            }
+          }),
+        );
+      }
+    };
+
+    load()
+      .then(() => {
+        if (!mounted) return;
+        setLoading(false);
+      })
+      .catch(() => mounted && setLoading(false));
+    return () => {
+      mounted = false;
+    };
+  }, [role, token, userId, institutionId, searchQuery]);
+
+  const persist = useCallback(
+    async (codes: string[]) => {
+      const normalized = [...new Set(codes.map(normalizeCode).filter(Boolean))];
+      // Save first. The local database is the offline source of truth; the
+      // API sync below can be retried on a later online session.
+      await saveSelectedUnitCodes(
+        { userId: userId || '', role, institutionId },
+        normalized,
+      );
+      await AsyncStorage.setItem(selectionInitializedKey(role, userId), '1');
+      setSelectedCodes(normalized);
+
+      if (role === 'student' && token && userId) {
+        const removedUnitIds = enrolledUnitIds.filter(id => {
+          const code = catalogue.find(unit => unit.id === id)?.code;
+          return code && !normalized.includes(code);
+        });
+        await Promise.all(
+          removedUnitIds.map(async unitId => {
+            try {
+              const response = await fetch(
+                `${API_BASE_URL}/students/units/${encodeURIComponent(unitId)}`,
+                {
+                  method: 'DELETE',
+                  headers: { Authorization: `Bearer ${token}` },
+                },
+              );
+              if (response.ok)
+                setEnrolledUnitIds(current =>
+                  current.filter(id => id !== unitId),
+                );
+              else
+                console.warn(
+                  `Failed to sync unit removal (${response.status})`,
+                );
+            } catch {
+              console.warn('Unit removal will be retried when online');
+            }
+          }),
+        );
+      }
+
+      if (role === 'lecturer' && token && userId) {
+        const unitIds = normalized
+          .map(code => catalogue.find(unit => unit.code === code)?.id)
+          .filter((id): id is string => Boolean(id));
+        const response = await fetch(`${API_BASE_URL}/lecturers/units`, {
+          method: 'POST',
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${token}`,
+          },
+          body: JSON.stringify({ unitIds }),
+        });
+        if (!response.ok)
+          console.warn(`Failed to sync teaching units (${response.status})`);
+        await cacheLecturerRosters(token, normalized);
+      }
+      if (role === 'student' && token && userId) {
+        const unitIds = normalized
+          .map(code => catalogue.find(unit => unit.code === code)?.id)
+          .filter((id): id is string => Boolean(id));
+        const newUnitIds = unitIds.filter(id => !enrolledUnitIds.includes(id));
+        if (newUnitIds.length) {
+          const response = await fetch(
+            `${API_BASE_URL}/students/units/enroll`,
+            {
+              method: 'POST',
+              headers: {
+                Accept: 'application/json',
+                'Content-Type': 'application/json',
+                Authorization: `Bearer ${token}`,
+              },
+              body: JSON.stringify({ unitIds: newUnitIds }),
+            },
+          );
+          if (response.ok)
+            setEnrolledUnitIds(current => [
+              ...new Set([...current, ...newUnitIds]),
+            ]);
+          else
+            console.warn(`Failed to sync enrolled units (${response.status})`);
+        }
+      }
+      await adaptiveConfig.setSelectedUnits(
+        role,
+        normalized,
+        userId || '',
+        institutionId,
+      );
+      if (token && userId) {
+        await adaptiveConfig
+          .syncSelectedUnits(token, normalized, userId)
+          .catch(() => undefined);
+      }
+    },
+    [catalogue, enrolledUnitIds, institutionId, role, token, userId],
+  );
+
+  const toggleUnit = useCallback(
+    (unit: Unit) => {
+      const code = normalizeCode(unit.code);
+      const next = selectedCodes.includes(code)
+        ? selectedCodes.filter(item => item !== code)
+        : [...selectedCodes, code];
+      void persist(next);
+    },
+    [persist, selectedCodes],
+  );
+
+  const selectUnit = useCallback(
+    async (unit: Unit) => {
+      await persist([unit.code]);
+    },
+    [persist],
+  );
+
+  const selectUnitLocally = useCallback(
+    async (unit: Unit) => {
+      const normalized = normalizeCode(unit.code);
+      setSelectedCodes([normalized]);
+      await saveSelectedUnitCodes(
+        { userId: userId || '', role, institutionId },
+        [normalized],
+      );
+      await adaptiveConfig.setSelectedUnits(
+        role,
+        [normalized],
+        userId || '',
+        institutionId,
+      );
+      if (token && userId)
+        await adaptiveConfig
+          .syncSelectedUnits(token, [normalized], userId)
+          .catch(() => undefined);
+      if (role === 'lecturer' && token)
+        await cacheLecturerRosters(token, [normalized]);
+    },
+    [institutionId, role, token, userId],
+  );
+
+  const addUnitCode = useCallback(
+    async (code: string) => {
+      const normalized = normalizeCode(code);
+      if (!normalized) return;
+      await persist([...selectedCodes, normalized]);
+    },
+    [persist, selectedCodes],
+  );
+
+  const availableUnits = useMemo(() => [...catalogue], [catalogue]);
+
+  const selectedUnits = useMemo(
+    () =>
+      selectedCodes.map(
+        code =>
+          catalogue.find(unit => unit.code === code) ?? {
+            code,
+            name: 'Unknown unit',
+          },
+      ),
+    [catalogue, selectedCodes],
+  );
+
+  return {
+    availableUnits,
+    years,
+    selectedCodes,
+    selectedUnits,
+    selectedUnit: selectedUnits[0],
+    loading,
+    toggleUnit,
+    selectUnit,
+    selectUnitLocally,
+    addUnitCode,
+  };
+};

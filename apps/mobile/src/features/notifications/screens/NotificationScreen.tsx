@@ -1,4 +1,5 @@
 import React, { useState, useCallback } from 'react';
+import { useFocusEffect } from '@react-navigation/native';
 import { View, Text, ScrollView, RefreshControl } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
@@ -9,19 +10,34 @@ import { Notification, NotificationRole } from '../types/notification';
 import NotificationList from '../components/NotificationList';
 import { useNotifications } from '../hooks/useNotifications';
 
-type Props = NativeStackScreenProps<NotificationStackParamList, 'NotificationList'> & {
+type Props = NativeStackScreenProps<
+  NotificationStackParamList,
+  'NotificationList'
+> & {
   role?: NotificationRole;
 };
 
 const NotificationsScreen = ({ navigation, role }: Props) => {
   const { isDark } = useTheme();
   const { isTablet } = useResponsive();
-  const { notifications, unreadCount, markAllAsRead, refetch } = useNotifications(role ?? undefined);
+  const { notifications, unreadCount, loading, error, markAllAsRead, refetch } =
+    useNotifications(role ?? undefined);
   const [refreshing, setRefreshing] = useState(false);
 
-  const handlePress = useCallback((notification: Notification) => {
-    navigation.navigate('NotificationDetail', { notificationId: notification.id });
-  }, [navigation]);
+  useFocusEffect(
+    useCallback(() => {
+      void refetch();
+    }, [refetch]),
+  );
+
+  const handlePress = useCallback(
+    (notification: Notification) => {
+      navigation.navigate('NotificationDetail', {
+        notificationId: notification.id,
+      });
+    },
+    [navigation],
+  );
 
   const handleMarkAllRead = useCallback(() => {
     void markAllAsRead();
@@ -34,15 +50,21 @@ const NotificationsScreen = ({ navigation, role }: Props) => {
   }, [refetch]);
 
   const screenClasses = isDark ? 'bg-slate-950' : 'bg-slate-50';
-  const headerClasses = isDark ? 'bg-slate-900 border-slate-800' : 'bg-white border-slate-200';
+  const headerClasses = isDark
+    ? 'bg-slate-900 border-slate-800'
+    : 'bg-white border-slate-200';
   const titleClasses = isDark ? 'text-white' : 'text-slate-900';
   const secondaryTextClasses = isDark ? 'text-slate-400' : 'text-slate-500';
 
   return (
     <SafeAreaView className={`flex-1 ${screenClasses}`}>
-      <View className={`px-${isTablet ? '8' : '5'} py-6 border-b ${headerClasses}`}>
+      <View
+        className={`px-${isTablet ? '8' : '5'} py-6 border-b ${headerClasses}`}
+      >
         <View className="flex-row items-center justify-between">
-          <Text className={`text-2xl font-bold ${titleClasses}`}>Notifications</Text>
+          <Text className={`text-2xl font-bold ${titleClasses}`}>
+            Notifications
+          </Text>
           {unreadCount > 0 && (
             <Text
               className="text-sm font-semibold text-emerald-600"
@@ -66,9 +88,15 @@ const NotificationsScreen = ({ navigation, role }: Props) => {
         }
       >
         <View className={`px-${isTablet ? '8' : '5'} pt-4`}>
+          {error && (
+            <Text className="mb-3 text-center text-sm text-red-600">
+              {error}
+            </Text>
+          )}
           <NotificationList
             notifications={notifications}
             onNotificationPress={handlePress}
+            loading={loading}
           />
         </View>
       </ScrollView>

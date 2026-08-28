@@ -1,7 +1,11 @@
 import React from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { Notification } from '../types/notification';
-import { formatTimestamp, getNotificationIcon, getPriorityColor } from '../utils/formatter';
+import {
+  formatTimestamp,
+  getNotificationIcon,
+  getPriorityColor,
+} from '../utils/formatter';
 import { useTheme } from '../../theme/context/ThemeContext';
 
 interface NotificationItemProps {
@@ -9,7 +13,10 @@ interface NotificationItemProps {
   onPress: (notification: Notification) => void;
 }
 
-const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onPress }) => {
+const NotificationItem: React.FC<NotificationItemProps> = ({
+  notification,
+  onPress,
+}) => {
   const { isDark } = useTheme();
   const { title, body, type, priority, isRead, timestamp } = notification;
 
@@ -35,18 +42,22 @@ const NotificationItem: React.FC<NotificationItemProps> = ({ notification, onPre
 
         <View className="flex-1">
           <View className="flex-row items-center justify-between">
-            <Text className={`text-sm font-semibold ${titleColor}`} numberOfLines={1}>
+            <Text
+              className={`text-sm font-semibold ${titleColor}`}
+              numberOfLines={1}
+            >
               {title}
             </Text>
-            <Text className={`text-xs ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+            <Text
+              className={`text-xs ${
+                isDark ? 'text-slate-500' : 'text-slate-400'
+              }`}
+            >
               {formatTimestamp(timestamp)}
             </Text>
           </View>
 
-          <Text
-            className={`text-sm mt-1 ${bodyColor}`}
-            numberOfLines={2}
-          >
+          <Text className={`text-sm mt-1 ${bodyColor}`} numberOfLines={2}>
             {body}
           </Text>
         </View>

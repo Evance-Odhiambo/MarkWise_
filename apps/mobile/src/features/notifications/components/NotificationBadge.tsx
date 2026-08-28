@@ -6,7 +6,10 @@ interface NotificationBadgeProps {
   show?: boolean;
 }
 
-const NotificationBadge: React.FC<NotificationBadgeProps> = ({ count, show = true }) => {
+const NotificationBadge: React.FC<NotificationBadgeProps> = ({
+  count,
+  show = true,
+}) => {
   if (!show || count <= 0) return null;
 
   const displayCount = count > 99 ? '99+' : count.toString();

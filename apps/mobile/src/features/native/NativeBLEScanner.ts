@@ -9,6 +9,7 @@ export type BLEDevice = {
   timestamp: number;
   serviceData: Record<string, string>;
   serviceUuids: string[];
+  payload?: string;
 };
 
 export type BLEScanError = {
@@ -19,21 +20,27 @@ export type BLEScanError = {
 class BLEScannerAPI {
   private emitter: NativeEventEmitter | null = null;
 
-  startScan(): Promise<boolean> {
-    return BLEScanner.startScan();
+  startScan(
+    serviceUUID = '00001101-0000-1000-8000-00805F9B34FB',
+  ): Promise<boolean> {
+    return Promise.resolve(BLEScanner.startScan(serviceUUID));
+  }
+
+  startScanNoFilter(): Promise<boolean> {
+    return Promise.resolve(BLEScanner.startScanNoFilter());
   }
 
   stopScan(): Promise<boolean> {
-    return BLEScanner.stopScan();
+    return Promise.resolve(BLEScanner.stopScan());
   }
 
   isScanning(): Promise<boolean> {
-    return BLEScanner.isScanning();
+    return Promise.resolve(BLEScanner.isScanning());
   }
 
-  addDeviceListener(
-    callback: (device: BLEDevice) => void
-  ): { remove: () => void } {
+  addDeviceListener(callback: (device: BLEDevice) => void): {
+    remove: () => void;
+  } {
     if (!this.emitter) {
       this.emitter = new NativeEventEmitter(BLEScanner);
     }
@@ -42,9 +49,9 @@ class BLEScannerAPI {
     return { remove: () => subscription.remove() };
   }
 
-  addErrorListener(
-    callback: (error: BLEScanError) => void
-  ): { remove: () => void } {
+  addErrorListener(callback: (error: BLEScanError) => void): {
+    remove: () => void;
+  } {
     if (!this.emitter) {
       this.emitter = new NativeEventEmitter(BLEScanner);
     }

@@ -63,7 +63,8 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
         }
     }
 
-    override fun getName(): String = TAG
+    // Keep this name aligned with NativeModules.BLEAdvertiser in JavaScript.
+    override fun getName(): String = "BLEAdvertiser"
 
     // --- ActivityEventListener ---
 
@@ -158,10 +159,10 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
             return
         }
 
-        var effectiveBytes = dataBytes
-        if (effectiveBytes.size > 24) {
-            Log.w(TAG, "startAdvertising: data size (${effectiveBytes.size} bytes) is too large for manufacturer data, truncating to 24 bytes!")
-            effectiveBytes = dataBytes.copyOfRange(0, 24)
+        if (dataBytes.size != 9) {
+            Log.e(TAG, "startAdvertising: expected exactly 9 bytes, received ${dataBytes.size}")
+            promise.reject("E_BLE_PAYLOAD_LENGTH", "BLE payload must be exactly 9 bytes")
+            return
         }
 
         val settings = AdvertiseSettings.Builder()
@@ -173,7 +174,7 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
         val advertiseData = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
-            .addManufacturerData(MANUFACTURER_ID, effectiveBytes)
+            .addManufacturerData(MANUFACTURER_ID, dataBytes)
             .build()
 
         try {
