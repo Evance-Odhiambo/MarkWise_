@@ -2,6 +2,28 @@ import type { FastifyPluginAsync } from "fastify";
 import { requireAttendanceRole } from "../../plugins/index.js";
 
 export const notificationRoutes: FastifyPluginAsync = async (app) => {
+  app.post<{ Body: { token?: string } }>(
+    "/device-token",
+    { preHandler: requireAttendanceRole("student", "lecturer") },
+    async (request, reply) => {
+      const token = String(request.body?.token || "").trim();
+      if (!token || token.length > 4096)
+        return reply.code(400).send({ error: "A valid device token is required" });
+
+      if (request.user.role === "student")
+        await app.prisma.student.update({
+          where: { id: request.user.id },
+          data: { pushToken: token },
+        });
+      else
+        await app.prisma.lecturer.update({
+          where: { id: request.user.id },
+          data: { fcmToken: token },
+        });
+      return reply.send({ success: true });
+    },
+  );
+
   app.get(
     "/",
     { preHandler: requireAttendanceRole("student", "lecturer") },
@@ -16,6 +38,18 @@ export const notificationRoutes: FastifyPluginAsync = async (app) => {
         unreadCount: rows.filter((row) => !row.read).length,
         hasMore: false,
       };
+    },
+  );
+
+  app.post(
+    "/read-all",
+    { preHandler: requireAttendanceRole("student", "lecturer") },
+    async (request) => {
+      await app.prisma.notification.updateMany({
+        where: { userId: request.user.id, read: false },
+        data: { read: true },
+      });
+      return { success: true };
     },
   );
 

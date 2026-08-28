@@ -97,7 +97,10 @@ const decodePayload = (raw: string): SignedPayload => {
 export class InPersonVerificationService {
   constructor(private readonly prisma: PrismaClient) {}
 
-  async verify(input: SubmitInPersonAttendanceBody & { studentId: string }) {
+  async verify(
+    input: SubmitInPersonAttendanceBody & { studentId: string },
+    allowEndedSession = false,
+  ) {
     const session = await this.prisma.conductedSession.findUnique({
       where: { id: input.sessionId },
     });
@@ -107,9 +110,9 @@ export class InPersonVerificationService {
     const sessionStart = session.sessionStart.getTime();
     const expiry = sessionStart + session.sessionDuration * 1000;
     if (
-      session.sessionEnd ||
+      (!allowEndedSession && session.sessionEnd) ||
       now < sessionStart - 15_000 ||
-      now > expiry + 15_000
+      (!allowEndedSession && now > expiry + 15_000)
     )
       throw new Error("SESSION_EXPIRED");
 
@@ -514,16 +517,20 @@ export class InPersonVerificationService {
     input: LecturerAssistedMarkBody,
   ) {
     const session = await this.prisma.conductedSession.findFirst({
-      where: { id: input.sessionId, lecturerId, sessionEnd: null },
+      where: { id: input.sessionId, lecturerId },
     });
     if (!session) throw new Error("SESSION_NOT_FOUND_OR_NOT_OWNED");
+    const scannedAt = new Date(input.scannedAt).getTime();
+    const expiry = session.sessionStart.getTime() + session.sessionDuration * 1000;
+    if (!Number.isFinite(scannedAt) || scannedAt < session.sessionStart.getTime() - 15_000 || scannedAt > expiry + 15_000)
+      throw new Error("SCAN_TIME_INVALID");
     const result = await this.verify({
       ...input,
       unitCode: session.unitCode,
       sessionStart: session.sessionStart.getTime(),
       method: "qr",
       studentId: input.studentId,
-    });
+    }, true);
     if (result.status !== "verified") return result;
     await this.prisma.inPersonAttendanceRecord.update({
       where: { id: result.recordId },

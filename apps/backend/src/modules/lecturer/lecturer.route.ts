@@ -56,7 +56,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
     },
   );
 
-  app.get(
+  app.get<{ Querystring: { q?: string; limit?: string } }>(
     "/units/catalog",
     { preHandler: requireAttendanceRole("lecturer") },
     async (request, reply) => {
@@ -67,13 +67,27 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       if (!lecturer)
         return reply.code(404).send({ error: "Lecturer record not found" });
 
+      const query = request.query.q?.trim() || "";
+      const parsedLimit = Number.parseInt(request.query.limit || "50", 10);
+      const limit = Number.isFinite(parsedLimit)
+        ? Math.min(Math.max(parsedLimit, 1), 100)
+        : 50;
       const units = await app.prisma.unit.findMany({
         where: {
           semester: {
             courseYear: { course: { institutionId: lecturer.institutionId } },
           },
+          ...(query
+            ? {
+                OR: [
+                  { code: { contains: query, mode: "insensitive" } },
+                  { name: { contains: query, mode: "insensitive" } },
+                ],
+              }
+            : {}),
         },
         orderBy: { code: "asc" },
+        take: limit,
         select: { id: true, code: true, name: true },
       });
       const assignments = await app.prisma.lecturerUnit.findMany({
@@ -83,6 +97,45 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({
         units,
         selectedUnitIds: assignments.map(({ unitId }) => unitId),
+      });
+    },
+  );
+
+  app.get<{ Params: { unitCode: string } }>(
+    "/units/:unitCode/roster",
+    { preHandler: requireAttendanceRole("lecturer") },
+    async (request, reply) => {
+      const lecturer = await app.prisma.lecturer.findUnique({
+        where: { id: request.user.id },
+        select: { institutionId: true },
+      });
+      const unitCode = cleanIdentifier(request.params.unitCode);
+      if (!lecturer || !unitCode)
+        return reply.code(400).send({ error: "A valid unit code is required" });
+
+      const unit = await app.prisma.unit.findFirst({
+        where: {
+          code: unitCode,
+          semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
+          lecturerUnits: { some: { lecturerId: request.user.id } },
+        },
+        select: {
+          enrollments: {
+            orderBy: { student: { admissionNumber: "asc" } },
+            select: {
+              student: { select: { id: true, name: true, admissionNumber: true } },
+            },
+          },
+        },
+      });
+      if (!unit) return reply.code(404).send({ error: "Unit is not selected by lecturer" });
+      return reply.send({
+        unitCode,
+        students: unit.enrollments.map(({ student }) => ({
+          studentId: student.id,
+          studentName: student.name,
+          admissionNumber: student.admissionNumber,
+        })),
       });
     },
   );

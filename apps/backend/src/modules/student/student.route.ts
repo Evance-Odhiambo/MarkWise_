@@ -85,6 +85,10 @@ interface UnitEnrollmentBody {
   unitIds: string[];
 }
 
+interface UnitParams {
+  unitId: string;
+}
+
 export const studentRoutes: FastifyPluginAsync = async (app) => {
   const prisma = getPrismaClient();
 
@@ -231,6 +235,51 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
         skipDuplicates: true,
       });
       return reply.send({ success: true, enrolledUnitIds: unitIds });
+    },
+  );
+
+  app.delete<{ Params: UnitParams }>(
+    "/units/:unitId",
+    { preHandler: requireAttendanceRole("student") },
+    async (request, reply) => {
+      const unitId = request.params.unitId?.trim();
+      if (!unitId)
+        return reply.code(400).send({ error: "Unit ID is required" });
+
+      const student = await prisma.student.findUnique({
+        where: { id: request.user.id },
+        select: { courseId: true },
+      });
+      if (!student)
+        return reply.code(404).send({ error: "Student record not found" });
+
+      const unit = await prisma.unit.findFirst({
+        where: {
+          id: unitId,
+          semester: { courseYear: { courseId: student.courseId } },
+        },
+        select: { id: true },
+      });
+      if (!unit)
+        return reply
+          .code(404)
+          .send({ error: "Unit is not available on your course" });
+
+      const enrollment = await prisma.enrollment.findUnique({
+        where: {
+          studentId_unitId: { studentId: request.user.id, unitId },
+        },
+        select: { studentId: true },
+      });
+      if (!enrollment)
+        return reply.code(404).send({ error: "You are not enrolled in this unit" });
+
+      await prisma.enrollment.delete({
+        where: {
+          studentId_unitId: { studentId: request.user.id, unitId },
+        },
+      });
+      return reply.send({ success: true, unenrolledUnitId: unitId });
     },
   );
 

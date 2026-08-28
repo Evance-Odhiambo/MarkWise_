@@ -89,6 +89,27 @@ export class InPersonService {
     return session ? this.getPublicSession(session.id) : null;
   }
 
+  async getActiveSessionByUnit(unitCode: string, studentId: string) {
+    const normalizedCode = normalizeUnitCode(unitCode);
+    const enrollment = await this.prisma.enrollment.findFirst({
+      where: { studentId, unit: { code: normalizedCode } },
+      select: { unitId: true },
+    });
+    if (!enrollment) return null;
+
+    const session = await this.prisma.conductedSession.findFirst({
+      where: {
+        unitCode: normalizedCode,
+        sessionEnd: null,
+      },
+      orderBy: { sessionStart: "desc" },
+    });
+    if (!session) return null;
+
+    const publicSession = await this.getPublicSession(session.id);
+    return publicSession?.status === "active" ? publicSession : null;
+  }
+
   submit(
     studentId: string,
     input: Parameters<InPersonVerificationService["verify"]>[0],

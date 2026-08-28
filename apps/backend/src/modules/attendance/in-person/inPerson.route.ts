@@ -2,6 +2,7 @@ import type { FastifyPluginAsync } from "fastify";
 import crypto from "node:crypto";
 import { requireAttendanceRole } from "../../../plugins/index.js";
 import { InPersonService } from "./inPerson.service.js";
+import { sendPushNotification } from "../../notification/notification.service.js";
 import {
   validateCreateInPersonSession,
   validateLecturerAssistedMark,
@@ -17,7 +18,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     sessionId: string,
     reason?: string,
   ) => {
-    await app.prisma.notification
+    const notification = await app.prisma.notification
       .create({
         data: {
           userId: studentId,
@@ -37,6 +38,14 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         },
       })
       .catch(() => undefined);
+    if (notification)
+      await sendPushNotification(app.prisma, {
+        userId: studentId,
+        userType: "student",
+        title: notification.title,
+        body: notification.message,
+        data: notification.data as Record<string, unknown> | undefined,
+      });
   };
 
   app.post(
@@ -105,6 +114,20 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       const session = await service.getPublicSessionByBleNonce(nonce);
       if (!session)
         return reply.code(404).send({ error: "BLE session not found" });
+      return reply.send({ success: true, data: session });
+    },
+  );
+
+  app.get<{ Params: { unitCode: string } }>(
+    "/sessions/by-unit/:unitCode",
+    { preHandler: requireAttendanceRole("student") },
+    async (request, reply) => {
+      const session = await service.getActiveSessionByUnit(
+        request.params.unitCode,
+        request.user.id,
+      );
+      if (!session)
+        return reply.code(404).send({ error: "No active attendance session for this unit" });
       return reply.send({ success: true, data: session });
     },
   );
