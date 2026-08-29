@@ -21,7 +21,7 @@ const safeEqualHex = (expected: string, received: string) => {
 const decodeRelay = (raw: string) => {
   if (!raw.startsWith("MWIR1:")) throw new Error("RELAY_FORMAT_INVALID");
   const value = JSON.parse(
-    Buffer.from(raw.slice(6), "base64").toString("utf8"),
+    Buffer.from(raw.slice(6), "base64").toString("utf8")
   ) as {
     version: number;
     parentPayload: string;
@@ -87,7 +87,7 @@ const decodePayload = (raw: string): SignedPayload => {
   if (!raw.startsWith("MWIP1:"))
     throw new Error("Unsupported attendance payload");
   const payload = JSON.parse(
-    Buffer.from(raw.slice(6), "base64").toString("utf8"),
+    Buffer.from(raw.slice(6), "base64").toString("utf8")
   ) as SignedPayload;
   if (payload.version !== 1 || !payload.sessionId || !payload.signature)
     throw new Error("Malformed attendance payload");
@@ -99,7 +99,7 @@ export class InPersonVerificationService {
 
   async verify(
     input: SubmitInPersonAttendanceBody & { studentId: string },
-    allowEndedSession = false,
+    allowEndedSession = false
   ) {
     const session = await this.prisma.conductedSession.findUnique({
       where: { id: input.sessionId },
@@ -205,7 +205,7 @@ export class InPersonVerificationService {
   }
 
   private async verifyBle(
-    input: SubmitInPersonAttendanceBody & { studentId: string },
+    input: SubmitInPersonAttendanceBody & { studentId: string }
   ) {
     const beacon = decodeBle(input.rawPayload);
     const session = await this.prisma.conductedSession.findUnique({
@@ -272,8 +272,6 @@ export class InPersonVerificationService {
     const now = Date.now();
     const start = session.sessionStart.getTime();
     const end = start + session.sessionDuration * 1000;
-    if (session.sessionEnd || now < start - 15_000 || now > end + 15_000)
-      throw new Error("SESSION_EXPIRED");
     const scannedAt = new Date(input.scannedAt).getTime();
     if (
       !Number.isFinite(scannedAt) ||
@@ -281,6 +279,7 @@ export class InPersonVerificationService {
       scannedAt < start - 15_000
     )
       throw new Error("SCAN_TIME_INVALID");
+    if (scannedAt > end + 15_000) throw new Error("SESSION_EXPIRED");
     const parts = input.rawPayload.split(":");
     if (
       parts.length !== 4 ||
@@ -293,7 +292,7 @@ export class InPersonVerificationService {
     const receivedCounter = Number(parts[3]);
     const relativeStart = Math.floor(start / 1000 / PIN_WINDOW_SECONDS);
     const expectedCounter =
-      Math.floor(now / 1000 / PIN_WINDOW_SECONDS) - relativeStart;
+      Math.floor(scannedAt / 1000 / PIN_WINDOW_SECONDS) - relativeStart;
     if (Math.abs(receivedCounter - expectedCounter) > MAX_PIN_DRIFT)
       throw new Error("PIN_COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({
@@ -323,7 +322,7 @@ export class InPersonVerificationService {
       .update(message)
       .digest("hex");
     const expectedPin = String(
-      (parseInt(digest.slice(0, 8), 16) >>> 0) % 1_000_000,
+      (parseInt(digest.slice(0, 8), 16) >>> 0) % 1_000_000
     ).padStart(6, "0");
     if (!session.sessionKey || expectedPin !== receivedPin)
       throw new Error("PIN_INVALID");
@@ -346,7 +345,7 @@ export class InPersonVerificationService {
   }
 
   async verifyRelay(
-    input: SubmitInPersonAttendanceBody & { studentId: string },
+    input: SubmitInPersonAttendanceBody & { studentId: string }
   ) {
     const relay = decodeRelay(input.rawPayload);
     if (relay.relayerId === input.studentId) throw new Error("RELAY_SELF_MARK");
@@ -368,8 +367,8 @@ export class InPersonVerificationService {
     const parentMethod = relay.parentPayload.startsWith("MWBLE1:")
       ? "ble"
       : relay.parentPayload.startsWith("MWPIN1:")
-        ? "pin"
-        : "qr";
+      ? "pin"
+      : "qr";
     const parent =
       parentMethod === "pin"
         ? await this.verifyPin({
@@ -447,7 +446,7 @@ export class InPersonVerificationService {
   }
 
   async verifyOpaqueRelay(
-    input: SubmitInPersonAttendanceBody & { studentId: string },
+    input: SubmitInPersonAttendanceBody & { studentId: string }
   ) {
     const relay = decodeOpaqueRelay(input.rawPayload);
     if (!["qr", "ble"].includes(input.method))
@@ -514,23 +513,31 @@ export class InPersonVerificationService {
 
   async verifyLecturerAssisted(
     lecturerId: string,
-    input: LecturerAssistedMarkBody,
+    input: LecturerAssistedMarkBody
   ) {
     const session = await this.prisma.conductedSession.findFirst({
       where: { id: input.sessionId, lecturerId },
     });
     if (!session) throw new Error("SESSION_NOT_FOUND_OR_NOT_OWNED");
     const scannedAt = new Date(input.scannedAt).getTime();
-    const expiry = session.sessionStart.getTime() + session.sessionDuration * 1000;
-    if (!Number.isFinite(scannedAt) || scannedAt < session.sessionStart.getTime() - 15_000 || scannedAt > expiry + 15_000)
+    const expiry =
+      session.sessionStart.getTime() + session.sessionDuration * 1000;
+    if (
+      !Number.isFinite(scannedAt) ||
+      scannedAt < session.sessionStart.getTime() - 15_000 ||
+      scannedAt > expiry + 15_000
+    )
       throw new Error("SCAN_TIME_INVALID");
-    const result = await this.verify({
-      ...input,
-      unitCode: session.unitCode,
-      sessionStart: session.sessionStart.getTime(),
-      method: "qr",
-      studentId: input.studentId,
-    }, true);
+    const result = await this.verify(
+      {
+        ...input,
+        unitCode: session.unitCode,
+        sessionStart: session.sessionStart.getTime(),
+        method: "qr",
+        studentId: input.studentId,
+      },
+      true
+    );
     if (result.status !== "verified") return result;
     await this.prisma.inPersonAttendanceRecord.update({
       where: { id: result.recordId },

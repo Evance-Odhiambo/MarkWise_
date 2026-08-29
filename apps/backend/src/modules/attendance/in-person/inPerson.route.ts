@@ -11,6 +11,8 @@ import {
 
 export const inPersonRoutes: FastifyPluginAsync = async (app) => {
   const service = new InPersonService(app.prisma);
+  const PIN_WINDOW_SECONDS = 30;
+  const PIN_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
   const notifyPin = async (
     studentId: string,
@@ -65,22 +67,69 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       const pin = String(body.pin || "").trim();
       const scannedAt = Number(body.scannedAt);
       if (!unitCode || !/^\d{6}$/.test(pin) || !Number.isFinite(scannedAt))
-        return reply
-          .code(400)
-          .send({
-            error: "Unit code, six-digit PIN, and scan time are required",
-          });
+        return reply.code(400).send({
+          error: "Unit code, six-digit PIN, and scan time are required",
+        });
 
-      const session = await service.getActiveSessionByUnit(
+      if (Date.now() - scannedAt > PIN_PENDING_TTL_MS)
+        return reply
+          .code(410)
+          .send({ error: "This PIN submission has expired" });
+
+      let session = await service.getActiveSessionByUnit(
         unitCode,
         request.user.id
       );
+      if (!session) {
+        const candidates = await app.prisma.conductedSession.findMany({
+          where: {
+            unitCode,
+            sessionStart: {
+              gte: new Date(scannedAt - 60 * 60 * 1000),
+              lte: new Date(scannedAt + 15_000),
+            },
+          },
+          orderBy: { sessionStart: "desc" },
+          take: 20,
+        });
+        const candidate = candidates.find((row) => {
+          const start = row.sessionStart.getTime();
+          const end = start + row.sessionDuration * 1000;
+          return scannedAt >= start - 15_000 && scannedAt <= end + 15_000;
+        });
+        if (candidate) {
+          const enrolled = await app.prisma.enrollment.findFirst({
+            where: {
+              studentId: request.user.id,
+              unit: { code: unitCode },
+            },
+          });
+          if (enrolled)
+            session = {
+              id: candidate.id,
+              unitCode: candidate.unitCode,
+              sessionStart: candidate.sessionStart.getTime(),
+              expiresAt:
+                candidate.sessionStart.getTime() +
+                candidate.sessionDuration * 1000,
+              sessionNonce: Number(candidate.sessionNonce),
+              bleUnitId: candidate.bleUnitId
+                ? Number(candidate.bleUnitId)
+                : null,
+              status: "active" as const,
+            };
+        }
+      }
       if (!session)
-        return reply
-          .code(404)
-          .send({ error: "No active attendance session for this unit" });
-      const startCounter = Math.floor(session.sessionStart / 1000 / 30);
-      const currentCounter = Math.floor(Date.now() / 1000 / 30) - startCounter;
+        return reply.code(202).send({
+          success: true,
+          data: { status: "queued" as const },
+        });
+      const startCounter = Math.floor(
+        session.sessionStart / 1000 / PIN_WINDOW_SECONDS
+      );
+      const currentCounter =
+        Math.floor(scannedAt / 1000 / PIN_WINDOW_SECONDS) - startCounter;
       const rawPayload = `MWPIN1:${session.id}:${pin}:${currentCounter}`;
       try {
         const result = await service.submitPin(request.user.id, {
@@ -131,11 +180,9 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           error instanceof Error &&
           error.message === "UNIT_NOT_IN_INSTITUTION"
         )
-          return reply
-            .code(403)
-            .send({
-              error: "The selected unit is not available at your institution",
-            });
+          return reply.code(403).send({
+            error: "The selected unit is not available at your institution",
+          });
         throw error;
       }
     }
