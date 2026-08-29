@@ -133,6 +133,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       const rawPayload = `MWPIN1:${session.id}:${pin}:${currentCounter}`;
       try {
         const result = await service.submitPin(request.user.id, {
+          studentId: request.user.id,
           sessionId: session.id,
           unitCode,
           sessionStart: session.sessionStart,
