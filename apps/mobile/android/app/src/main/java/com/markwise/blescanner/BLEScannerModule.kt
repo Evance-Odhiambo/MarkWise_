@@ -92,20 +92,23 @@ class BLEScannerModule(reactContext: ReactApplicationContext) :
 
             var payload: String? = null
 
-            if (scanRecord != null && scanRecord.manufacturerSpecificData != null) {
-                val mfgData = scanRecord.manufacturerSpecificData
-                val data = mfgData.get(MANUFACTURER_ID)
-                if (data != null) {
-                    payload = Base64.encodeToString(data, Base64.NO_WRAP)
-                    Log.d(TAG, "  Extracted compact payload from manufacturer data [$MANUFACTURER_ID] (base64): '$payload'")
+            // Service data is the canonical cross-platform transport. Both
+            // Android and iOS scanners can read this under the shared UUID.
+            if (scanRecord != null) {
+                val serviceData = scanRecord.getServiceData(SERVICE_UUID)
+                if (serviceData != null) {
+                    payload = Base64.encodeToString(serviceData, Base64.NO_WRAP)
+                    Log.d(TAG, "  Extracted compact payload from serviceData: '$payload'")
                 }
             }
 
-            if (payload == null && scanRecord != null) {
-                val serviceData = scanRecord.getServiceData(SERVICE_UUID)
-                if (serviceData != null) {
-                    payload = String(serviceData)
-                    Log.d(TAG, "  Extracted compact payload from serviceData: '$payload'")
+            // Legacy Android fallback for broadcasts produced before the
+            // service-data transport was introduced.
+            if (payload == null && scanRecord?.manufacturerSpecificData != null) {
+                val data = scanRecord.manufacturerSpecificData.get(MANUFACTURER_ID)
+                if (data != null) {
+                    payload = Base64.encodeToString(data, Base64.NO_WRAP)
+                    Log.d(TAG, "  Extracted legacy payload from manufacturer data [$MANUFACTURER_ID]")
                 }
             }
 

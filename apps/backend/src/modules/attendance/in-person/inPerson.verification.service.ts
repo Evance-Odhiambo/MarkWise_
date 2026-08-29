@@ -9,6 +9,7 @@ import { normalizeUnitCode } from "./inPerson.schema.js";
 
 const PIN_WINDOW_SECONDS = 30;
 const QR_WINDOW_SECONDS = 3;
+const BLE_WINDOW_SECONDS = 5;
 const MAX_PIN_DRIFT = 1;
 
 const safeEqualHex = (expected: string, received: string) => {
@@ -40,8 +41,8 @@ const decodeRelay = (raw: string) => {
 };
 
 const decodeOpaqueRelay = (raw: string) => {
-  if (!raw.startsWith("MWIR2:")) throw new Error("RELAY_FORMAT_INVALID");
-  const bytes = Buffer.from(raw.slice(6), "base64");
+  if (!raw.startsWith("MWR1:")) throw new Error("RELAY_FORMAT_INVALID");
+  const bytes = Buffer.from(raw.slice(5), "base64");
   if (
     bytes.length !== 9 ||
     bytes.subarray(0, 4).toString("ascii") !== "MWI2" ||
@@ -223,8 +224,8 @@ export class InPersonVerificationService {
     )
       throw new Error("BLE_SESSION_MISMATCH");
     const expectedCounter =
-      Math.floor(now / 1000 / QR_WINDOW_SECONDS) -
-      Math.floor(start / 1000 / QR_WINDOW_SECONDS);
+      Math.floor(now / 1000 / BLE_WINDOW_SECONDS) -
+      Math.floor(start / 1000 / BLE_WINDOW_SECONDS);
     if (Math.abs(beacon.counter - expectedCounter) > 3)
       throw new Error("COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({

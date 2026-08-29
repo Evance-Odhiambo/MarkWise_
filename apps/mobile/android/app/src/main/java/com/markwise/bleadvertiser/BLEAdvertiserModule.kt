@@ -9,6 +9,8 @@ import android.bluetooth.le.AdvertiseSettings
 import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.Intent
+import android.os.Build
+import android.os.ParcelUuid
 import android.util.Base64
 import android.util.Log
 
@@ -33,6 +35,7 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
     companion object {
         private const val TAG = "BLEAdvertiserModule"
         private const val REQUEST_ENABLE_BT = 4123
+        private val SERVICE_UUID = ParcelUuid.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private const val MANUFACTURER_ID = 0x1234
     }
 
@@ -40,11 +43,14 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
 
     private var isAdvertising = false
     private var pendingEnablePromise: Promise? = null
+    private var pendingStartPromise: Promise? = null
 
     private val advertiseCallback = object : AdvertiseCallback() {
         override fun onStartSuccess(settingsInEffect: AdvertiseSettings) {
             isAdvertising = true
             Log.d(TAG, "Advertising started successfully")
+            pendingStartPromise?.resolve(true)
+            pendingStartPromise = null
             super.onStartSuccess(settingsInEffect)
         }
 
@@ -59,6 +65,8 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
                 else -> "Unknown error: $errorCode"
             }
             Log.e(TAG, "Advertising failed to start: $errorMessage (code=$errorCode)")
+            pendingStartPromise?.reject("E_BLE_ADVERTISING_$errorCode", errorMessage)
+            pendingStartPromise = null
             super.onStartFailure(errorCode)
         }
     }
@@ -160,8 +168,8 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
         }
 
         if (dataBytes.size != 9) {
-            Log.e(TAG, "startAdvertising: expected exactly 9 bytes, received ${dataBytes.size}")
-            promise.reject("E_BLE_PAYLOAD_LENGTH", "BLE payload must be exactly 9 bytes")
+            Log.e(TAG, "startAdvertising: expected 9 bytes, received ${dataBytes.size}")
+            promise.reject("E_BLE_PAYLOAD_LENGTH", "BLE payload must be 9 bytes")
             return
         }
 
@@ -174,6 +182,10 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
         val advertiseData = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
+            // Match the compact transport used by the legacy Android and
+            // iOS scanners: UUID identifies MarkWise, manufacturer data
+            // carries the 9-byte rotating payload.
+            .addServiceUuid(SERVICE_UUID)
             .addManufacturerData(MANUFACTURER_ID, dataBytes)
             .build()
 
@@ -182,17 +194,53 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
                 advertiser.stopAdvertising(advertiseCallback)
                 isAdvertising = false
             }
+            pendingStartPromise = promise
             advertiser.startAdvertising(settings, advertiseData, advertiseCallback)
-            promise.resolve(null)
         } catch (e: SecurityException) {
+            pendingStartPromise = null
             Log.e(TAG, "startAdvertising failed: ${e.message}", e)
             promise.reject("E_BLE_ADVERTISING_SECURITY", e.message)
         } catch (e: IllegalStateException) {
+            pendingStartPromise = null
             Log.e(TAG, "startAdvertising failed: ${e.message}", e)
             promise.reject("E_BLE_ADVERTISING_STATE", e.message)
         } catch (e: Exception) {
+            pendingStartPromise = null
             Log.e(TAG, "startAdvertising failed: ${e.message}", e)
             promise.reject("E_BLE_ADVERTISING", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun startBackgroundAdvertising(data: String, durationSeconds: Double, promise: Promise) {
+        try {
+            val intent = Intent(reactContext, BLERelayForegroundService::class.java).apply {
+                action = BLERelayForegroundService.ACTION_START
+                putExtra(BLERelayForegroundService.EXTRA_PAYLOAD, data)
+                putExtra(
+                    BLERelayForegroundService.EXTRA_DURATION_SECONDS,
+                    durationSeconds.toLong().coerceAtLeast(1L),
+                )
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O)
+                reactContext.startForegroundService(intent)
+            else reactContext.startService(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("E_BLE_BACKGROUND_RELAY", e.message)
+        }
+    }
+
+    @ReactMethod
+    fun stopBackgroundAdvertising(promise: Promise) {
+        try {
+            val intent = Intent(reactContext, BLERelayForegroundService::class.java).apply {
+                action = BLERelayForegroundService.ACTION_STOP
+            }
+            reactContext.startService(intent)
+            promise.resolve(true)
+        } catch (e: Exception) {
+            promise.reject("E_BLE_BACKGROUND_RELAY_STOP", e.message)
         }
     }
 

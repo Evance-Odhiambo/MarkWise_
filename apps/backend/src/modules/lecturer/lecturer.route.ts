@@ -88,7 +88,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         },
         orderBy: { code: "asc" },
         take: limit,
-        select: { id: true, code: true, name: true },
+        select: { id: true, code: true, name: true, bleId: true },
       });
       const assignments = await app.prisma.lecturerUnit.findMany({
         where: { lecturerId: request.user.id },

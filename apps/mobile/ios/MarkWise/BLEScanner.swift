@@ -65,8 +65,20 @@ final class BLEScanner: RCTEventEmitter, CBCentralManagerDelegate {
     var payload: String?
     if let serviceData = advertisementData[CBAdvertisementDataServiceDataKey] as? [CBUUID: Data], let data = serviceData[serviceUUID] {
       payload = data.base64EncodedString()
-    } else if let manufacturer = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data {
-      payload = manufacturer.base64EncodedString()
+    } else if let manufacturer = advertisementData[CBAdvertisementDataManufacturerDataKey] as? Data,
+              manufacturer.count >= 11,
+              manufacturer[0] == 0x34,
+              manufacturer[1] == 0x12 {
+      // CoreBluetooth includes the 16-bit manufacturer ID as the first two
+      // bytes. Only the following 9 bytes are the MarkWise payload.
+      payload = manufacturer.dropFirst(2).base64EncodedString()
+    } else if let localName = advertisementData[CBAdvertisementDataLocalNameKey] as? String,
+              localName.hasPrefix("MW:"),
+              let data = Data(base64Encoded: String(localName.dropFirst(3))),
+              data.count == 9 {
+      // Fallback for iOS peripherals that expose the compact payload in the
+      // local name while background advertising omits service data.
+      payload = data.base64EncodedString()
     }
     sendEvent(withName: "BLEDeviceFound", body: [
       "id": peripheral.identifier.uuidString,

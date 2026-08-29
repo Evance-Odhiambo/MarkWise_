@@ -22,7 +22,7 @@ final class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
       return
     }
     guard data.count == 9 else {
-      rejecter("E_BLE_PAYLOAD_LENGTH", "BLE payload must be exactly 9 bytes", nil)
+      rejecter("E_BLE_PAYLOAD_LENGTH", "BLE payload must be 9 bytes", nil)
       return
     }
     pendingData = data
@@ -38,13 +38,25 @@ final class BLEAdvertiser: NSObject, CBPeripheralManagerDelegate {
     resolver(true)
   }
 
+  @objc(startBackgroundAdvertising:durationSeconds:resolver:rejecter:)
+  func startBackgroundAdvertising(_ base64Payload: String, durationSeconds: NSNumber, resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+    // Core Bluetooth keeps peripheral advertising eligible in the background
+    // when bluetooth-peripheral is declared in Info.plist. iOS controls the
+    // actual duty cycle and may suspend the app, so this remains best effort.
+    startAdvertising(base64Payload, resolver: resolver, rejecter: rejecter)
+  }
+
+  @objc(stopBackgroundAdvertising:rejecter:)
+  func stopBackgroundAdvertising(resolver: @escaping RCTPromiseResolveBlock, rejecter: @escaping RCTPromiseRejectBlock) {
+    stopAdvertising(resolver: resolver, rejecter: rejecter)
+  }
+
   private func beginAdvertising() {
     guard let data = pendingData else { return }
     manager.stopAdvertising()
     manager.startAdvertising([
       CBAdvertisementDataLocalNameKey: "MW:" + data.base64EncodedString(),
       CBAdvertisementDataServiceUUIDsKey: [serviceUUID],
-      CBAdvertisementDataServiceDataKey: [serviceUUID: data],
     ])
     resolver?(true)
     resolver = nil

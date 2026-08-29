@@ -89,8 +89,19 @@ export async function getLecturerBleMappings(
   prisma: PrismaClient,
   lecturerId: string,
 ) {
+  const lecturer = await prisma.lecturer.findUnique({
+    where: { id: lecturerId },
+    select: { institutionId: true },
+  });
+  if (!lecturer) return { units: [] };
+
   const units = await prisma.unit.findMany({
-    where: { lecturerUnits: { some: { lecturerId } }, bleId: { not: null } },
+    // Lecturers select units from their institution at attendance time; they
+    // are not restricted to lecturerUnit assignment rows.
+    where: {
+      semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
+      bleId: { not: null },
+    },
     select: { code: true, bleId: true },
     orderBy: { code: "asc" },
   });

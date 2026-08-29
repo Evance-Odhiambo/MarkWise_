@@ -6,6 +6,11 @@ type BLEAdvertiserNativeModule = {
   requestEnableBluetooth: () => Promise<boolean> | boolean;
   startAdvertising: (payload: string) => Promise<boolean> | boolean;
   stopAdvertising: () => Promise<boolean> | boolean;
+  startBackgroundAdvertising: (
+    payload: string,
+    durationSeconds: number,
+  ) => Promise<boolean> | boolean;
+  stopBackgroundAdvertising: () => Promise<boolean> | boolean;
 };
 
 const BLEAdvertiser = NativeModules.BLEAdvertiser as
@@ -18,6 +23,24 @@ const unavailable = (): Promise<never> =>
       'Bluetooth advertiser is unavailable. Rebuild the Android app to register the native BLE module.',
     ),
   );
+
+const withTimeout = <T>(promise: Promise<T>, milliseconds: number) =>
+  new Promise<T>((resolve, reject) => {
+    const timeout = setTimeout(
+      () => reject(new Error('BLE advertising did not respond in time.')),
+      milliseconds,
+    );
+    promise.then(
+      value => {
+        clearTimeout(timeout);
+        resolve(value);
+      },
+      error => {
+        clearTimeout(timeout);
+        reject(error);
+      },
+    );
+  });
 
 class BLEAdvertiserAPI {
   isAdvertisingSupported(): Promise<boolean> {
@@ -40,7 +63,10 @@ class BLEAdvertiserAPI {
 
   startAdvertising(base64Payload: string): Promise<boolean> {
     return BLEAdvertiser
-      ? Promise.resolve(BLEAdvertiser.startAdvertising(base64Payload))
+      ? withTimeout(
+          Promise.resolve(BLEAdvertiser.startAdvertising(base64Payload)),
+          5_000,
+        )
       : unavailable();
   }
 
@@ -48,6 +74,26 @@ class BLEAdvertiserAPI {
     return BLEAdvertiser
       ? Promise.resolve(BLEAdvertiser.stopAdvertising())
       : unavailable();
+  }
+
+  startBackgroundAdvertising(
+    base64Payload: string,
+    durationSeconds: number,
+  ): Promise<boolean> {
+    return BLEAdvertiser?.startBackgroundAdvertising
+      ? Promise.resolve(
+          BLEAdvertiser.startBackgroundAdvertising(
+            base64Payload,
+            durationSeconds,
+          ),
+        )
+      : this.startAdvertising(base64Payload);
+  }
+
+  stopBackgroundAdvertising(): Promise<boolean> {
+    return BLEAdvertiser?.stopBackgroundAdvertising
+      ? Promise.resolve(BLEAdvertiser.stopBackgroundAdvertising())
+      : this.stopAdvertising();
   }
 }
 

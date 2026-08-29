@@ -6,6 +6,7 @@ import {
   loadUnitMappings,
   loadSelectedUnitCodes,
   saveSelectedUnitCodes,
+  saveUnitMappings,
 } from '../../../shared/storage/unitMappings';
 import { useAuth } from '../../auth/context/AuthContext';
 import { API_BASE_URL } from '../../../shared/constants';
@@ -162,6 +163,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
           unitCode?: string;
           name?: string;
           unitName?: string;
+          bleId?: string;
         }>;
         years?: Array<{
           yearNumber: number;
@@ -180,6 +182,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
         unitCode?: string;
         name?: string;
         unitName?: string;
+        bleId?: string;
       }> =
         role === 'student'
           ? (unitsBody.years || []).flatMap(year =>
@@ -209,10 +212,26 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
           id: unit.id,
           code: normalizeCode(unit.code || unit.unitCode || ''),
           name: unit.name || unit.unitName || 'Unnamed unit',
+          bleId: String(unit.bleId || '').trim(),
         }))
         .filter(unit => unit.code);
       if (!mounted) return;
       setCatalogue(remoteUnits);
+      // Persist institution unit BLE mappings immediately. This is required
+      // when a lecturer self-selects a unit and later starts attendance
+      // offline, without relying on lecturerUnit assignment rows.
+      const catalogMappings = remoteUnits
+        .filter(unit => /^\d{4}$/.test(unit.bleId))
+        .map(unit => ({
+          unitCode: unit.code,
+          unitName: unit.name,
+          bleId: unit.bleId,
+        }));
+      if (catalogMappings.length)
+        await saveUnitMappings(
+          { userId: userId || '', role, institutionId },
+          catalogMappings,
+        );
       const remoteEnrolledIds =
         role === 'student'
           ? unitsBody.enrolledUnitIds || []

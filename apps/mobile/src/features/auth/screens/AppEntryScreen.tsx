@@ -1,6 +1,6 @@
 import React from 'react';
 import {
-  ActivityIndicator,
+  Animated,
   View,
   Text,
   TouchableOpacity,
@@ -39,6 +39,16 @@ const AppEntryScreen = ({ navigation }: Props) => {
   };
 
   const [checkingUnits, setCheckingUnits] = React.useState(false);
+  const loadingProgress = React.useRef(new Animated.Value(0.08)).current;
+
+  React.useEffect(() => {
+    const target = !isHydrated ? 0.28 : checkingUnits ? 0.78 : 1;
+    Animated.timing(loadingProgress, {
+      toValue: target,
+      duration: 420,
+      useNativeDriver: false,
+    }).start();
+  }, [checkingUnits, isHydrated, loadingProgress]);
 
   React.useEffect(() => {
     let mounted = true;
@@ -155,15 +165,38 @@ const AppEntryScreen = ({ navigation }: Props) => {
   if (!isHydrated || checkingUnits) {
     return (
       <SafeAreaView
-        className={`flex-1 items-center justify-center ${backgroundClasses}`}
+        className={`flex-1 items-center justify-center px-8 ${backgroundClasses}`}
       >
         <StatusBar barStyle={isDark ? 'light-content' : 'dark-content'} />
-        <ActivityIndicator size="large" color="#059669" />
-        <Text className={`mt-4 ${subtitleClasses}`}>
-          {checkingUnits
-            ? 'Restoring your units...'
-            : 'Restoring your session...'}
+        <View className="mb-7 h-20 w-20 items-center justify-center rounded-3xl bg-emerald-600 shadow-lg shadow-emerald-200">
+          <Text className="text-4xl font-extrabold text-white">✓</Text>
+        </View>
+        <Text className={`text-4xl font-extrabold ${titleClasses}`}>
+          MarkWise
         </Text>
+        <Text
+          className={`mt-2 text-center text-xs font-semibold uppercase tracking-[0.2em] ${accentTextClasses}`}
+        >
+          Attendance Intelligence
+        </Text>
+        <Text className={`mt-10 text-base font-semibold ${subtitleClasses}`}>
+          Loading MarkWise
+        </Text>
+        <View
+          className={`mt-4 h-2 w-full max-w-xs overflow-hidden rounded-full ${
+            isDark ? 'bg-slate-800' : 'bg-emerald-100'
+          }`}
+        >
+          <Animated.View
+            className="h-full rounded-full bg-emerald-600"
+            style={{
+              width: loadingProgress.interpolate({
+                inputRange: [0, 1],
+                outputRange: ['0%', '100%'],
+              }),
+            }}
+          />
+        </View>
       </SafeAreaView>
     );
   }

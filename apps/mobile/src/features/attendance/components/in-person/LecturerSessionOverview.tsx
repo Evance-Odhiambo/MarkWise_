@@ -10,6 +10,8 @@ import {
   TouchableOpacity,
   View,
 } from 'react-native';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Bluetooth, KeyRound, QrCode, UserPlus } from 'lucide-react-native';
 import type { InPersonSession } from '../../types/inPerson';
 import { QRCodeDisplay } from './QRCodeDisplay';
@@ -253,43 +255,62 @@ const ManualMarkCard = ({
   token: string | null;
   isDark: boolean;
 }) => {
+  const normalizedUnitCode = unitCode.trim().toUpperCase().replace(/\s+/g, '');
   const [visible, setVisible] = useState(false);
   const [studentId, setStudentId] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [loadingRoster, setLoadingRoster] = useState(false);
   const [students, setStudents] = useState<CachedStudent[]>([]);
+  const insets = useSafeAreaInsets();
   useEffect(() => {
     if (!visible) return;
     let mounted = true;
     const loadRoster = async () => {
-      const cached = await getUnitStudents(unitCode).catch(() => []);
+      setLoadingRoster(true);
+      const cached = await getUnitStudents(normalizedUnitCode).catch(() => []);
       if (mounted) setStudents(cached);
-      if (!token) return;
+      if (!token) {
+        if (mounted) setLoadingRoster(false);
+        return;
+      }
       try {
-        const response = await getLecturerUnitRoster(unitCode, token);
-        const remote = response.students.map(student => ({
-          studentId: student.studentId,
-          studentName: student.studentName,
-          admissionNumber: student.admissionNumber,
-        }));
-        await saveUnitStudents(unitCode, remote);
-        if (mounted)
-          setStudents(
-            remote.map(student => ({
-              ...student,
-              unitCode,
-              syncedAt: Date.now(),
-            })),
-          );
+        const response = await getLecturerUnitRoster(normalizedUnitCode, token);
+        const remote = response.students
+          .filter(
+            student =>
+              Boolean(student.studentId) && Boolean(student.admissionNumber),
+          )
+          .map(student => ({
+            studentId: student.studentId.trim(),
+            studentName: student.studentName?.trim() || 'Unnamed student',
+            admissionNumber: student.admissionNumber.trim(),
+          }));
+        // Never replace a valid cached roster with an empty response. This
+        // keeps manual marking available offline and during a transient API
+        // or enrollment-sync issue.
+        if (remote.length > 0) {
+          await saveUnitStudents(normalizedUnitCode, remote);
+          if (mounted)
+            setStudents(
+              remote.map(student => ({
+                ...student,
+                unitCode: normalizedUnitCode,
+                syncedAt: Date.now(),
+              })),
+            );
+        }
       } catch {
         // The cached roster remains available for offline marking.
+      } finally {
+        if (mounted) setLoadingRoster(false);
       }
     };
     void loadRoster();
     return () => {
       mounted = false;
     };
-  }, [token, unitCode, visible]);
+  }, [normalizedUnitCode, token, visible]);
   const close = () => {
     if (!submitting) {
       setVisible(false);
@@ -362,9 +383,13 @@ const ManualMarkCard = ({
         animationType="slide"
         onRequestClose={close}
       >
-        <View className="flex-1 justify-start bg-black/60">
+        <SafeAreaView
+          edges={['top', 'bottom']}
+          className="flex-1 justify-start bg-black/60"
+        >
           <View
-            className={`h-[86%] rounded-b-3xl p-6 ${
+            style={{ paddingBottom: Math.max(insets.bottom, 24) }}
+            className={`h-[88%] rounded-b-3xl px-6 pt-5 ${
               isDark ? 'bg-slate-900' : 'bg-white'
             }`}
           >
@@ -410,6 +435,18 @@ const ManualMarkCard = ({
                 Student selected and ready to mark
               </Text>
             ) : null}
+            {loadingRoster && students.length === 0 ? (
+              <View className="items-center py-8">
+                <ActivityIndicator color="#d97706" />
+                <Text
+                  className={`mt-3 text-sm ${
+                    isDark ? 'text-slate-300' : 'text-slate-600'
+                  }`}
+                >
+                  Loading enrolled students...
+                </Text>
+              </View>
+            ) : null}
             {students.length > 0 && (
               <ScrollView
                 className="mt-3 max-h-[55%]"
@@ -451,6 +488,16 @@ const ManualMarkCard = ({
                 </View>
               </ScrollView>
             )}
+            {!loadingRoster && students.length === 0 ? (
+              <Text
+                className={`mt-5 text-center text-sm ${
+                  isDark ? 'text-slate-300' : 'text-slate-600'
+                }`}
+              >
+                No enrolled students are available for this unit yet. Connect to
+                the internet and reopen this dialog to refresh the roster.
+              </Text>
+            ) : null}
             <TouchableOpacity
               onPress={() => void submit()}
               disabled={!studentId.trim() || submitting}
@@ -467,7 +514,7 @@ const ManualMarkCard = ({
               )}
             </TouchableOpacity>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </>
   );

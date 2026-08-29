@@ -262,8 +262,8 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
             ? await service.submitPin(request.user.id, body)
             : typeof body.rawPayload === "string" &&
               (body.rawPayload.startsWith("MWIR1:") ||
-                body.rawPayload.startsWith("MWIR2:"))
-            ? body.rawPayload.startsWith("MWIR2:")
+                body.rawPayload.startsWith("MWR1:"))
+            ? body.rawPayload.startsWith("MWR1:")
               ? await service.submitOpaqueRelay(request.user.id, body)
               : await service.submitRelay(request.user.id, body)
             : await service.submit(request.user.id, body);
@@ -304,7 +304,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // Server-issued opaque relay proofs are compact enough for BLE. They can
+  // Server-issued v1 relay proofs are compact enough for BLE. They can
   // only be created after this student's attendance is verified.
   app.post<{ Body: { sessionId?: string } }>(
     "/relay/create-token",
@@ -339,7 +339,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       ]);
       return reply.code(201).send({
         success: true,
-        data: { payload: `MWIR2:${bytes.toString("base64")}` },
+        data: { payload: `MWR1:${bytes.toString("base64")}` },
       });
     }
   );

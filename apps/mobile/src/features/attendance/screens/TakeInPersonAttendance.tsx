@@ -172,7 +172,11 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     let active = true;
     const refresh = async () => {
       const secret = await getAttendanceSessionSecret(session.id);
-      if (!secret || !active) return;
+      if (!active) return;
+      if (!secret) {
+        setBleStartError('Preparing secure BLE payload...');
+        return;
+      }
       const [qr, currentPin, ble] = await Promise.all([
         createSignedPayload(session, secret),
         createAttendancePin(session, secret),
@@ -185,10 +189,19 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
       }
       setPin(currentPin);
       if (ble && bluetoothEnabled && bleAdvertisingSupported) {
-        if (advertisedPayloadRef.current !== ble) {
+        const needsAdvertiserStart = advertisedPayloadRef.current !== ble;
+        if (needsAdvertiserStart) {
           try {
             setBleStartError(null);
             await ensureBlePermissions();
+            if (Platform.OS === 'android')
+              await NativeBLEAdvertiser.stopBackgroundAdvertising().catch(
+                () => undefined,
+              );
+            // Keep the lecturer path in the foreground and wait for the
+            // native advertiser callback. This gives the UI a real success
+            // or failure result instead of leaving it stuck in a pending
+            // state while a background service silently fails.
             await NativeBLEAdvertiser.startAdvertising(ble.slice(7));
             advertisedPayloadRef.current = ble;
             setBleActive(true);
@@ -200,6 +213,9 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
             );
           }
         }
+      } else if (bluetoothEnabled && bleAdvertisingSupported && !ble) {
+        setBleActive(false);
+        setBleStartError('BLE unit mapping is unavailable for this unit.');
       } else {
         advertisedPayloadRef.current = null;
         setBleStartError(null);
@@ -223,6 +239,9 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
       advertisedPayloadRef.current = null;
       displayedQrCounterRef.current = null;
       void NativeBLEAdvertiser.stopAdvertising().catch(() => undefined);
+      void NativeBLEAdvertiser.stopBackgroundAdvertising().catch(
+        () => undefined,
+      );
       setBleActive(false);
     };
   }, [bleAdvertisingSupported, bluetoothEnabled, session]);
