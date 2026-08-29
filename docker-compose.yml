@@ -27,6 +27,11 @@ services:
     volumes:
       - redisdata:/data
     command: redis-server --appendonly yes
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
     restart: unless-stopped
 
   api:
@@ -54,11 +59,13 @@ services:
     ports:
       - "4000:4000"
     env_file:
-      - apps/backend/.env.local
+      - apps/backend/.env
     environment:
-      DATABASE_URL: postgresql://markwise:markwise123@postgres:5432/markwise?schema=public
+      REDIS_URL: redis://redis:6379
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     restart: unless-stopped
 
@@ -73,9 +80,7 @@ services:
       - ./apps/web:/app/apps/web
       - ./apps/web/prisma:/app/apps/web/prisma
     env_file:
-      - apps/web/.env
-    environment:
-      DATABASE_URL: postgresql://markwise:markwise123@postgres:5432/markwise?schema=public
+      - apps/backend/.env
     depends_on:
       - postgres
     restart: unless-stopped

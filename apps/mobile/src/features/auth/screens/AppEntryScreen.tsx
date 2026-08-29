@@ -14,6 +14,10 @@ import { RootStackParamList } from '../../../navigation/types';
 import { useTheme } from '../../theme/context/ThemeContext';
 import { useResponsive } from '../../theme/hooks/useResponsive';
 import { loadSelectedUnitCodes } from '../../../shared/storage/unitMappings';
+import {
+  isUnitSelectionSnapshotFresh,
+  readUnitSelectionSnapshot,
+} from '../../../shared/storage/unitSelectionCache';
 import { API_BASE_URL } from '../../../shared/constants';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'AppEntry'>;
@@ -38,6 +42,13 @@ const AppEntryScreen = ({ navigation }: Props) => {
     );
   };
 
+  const resetTo = React.useCallback(
+    (name: keyof RootStackParamList) => {
+      navigation.reset({ index: 0, routes: [{ name }] });
+    },
+    [navigation],
+  );
+
   const [checkingUnits, setCheckingUnits] = React.useState(false);
   const loadingProgress = React.useRef(new Animated.Value(0.08)).current;
 
@@ -55,11 +66,43 @@ const AppEntryScreen = ({ navigation }: Props) => {
 
     const restoreDestination = async () => {
       if (!isHydrated || !session) return;
+      if (session.token) {
+        const destination =
+          session.role === 'student' ? 'StudentApp' : 'LecturerApp';
+        resetTo(destination);
+        return;
+      }
       setCheckingUnits(true);
       try {
-        // The backend is the source of truth while online. A locally selected
-        // unit is not necessarily an enrolled unit (it may be stale or may
-        // belong to a previous incomplete enrollment sync).
+        const snapshot = await readUnitSelectionSnapshot({
+          role: session.role,
+          userId: session.userId,
+          institutionId: session.institutionId,
+        });
+        const selectedCodes = await loadSelectedUnitCodes({
+          userId: session.userId,
+          role: session.role,
+          institutionId: session.institutionId,
+        }).catch(() => [] as string[]);
+
+        const hasSavedSelection =
+          selectedCodes.length > 0 ||
+          (snapshot && snapshot.selectedCodes.length > 0);
+
+        if (snapshot && isUnitSelectionSnapshotFresh(snapshot)) {
+          if (!mounted) return;
+          resetTo(
+            session.role === 'student'
+              ? hasSavedSelection
+                ? 'StudentApp'
+                : 'StudentUnitSelection'
+              : hasSavedSelection
+                ? 'LecturerApp'
+                : 'LecturerUnitSelection',
+          );
+          return;
+        }
+
         if (session.role === 'student') {
           try {
             const response = await fetch(
@@ -72,21 +115,14 @@ const AppEntryScreen = ({ navigation }: Props) => {
             const body = (await response.json()) as {
               enrolledUnitIds?: string[];
             };
-            navigation.replace(
-              body.enrolledUnitIds?.length
+            resetTo(
+              body.enrolledUnitIds?.length || hasSavedSelection
                 ? 'StudentApp'
                 : 'StudentUnitSelection',
             );
           } catch {
-            // Preserve offline access for an existing student whose units are
-            // already stored locally.
-            const selectedCodes = await loadSelectedUnitCodes({
-              userId: session.userId,
-              role: session.role,
-              institutionId: session.institutionId,
-            });
             if (!mounted) return;
-            navigation.replace(
+            resetTo(
               selectedCodes.length ? 'StudentApp' : 'StudentUnitSelection',
             );
           }
@@ -104,28 +140,24 @@ const AppEntryScreen = ({ navigation }: Props) => {
           const body = (await response.json()) as {
             selectedUnitIds?: string[];
           };
-          navigation.replace(
-            body.selectedUnitIds?.length
+          resetTo(
+            body.selectedUnitIds?.length || hasSavedSelection
               ? 'LecturerApp'
               : 'LecturerUnitSelection',
           );
         } catch {
-          // If the API is unavailable, use the local selection so an existing
-          // user can still open the app and attend offline.
-          const selectedCodes = await loadSelectedUnitCodes({
-            userId: session.userId,
-            role: session.role,
-            institutionId: session.institutionId,
-          });
           if (!mounted) return;
-          navigation.replace(
+          resetTo(
             selectedCodes.length ? 'LecturerApp' : 'LecturerUnitSelection',
           );
         }
       } catch {
-        // A database read failure should not strand the user on the entry
-        // screen. The selection screen can recover/sync the catalogue.
-        if (mounted) navigation.replace('LecturerUnitSelection');
+        if (mounted)
+          resetTo(
+            session.role === 'student'
+              ? 'StudentUnitSelection'
+              : 'LecturerUnitSelection',
+          );
       } finally {
         if (mounted) setCheckingUnits(false);
       }
@@ -135,7 +167,7 @@ const AppEntryScreen = ({ navigation }: Props) => {
     return () => {
       mounted = false;
     };
-  }, [isHydrated, navigation, session]);
+  }, [isHydrated, resetTo, session]);
 
   const roles = [
     {
@@ -161,6 +193,10 @@ const AppEntryScreen = ({ navigation }: Props) => {
   const horizontalPadding = isTablet ? 'px-8' : 'px-5';
   const verticalPadding = isTablet ? 'py-12' : 'py-8';
   const cardRadius = isTablet ? 'rounded-[32px]' : 'rounded-[28px]';
+
+  if (session?.token) {
+    return null;
+  }
 
   if (!isHydrated || checkingUnits) {
     return (

@@ -6,7 +6,8 @@
     "dev": "turbo dev",
     "build": "turbo build",
     "lint": "turbo lint",
-    "test": "turbo test"
+    "test": "turbo test",
+    "prisma:format:backend": "npm exec --workspace=@markwise/backend -- prisma format"   
   },
   "devDependencies": {
     "turbo": "^2.0.0"

@@ -222,15 +222,21 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
       if (!Array.isArray(request.body.courses))
         return reply.code(400).send({ error: "Courses must be an array" });
 
-      await app.prisma.$transaction(async (transaction) => {
-        const allUsedBleIds = new Set(
-          (
-            await transaction.unit.findMany({
-              where: { bleId: { not: null } },
-              select: { bleId: true },
-            })
-          ).flatMap((unit) => (unit.bleId ? [unit.bleId] : [])),
-        );
+      try {
+        await app.prisma.$transaction(async (transaction) => {
+          // Fetch only BLE IDs used within this institution
+          const institutionUnits = await transaction.unit.findMany({
+            where: {
+              bleId: { not: null },
+              semester: {
+                courseYear: { course: { institutionId } },
+              },
+            },
+            select: { bleId: true },
+          });
+          const allUsedBleIds = new Set(
+            institutionUnits.flatMap((unit) => (unit.bleId ? [unit.bleId] : [])),
+          );
 
         for (const courseInput of request.body.courses) {
           const courseName = clean(courseInput.name);
@@ -289,42 +295,78 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
                 const name = clean(unitInput.name);
                 if (!code || !name) continue;
 
-                const existingUnit = await transaction.unit.findFirst({
-                  where: { semesterId: semester.id, code },
-                });
-                if (existingUnit) {
-                  const nextBleId =
-                    existingUnit.bleId ??
-                    buildAvailableUnitBleIds(allUsedBleIds, 1)[0];
-                  await transaction.unit.update({
-                    where: { id: existingUnit.id },
-                    data: {
-                      code,
-                      name,
-                      bleId: existingUnit.bleId ?? nextBleId,
-                    },
+                try {
+                  const existingUnit = await transaction.unit.findFirst({
+                    where: { semesterId: semester.id, code },
                   });
-                  if (!existingUnit.bleId) allUsedBleIds.add(nextBleId);
-                } else {
-                  const [nextBleId] = buildAvailableUnitBleIds(
-                    allUsedBleIds,
-                    1,
+                  if (existingUnit) {
+                    if (!existingUnit.bleId) {
+                      const [nextBleId] = buildAvailableUnitBleIds(
+                        allUsedBleIds,
+                        1,
+                      );
+                      if (!nextBleId) {
+                        throw new Error("Failed to generate BLE ID for existing unit");
+                      }
+                      await transaction.unit.update({
+                        where: { id: existingUnit.id },
+                        data: {
+                          code,
+                          name,
+                          bleId: nextBleId,
+                        },
+                      });
+                      allUsedBleIds.add(nextBleId);
+                    } else {
+                      await transaction.unit.update({
+                        where: { id: existingUnit.id },
+                        data: {
+                          code,
+                          name,
+                        },
+                      });
+                    }
+                  } else {
+                    const [nextBleId] = buildAvailableUnitBleIds(
+                      allUsedBleIds,
+                      1,
+                    );
+                    if (!nextBleId) {
+                      throw new Error("Failed to generate BLE ID for new unit");
+                    }
+                    await transaction.unit.create({
+                      data: {
+                        semesterId: semester.id,
+                        code,
+                        name,
+                        bleId: nextBleId,
+                      },
+                    });
+                    allUsedBleIds.add(nextBleId);
+                  }
+                } catch (unitError) {
+                  throw new Error(
+                    `Error processing unit "${code}": ${unitError instanceof Error ? unitError.message : "Unknown error"}`,
                   );
-                  await transaction.unit.create({
-                    data: {
-                      semesterId: semester.id,
-                      code,
-                      name,
-                      bleId: nextBleId,
-                    },
-                  });
-                  allUsedBleIds.add(nextBleId);
                 }
               }
             }
           }
         }
       });
+      } catch (error) {
+        const errorMessage =
+          error instanceof Error ? error.message : "Unknown error occurred";
+        console.error(
+          `[Institution Setup] Error for institution ${institutionId}:`,
+          errorMessage,
+          error,
+        );
+        return reply.code(500).send({
+          error: "Failed to save academic setup",
+          details: errorMessage,
+        });
+      }
 
       return reply.send({ success: true, message: "Academic setup saved" });
     },

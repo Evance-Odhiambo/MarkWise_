@@ -26,7 +26,7 @@ type AuthRoute =
 type Props = {
   role: UserRole;
   mode: AuthMode;
-  navigation: NativeStackNavigationProp<RootStackParamList, AuthRoute>;
+  navigation: NativeStackNavigationProp<RootStackParamList>;
 };
 
 type Institution = { id: string; name: string };
@@ -203,9 +203,9 @@ export default function RoleAuthScreen({ role, mode, navigation }: Props) {
         role,
         email: email.trim().toLowerCase(),
       });
-      // AppEntry decides whether unit setup is needed from the local
-      // WatermelonDB selection cache.
-      navigation.replace('AppEntry');
+      // Start a fresh authenticated navigation tree. AppEntry then decides
+      // whether unit setup is needed from the local WatermelonDB cache.
+      navigation.reset({ index: 0, routes: [{ name: 'AppEntry' }] });
     } catch (requestError: unknown) {
       setError(
         requestError instanceof Error ? requestError.message : 'Sign in failed',
@@ -447,7 +447,9 @@ export default function RoleAuthScreen({ role, mode, navigation }: Props) {
               </Text>
             </TouchableOpacity>
             <TouchableOpacity
-              onPress={() => navigation.navigate('AppEntry')}
+              onPress={() =>
+                navigation.reset({ index: 0, routes: [{ name: 'AppEntry' }] })
+              }
               className="mt-4 items-center"
             >
               <Text className="text-slate-500">Change role</Text>

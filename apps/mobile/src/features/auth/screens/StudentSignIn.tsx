@@ -1,11 +1,13 @@
 import React from 'react';
-import type { NativeStackScreenProps } from '@react-navigation/native-stack';
+import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import type { RootStackParamList } from '../../../navigation/types';
 import RoleAuthScreen from './RoleAuthScreen';
 
-export default function StudentSignIn({
-  navigation,
-}: NativeStackScreenProps<RootStackParamList, 'StudentSignIn'>) {
+type Props = {
+  navigation: NativeStackNavigationProp<RootStackParamList>;
+};
+
+export default function StudentSignIn({ navigation }: Props) {
   return (
     <RoleAuthScreen role="student" mode="signIn" navigation={navigation} />
   );

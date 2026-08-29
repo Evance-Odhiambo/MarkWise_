@@ -27,6 +27,17 @@ const normalizeCode = (code: string) =>
     .trim()
     .toUpperCase()
     .replace(/\s+/g, '');
+
+const normalizeBleId = (value: string): string => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return '';
+  const stripped = raw.replace(/^0X/i, '').replace(/^[UR]/i, '');
+  const numeric = Number(stripped);
+  return Number.isInteger(numeric) && numeric >= 0 && numeric <= 7999
+    ? String(numeric)
+    : '';
+};
+
 const ownerWhere = (owner: UnitMappingOwner) => [
   Q.where('user_id', owner.userId),
   Q.where('role', owner.role),
@@ -128,13 +139,18 @@ export async function loadUnitMappings(
       owner.institutionId || ''
     }|${field}`;
   return Promise.all(
-    records.map(async record => ({
-      unitCode: record.unitCode,
-      unitName:
-        (await decryptLocalValue(record.unitName, aad('unit_name'))) ||
-        undefined,
-      bleId: (await decryptLocalValue(record.bleId, aad('ble_id'))) || '',
-    })),
+    records.map(async record => {
+      const bleId = normalizeBleId(
+        (await decryptLocalValue(record.bleId, aad('ble_id'))) || '',
+      );
+      return {
+        unitCode: record.unitCode,
+        unitName:
+          (await decryptLocalValue(record.unitName, aad('unit_name'))) ||
+          undefined,
+        bleId,
+      };
+    }),
   );
 }
 
@@ -146,9 +162,8 @@ export async function saveUnitMappings(
   const normalized = new Map<string, StoredUnitMapping>();
   for (const unit of units) {
     const code = normalizeCode(unit.unitCode);
-    const bleId = String(unit.bleId || '').trim();
-    if (code && /^\d{4}$/.test(bleId))
-      normalized.set(code, { ...unit, unitCode: code, bleId });
+    const bleId = normalizeBleId(unit.bleId || '');
+    if (code && bleId) normalized.set(code, { ...unit, unitCode: code, bleId });
   }
 
   const collection =

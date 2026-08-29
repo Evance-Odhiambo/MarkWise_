@@ -1,5 +1,12 @@
 import { API_BASE_URL } from '../constants';
 import {
+  readBleMappingsCache,
+  isBleMappingsCacheFresh,
+  cacheBleMappings,
+  fetchBleMappingsFromApi,
+  runWithBleMapppingsFetchLock,
+} from '../storage/bleCache';
+import {
   loadUnitMappings,
   saveUnitMappings,
   UnitMappingRole,
@@ -13,6 +20,16 @@ const normalizeCode = (value: string) =>
     .toUpperCase()
     .replace(/\s+/g, '')
     .replace(/[^A-Z0-9]/g, '');
+
+const normalizeBleId = (value: string): string => {
+  const raw = String(value || '').trim().toUpperCase();
+  if (!raw) return '';
+  const stripped = raw.replace(/^0X/i, '').replace(/^[UR]/i, '');
+  const parsed = Number(stripped);
+  return Number.isInteger(parsed) && parsed >= 0 && parsed <= 7999
+    ? String(parsed)
+    : '';
+};
 
 class AdaptiveAttendanceConfig {
   private role: UnitMappingRole | null = null;
@@ -58,31 +75,49 @@ class AdaptiveAttendanceConfig {
   ) {
     if (!this.role || !token || !userId) return this.getAllUnits();
     const role = this.role;
-    const endpoint =
-      role === 'lecturer' ? '/ble/mappings/lecturer' : '/ble/mappings/student';
-    const response = await fetch(`${API_BASE_URL}${endpoint}`, {
-      headers: { Accept: 'application/json', Authorization: `Bearer ${token}` },
-    });
-    if (!response.ok)
-      throw new Error(`Failed to sync BLE mappings (${response.status})`);
+    const selected = new Set(selectedCodes.map(normalizeCode).filter(Boolean));
 
-    const body = await response.json();
-    const selected = new Set(selectedCodes.map(normalizeCode));
-    const units: StoredUnitMapping[] = (body?.units || [])
-      .filter((unit: any) =>
-        selected.has(normalizeCode(unit.unitCode || unit.code)),
-      )
-      .map((unit: any) => ({
-        unitCode: unit.unitCode || unit.code,
-        unitName: unit.unitName || unit.name,
-        bleId: unit.bleId,
-      }));
+    const cached = await readBleMappingsCache(role);
+    if (cached && isBleMappingsCacheFresh(cached)) {
+      const units = cached.mappings.filter(unit =>
+        selected.has(normalizeCode(unit.unitCode)),
+      );
+      if (units.length) {
+        this.selectedCodes = selected;
+        this.replaceMappings(units);
+        await saveUnitMappings(
+          { userId, role, institutionId: this.institutionId },
+          units,
+        );
+        return this.getAllUnits();
+      }
+    }
+
+    const remote = await runWithBleMapppingsFetchLock(
+      `ble-mappings:${role}:${userId}`,
+      async () => {
+        const cachedFresh = await readBleMappingsCache(role);
+        if (cachedFresh && isBleMappingsCacheFresh(cachedFresh)) {
+          const units = cachedFresh.mappings.filter(unit =>
+            selected.has(normalizeCode(unit.unitCode)),
+          );
+          if (units.length) return units;
+        }
+
+        const fetched = await fetchBleMappingsFromApi(role, token);
+        if (!fetched) return [] as StoredUnitMapping[];
+        await cacheBleMappings(role, fetched.mappings, fetched.version);
+        return fetched.mappings.filter(unit =>
+          selected.has(normalizeCode(unit.unitCode)),
+        );
+      },
+    );
 
     this.selectedCodes = selected;
-    this.replaceMappings(units);
+    this.replaceMappings(remote);
     await saveUnitMappings(
       { userId, role, institutionId: this.institutionId },
-      units,
+      remote,
     );
     return this.getAllUnits();
   }
@@ -165,8 +200,10 @@ class AdaptiveAttendanceConfig {
     this.clearMemory();
     for (const unit of units) {
       const code = normalizeCode(unit.unitCode);
-      const id = Number(String(unit.bleId).replace(/^[UR]/i, ''));
-      if (!code || !Number.isInteger(id) || id < 0 || id > 7999) continue;
+      const bleId = normalizeBleId(unit.bleId);
+      const id = Number(bleId);
+      if (!code || !bleId || !Number.isInteger(id) || id < 0 || id > 7999)
+        continue;
       this.mappings.set(String(id).padStart(4, '0'), code);
       this.mappings.set(`0x${id.toString(16).toUpperCase()}`, code);
       this.codeToId.set(code, id);

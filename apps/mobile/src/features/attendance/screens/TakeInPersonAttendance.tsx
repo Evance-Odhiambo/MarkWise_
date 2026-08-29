@@ -42,9 +42,16 @@ import {
 import { submitDelegatedAssistedMark } from '../api/delegationApi';
 import { findCachedDelegationBySessionId } from '../storage/delegationStorage';
 import { getUnitStudents } from '../../../shared/storage/cachedUnitStudents';
-import { loadUnitMappings } from '../../../shared/storage/unitMappings';
+import {
+  loadUnitMappings,
+  saveUnitMappings,
+} from '../../../shared/storage/unitMappings';
 import { getCachedInPersonSessionById } from '../../../shared/storage/inPersonSessionCache';
 import { useUnitSelection } from '../../unit-selection/hooks/useUnitSelection';
+import {
+  cacheBleMappings,
+  fetchBleMappingsFromApi,
+} from '../../../shared/storage/bleCache';
 import { ChevronDown, QrCode, Radio, Search, X } from 'lucide-react-native';
 import { FadeSlideIn } from '../components/in-person/AnimatedAttendance';
 import {
@@ -295,6 +302,29 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     return () => clearTimeout(timeout);
   }, [end, session]);
 
+  const refreshLecturerBleMapping = async (unitCode: string) => {
+    if (!token || !userId) return null;
+    const normalizedCode = unitCode.trim().toUpperCase();
+    const synced = await fetchBleMappingsFromApi('lecturer', token);
+    if (!synced) return null;
+    const match = synced.mappings.find(
+      mapping => mapping.unitCode.trim().toUpperCase() === normalizedCode,
+    );
+    if (!match?.bleId) return null;
+    await saveUnitMappings(
+      { userId, role: 'lecturer', institutionId },
+      synced.mappings,
+    );
+    await cacheBleMappings('lecturer', synced.mappings, synced.version);
+    await adaptiveConfig.initialize(
+      'lecturer',
+      [normalizedCode],
+      institutionId,
+      userId,
+    );
+    return Number(match.bleId);
+  };
+
   const startSession = async (unitCode = selectedUnitCode) => {
     if (!unitCode || session || sessionStartingRef.current) return;
     sessionStartingRef.current = true;
@@ -313,10 +343,26 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
       const storedBleUnitId = storedMapping?.bleId
         ? Number(storedMapping.bleId)
         : null;
+      let bleUnitId = cachedBleUnitId ?? storedBleUnitId;
+
+      if (bleUnitId == null) {
+        setBleStartError('Refreshing BLE unit mapping...');
+        const refreshedBleUnitId = await refreshLecturerBleMapping(unitCode);
+        bleUnitId = refreshedBleUnitId ?? null;
+      }
+
+      if (bleUnitId == null) {
+        setBleStartError('BLE unit mapping is unavailable for this unit.');
+        Alert.alert(
+          'BLE mapping unavailable',
+          'This teaching unit does not have a BLE mapping yet. Sync the unit list and try again.',
+        );
+        return;
+      }
       await start({
         unitCode,
         durationMinutes: 10,
-        bleUnitId: cachedBleUnitId ?? storedBleUnitId,
+        bleUnitId,
       });
     } catch (error) {
       Alert.alert(

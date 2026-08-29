@@ -11,6 +11,21 @@ import { clearSelectedUnitSelections } from '../../../shared/storage/unitMapping
 import BLEScanner from '../../native/NativeBLEScanner';
 import BLEAdvertiser from '../../native/NativeBLEAdvertiser';
 import { API_BASE_URL } from '../../../shared/constants';
+import {
+  readSessionSnapshot,
+  cacheSessionSnapshot,
+  isSessionSnapshotFresh,
+  fetchStudentProfile,
+  fetchLecturerProfile,
+  runWithSessionRefreshLock,
+  sessionCacheKey,
+} from '../../../shared/storage/sessionCache';
+import {
+  readBleMappingsCache,
+} from '../../../shared/storage/bleCache';
+import {
+  readUnitSelectionSnapshot,
+} from '../../../shared/storage/unitSelectionCache';
 
 export type UserRole = 'student' | 'lecturer';
 
@@ -61,53 +76,77 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
   const [isHydrated, setIsHydrated] = useState(false);
 
   useEffect(() => {
-    AsyncStorage.getItem(SESSION_STORAGE_KEY)
-      .then(raw => {
-        if (!raw) return;
-        const stored = JSON.parse(raw) as AuthSession;
-        if (
-          stored?.token &&
-          stored?.userId &&
-          (stored.role === 'student' || stored.role === 'lecturer')
-        ) {
-          setSessionState(stored);
-          setRole(stored.role);
+    let mounted = true;
 
-          if (stored.role === 'student') {
-            fetch(`${API_BASE_URL}/students/me`, {
-              headers: { Authorization: `Bearer ${stored.token}` },
-            })
-              .then(async response => {
-                if (!response.ok) return;
-                const profile = (await response.json()) as {
-                  userId?: string;
-                  name?: string;
-                  institutionId?: string | null;
-                  admissionNumber?: string;
-                  course?: string;
-                };
-                const refreshed: AuthSession = {
-                  ...stored,
-                  userId: profile.userId || stored.userId,
-                  name: profile.name || stored.name,
-                  institutionId:
-                    profile.institutionId || stored.institutionId || null,
-                  admissionNumber:
-                    profile.admissionNumber || stored.admissionNumber,
-                  course: profile.course || stored.course,
-                };
-                setSessionState(refreshed);
-                await AsyncStorage.setItem(
-                  SESSION_STORAGE_KEY,
-                  JSON.stringify(refreshed),
-                );
-              })
-              .catch(() => undefined);
-          }
-        }
-      })
-      .catch(() => undefined)
-      .finally(() => setIsHydrated(true));
+    const hydrateSession = async () => {
+      const snapshot = await readSessionSnapshot();
+
+      if (!mounted) return;
+
+      if (snapshot) {
+        setSessionState(snapshot);
+        setRole(snapshot.role);
+      }
+
+      const [unitSnapshot, bleSnapshot] = snapshot
+        ? await Promise.all([
+            readUnitSelectionSnapshot({
+              role: snapshot.role,
+              userId: snapshot.userId,
+              institutionId: snapshot.institutionId,
+            }),
+            readBleMappingsCache(snapshot.role),
+          ])
+        : [null, null];
+
+      if (!mounted) return;
+
+      if (unitSnapshot) {
+        void unitSnapshot;
+      }
+      if (bleSnapshot) {
+        void bleSnapshot;
+      }
+
+      setIsHydrated(true);
+
+      if (!snapshot) return;
+
+      if (isSessionSnapshotFresh(snapshot)) return;
+
+      await runWithSessionRefreshLock(
+        `${snapshot.role}:${snapshot.userId}`,
+        async () => {
+          const profile =
+            snapshot.role === 'student'
+              ? await fetchStudentProfile(snapshot.token)
+              : await fetchLecturerProfile(snapshot.token);
+
+          if (!profile || !mounted) return;
+
+          const refreshed: AuthSession = {
+            ...snapshot,
+            userId: profile.userId || snapshot.userId,
+            name: profile.name || snapshot.name,
+            institutionId:
+              profile.institutionId ?? snapshot.institutionId ?? null,
+            admissionNumber:
+              profile.admissionNumber || snapshot.admissionNumber,
+            course: profile.course || snapshot.course,
+            staffNumber: profile.staffNumber || snapshot.staffNumber,
+          };
+
+          setSessionState(refreshed);
+          await cacheSessionSnapshot(refreshed);
+        },
+      ).catch(() => undefined);
+    };
+
+    void hydrateSession();
+
+    return () => {
+      mounted = false;
+    };
   }, []);
 
   const selectRole = (nextRole: UserRole) => {
@@ -127,7 +166,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     };
     setSessionState(normalized);
     setRole(normalized.role);
-    await AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalized));
+    await Promise.all([
+      AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalized)),
+      cacheSessionSnapshot(normalized),
+    ]);
   };
 
   const signOut = async () => {
@@ -172,7 +214,10 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     setSessionState(null);
     setRole(null);
     try {
-      await AsyncStorage.removeItem(SESSION_STORAGE_KEY);
+      await Promise.all([
+        AsyncStorage.removeItem(SESSION_STORAGE_KEY),
+        AsyncStorage.removeItem(sessionCacheKey()),
+      ]);
     } catch (error) {
       cleanupErrors.push(error);
     }
