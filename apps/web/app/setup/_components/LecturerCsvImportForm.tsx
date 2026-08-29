@@ -41,16 +41,20 @@ export function LecturerCsvImportForm({ onDataImported }: CsvImportFormProps) {
 
     try {
       const result = parseLecturerCsv(csvText);
-      const missingCols = expectedColumns.filter((col) => !result.headers.includes(col));
+      const missingCols = expectedColumns.filter(
+        (col) => !result.headers.includes(col),
+      );
       if (missingCols.length > 0) {
         setError(
-          `Missing required columns: ${missingCols.join(", ")}. Expected columns: ${expectedColumns.join(", ")}`
+          `Missing required columns: ${missingCols.join(", ")}. Expected columns: ${expectedColumns.join(", ")}`,
         );
         return;
       }
 
       setError(null);
-      setSuccessMessage(`Successfully parsed ${result.lecturers.length} lecturers`);
+      setSuccessMessage(
+        `Successfully parsed ${result.lecturers.length} lecturers`,
+      );
       onDataImported(result.lecturers);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to parse CSV");
@@ -96,7 +100,9 @@ export function LecturerCsvImportForm({ onDataImported }: CsvImportFormProps) {
       {fileName && <p className="text-sm text-gray-600">Loaded: {fileName}</p>}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
+      {successMessage && (
+        <p className="text-sm text-green-600">{successMessage}</p>
+      )}
 
       <button
         type="button"

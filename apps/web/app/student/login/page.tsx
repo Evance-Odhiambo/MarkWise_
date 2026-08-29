@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { GraduationCap, Mail } from "lucide-react";
@@ -11,6 +12,7 @@ import { Input } from "@/components/ui/input";
 
 export default function StudentLoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +30,7 @@ export default function StudentLoginPage() {
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/student/login", {
+      const response = await fetch("/api/v1/students/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ email, password }),
@@ -36,15 +38,28 @@ export default function StudentLoginPage() {
 
       if (response.ok) {
         const data = await response.json();
-        localStorage.setItem("user", JSON.stringify({
-          id: data.userId,
-          name: data.name,
-          role: "student",
-          institutionId: data.institutionId,
-        }));
-        router.push("/student/dashboard");
+        localStorage.setItem(
+          "user",
+          JSON.stringify({
+            token: data.token,
+            id: data.userId,
+            name: data.name,
+            email: email.trim().toLowerCase(),
+            role: "student",
+            institutionId: data.institutionId,
+            course: data.course,
+            admissionNumber: data.admissionNumber,
+          }),
+        );
+        const returnTo = searchParams.get("returnTo");
+        const destination = returnTo?.startsWith("/")
+          ? returnTo
+          : "/student/dashboard";
+        router.push(destination);
       } else {
-        const data = await response.json().catch(() => ({ error: "Login failed" }));
+        const data = await response
+          .json()
+          .catch(() => ({ error: "Login failed" }));
         setError(data.error || "Login failed");
       }
     } catch {
@@ -64,7 +79,10 @@ export default function StudentLoginPage() {
       footer={
         <p className="mt-6 border-t border-slate-200 pt-5 text-center text-sm text-slate-600">
           Don't have an account?{" "}
-          <Link href="/student/register" className="font-semibold text-emerald-700 hover:text-emerald-800">
+          <Link
+            href="/student/register"
+            className="font-semibold text-emerald-700 hover:text-emerald-800"
+          >
             Sign up
           </Link>
         </p>
@@ -72,18 +90,49 @@ export default function StudentLoginPage() {
     >
       <form onSubmit={handleSubmit} className="space-y-5">
         <div className="space-y-2">
-          <label htmlFor="email" className="text-sm font-medium text-slate-700">Email address</label>
+          <label htmlFor="email" className="text-sm font-medium text-slate-700">
+            Email address
+          </label>
           <div className="relative">
             <Mail className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-            <Input id="email" type="email" value={email} onChange={(event) => setEmail(event.target.value)} placeholder="you@example.com" className="h-11 pl-9 text-base" required />
+            <Input
+              id="email"
+              type="email"
+              value={email}
+              onChange={(event) => setEmail(event.target.value)}
+              placeholder="you@example.com"
+              className="h-11 pl-9 text-base"
+              required
+            />
           </div>
         </div>
         <div className="space-y-2">
-          <label htmlFor="password" className="text-sm font-medium text-slate-700">Password</label>
-          <PasswordInput id="password" value={password} onChange={setPassword} className="h-11 text-base" placeholder="Enter your password" label="Password" required />
+          <label
+            htmlFor="password"
+            className="text-sm font-medium text-slate-700"
+          >
+            Password
+          </label>
+          <PasswordInput
+            id="password"
+            value={password}
+            onChange={setPassword}
+            className="h-11 text-base"
+            placeholder="Enter your password"
+            label="Password"
+            required
+          />
         </div>
-        {error && <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">{error}</p>}
-        <Button type="submit" disabled={isSubmitting || !email || !password} className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700">
+        {error && (
+          <p className="rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+            {error}
+          </p>
+        )}
+        <Button
+          type="submit"
+          disabled={isSubmitting || !email || !password}
+          className="h-11 w-full bg-emerald-600 text-white hover:bg-emerald-700"
+        >
           {isSubmitting ? "Signing in..." : "Sign in"}
         </Button>
       </form>

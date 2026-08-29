@@ -12,12 +12,12 @@ interface LogoProps {
   className?: string;
 }
 
-export function Logo({ 
-  showText = true, 
-  size = 32, 
+export function Logo({
+  showText = true,
+  size = 32,
   variant = "default",
   animated = false,
-  className = ""
+  className = "",
 }: LogoProps) {
   const [isHovered, setIsHovered] = useState(false);
 
@@ -36,27 +36,31 @@ export function Logo({
   };
 
   return (
-    <Link 
-      href="/" 
+    <Link
+      href="/"
       className={`inline-flex items-center gap-4 group transition-transform duration-300 ${className}`}
       onMouseEnter={() => setIsHovered(true)}
       onMouseLeave={() => setIsHovered(false)}
     >
       <div className="transition-transform duration-300 group-hover:scale-[1.04] group-hover:-rotate-1">
-        <LogoIcon 
-          size={size} 
+        <LogoIcon
+          size={size}
           variant={variant}
           animated={animated}
           isHovered={isHovered}
         />
       </div>
-      
+
       {showText && (
         <div className="flex flex-col leading-tight">
-          <span className={`text-2xl font-bold tracking-tight transition-colors duration-300 ${textColors[variant]}`}>
+          <span
+            className={`text-2xl font-bold tracking-tight transition-colors duration-300 ${textColors[variant]}`}
+          >
             Mark<span className="text-emerald-600">Wise</span>
           </span>
-          <p className={`text-[10px] font-medium tracking-[0.25em] uppercase transition-colors duration-300 ${subtitleColors[variant]}`}>
+          <p
+            className={`text-[10px] font-medium tracking-[0.25em] uppercase transition-colors duration-300 ${subtitleColors[variant]}`}
+          >
             Attendance Intelligence
           </p>
         </div>

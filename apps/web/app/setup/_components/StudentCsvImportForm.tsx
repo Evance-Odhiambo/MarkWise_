@@ -11,7 +11,10 @@ interface CsvImportFormProps {
 
 const expectedColumns = ["name", "admissionNumber"];
 
-export function StudentCsvImportForm({ selectedCourse, onDataImported }: CsvImportFormProps) {
+export function StudentCsvImportForm({
+  selectedCourse,
+  onDataImported,
+}: CsvImportFormProps) {
   const [csvText, setCsvText] = useState("");
   const [fileName, setFileName] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -42,10 +45,12 @@ export function StudentCsvImportForm({ selectedCourse, onDataImported }: CsvImpo
 
     try {
       const result = parseStudentCsv(csvText);
-      const missingCols = expectedColumns.filter((col) => !result.headers.includes(col));
+      const missingCols = expectedColumns.filter(
+        (col) => !result.headers.includes(col),
+      );
       if (missingCols.length > 0) {
         setError(
-          `Missing required columns: ${missingCols.join(", ")}. Expected columns: ${expectedColumns.join(", ")}, course will be assigned as "${selectedCourse}"`
+          `Missing required columns: ${missingCols.join(", ")}. Expected columns: ${expectedColumns.join(", ")}, course will be assigned as "${selectedCourse}"`,
         );
         return;
       }
@@ -57,7 +62,9 @@ export function StudentCsvImportForm({ selectedCourse, onDataImported }: CsvImpo
       }));
 
       setError(null);
-      setSuccessMessage(`Successfully parsed ${result.students.length} students`);
+      setSuccessMessage(
+        `Successfully parsed ${result.students.length} students`,
+      );
       onDataImported(studentsWithCourse);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : "Failed to parse CSV");
@@ -101,13 +108,16 @@ export function StudentCsvImportForm({ selectedCourse, onDataImported }: CsvImpo
       </div>
 
       <p className="text-sm text-gray-600">
-        Course: <strong>{selectedCourse}</strong> (applied to all imported students)
+        Course: <strong>{selectedCourse}</strong> (applied to all imported
+        students)
       </p>
 
       {fileName && <p className="text-sm text-gray-600">Loaded: {fileName}</p>}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
+      {successMessage && (
+        <p className="text-sm text-green-600">{successMessage}</p>
+      )}
 
       <button
         type="button"

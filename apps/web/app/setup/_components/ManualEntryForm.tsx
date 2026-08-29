@@ -5,7 +5,11 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
-import type { AcademicCourse, AcademicSemester, AcademicUnit } from "../types/academic";
+import type {
+  AcademicCourse,
+  AcademicSemester,
+  AcademicUnit,
+} from "../types/academic";
 
 interface ManualEntryFormProps {
   data: AcademicCourse[];
@@ -15,10 +19,14 @@ interface ManualEntryFormProps {
 const SEMESTER_OPTIONS = ["Semester 1", "Semester 2"];
 
 export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
-  const [view, setView] = useState<"courses" | "years" | "semesters" | "units">("courses");
+  const [view, setView] = useState<"courses" | "years" | "semesters" | "units">(
+    "courses",
+  );
   const [selectedCourseId, setSelectedCourseId] = useState<string | null>(null);
   const [selectedYearId, setSelectedYearId] = useState<string | null>(null);
-  const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(null);
+  const [selectedSemesterId, setSelectedSemesterId] = useState<string | null>(
+    null,
+  );
 
   const [courseName, setCourseName] = useState("");
   const [courseDuration, setCourseDuration] = useState(1);
@@ -64,7 +72,9 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
 
         const nextYears = Array.from({ length: courseDuration }, (_, index) => {
           const yearNumber = index + 1;
-          const existingYear = course.years.find((year) => year.yearNumber === yearNumber);
+          const existingYear = course.years.find(
+            (year) => year.yearNumber === yearNumber,
+          );
 
           if (existingYear) {
             return {
@@ -93,7 +103,9 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
       return;
     }
 
-    const existing = data.find((c) => c.name.toLowerCase() === courseName.trim().toLowerCase());
+    const existing = data.find(
+      (c) => c.name.toLowerCase() === courseName.trim().toLowerCase(),
+    );
     if (existing) {
       alert("A course with this name already exists");
       return;
@@ -140,9 +152,15 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
     courseId ? data.find((c) => c.id === courseId) : null;
 
   const getYear = (courseId: string | null, yearId: string | null) =>
-    courseId && yearId ? getCourse(courseId)?.years.find((y) => y.id === yearId) : null;
+    courseId && yearId
+      ? getCourse(courseId)?.years.find((y) => y.id === yearId)
+      : null;
 
-  const getSemester = (courseId: string | null, yearId: string | null, semesterId: string | null) =>
+  const getSemester = (
+    courseId: string | null,
+    yearId: string | null,
+    semesterId: string | null,
+  ) =>
     courseId && yearId && semesterId
       ? getYear(courseId, yearId)?.semesters?.find((s) => s.id === semesterId)
       : null;
@@ -152,13 +170,21 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
       sum +
       (c.years || []).reduce(
         (sumY, y) =>
-          sumY + (y.semesters || []).reduce((sumS, s) => sumS + (s.units || []).length, 0),
-        0
+          sumY +
+          (y.semesters || []).reduce(
+            (sumS, s) => sumS + (s.units || []).length,
+            0,
+          ),
+        0,
       ),
-    0
+    0,
   );
 
-  const addUnitsFromCsv = (courseId: string, yearId: string, semesterId: string) => {
+  const addUnitsFromCsv = (
+    courseId: string,
+    yearId: string,
+    semesterId: string,
+  ) => {
     const lines = bulkUnitCsv
       .split("\n")
       .map((line) => line.trim())
@@ -191,19 +217,25 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                 ? {
                     ...y,
                     semesters: (y.semesters || []).map((s) =>
-                      s.id === semesterId ? { ...s, units: [...(s.units || []), ...newUnits] } : s
+                      s.id === semesterId
+                        ? { ...s, units: [...(s.units || []), ...newUnits] }
+                        : s,
                     ),
                   }
-                : y
+                : y,
             ),
           }
-        : c
+        : c,
     );
     onDataChange(updatedData);
     resetUnitForm();
   };
 
-  const addSingleUnit = (courseId: string, yearId: string, semesterId: string) => {
+  const addSingleUnit = (
+    courseId: string,
+    yearId: string,
+    semesterId: string,
+  ) => {
     if (!unitCode || !unitName) return;
 
     const semester = getSemester(courseId, yearId, semesterId);
@@ -231,19 +263,26 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                 ? {
                     ...y,
                     semesters: (y.semesters || []).map((s) =>
-                      s.id === semesterId ? { ...s, units: [...(s.units || []), newUnit] } : s
+                      s.id === semesterId
+                        ? { ...s, units: [...(s.units || []), newUnit] }
+                        : s,
                     ),
                   }
-                : y
+                : y,
             ),
           }
-        : c
+        : c,
     );
     onDataChange(updatedData);
     resetUnitForm();
   };
 
-  const deleteUnit = (courseId: string, yearId: string, semesterId: string, unitId: string) => {
+  const deleteUnit = (
+    courseId: string,
+    yearId: string,
+    semesterId: string,
+    unitId: string,
+  ) => {
     const updatedData = data.map((c) =>
       c.id === courseId
         ? {
@@ -254,14 +293,19 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                     ...y,
                     semesters: (y.semesters || []).map((s) =>
                       s.id === semesterId
-                        ? { ...s, units: (s.units || []).filter((u) => u.id !== unitId) }
-                        : s
+                        ? {
+                            ...s,
+                            units: (s.units || []).filter(
+                              (u) => u.id !== unitId,
+                            ),
+                          }
+                        : s,
                     ),
                   }
-                : y
+                : y,
             ),
           }
-        : c
+        : c,
     );
     onDataChange(updatedData);
   };
@@ -269,15 +313,22 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
   const renderCoursesView = () => (
     <div className="space-y-5">
       <div className="flex items-center justify-between">
-        <h3 className="text-lg font-semibold text-slate-900">Courses / Programs</h3>
-        <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
+        <h3 className="text-lg font-semibold text-slate-900">
+          Courses / Programs
+        </h3>
+        <Badge
+          variant="secondary"
+          className="rounded-full bg-slate-100 text-slate-700"
+        >
           {data.length} added
         </Badge>
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">
         <div className="space-y-2 md:col-span-1">
-          <label className="block text-sm font-medium text-slate-700">Course Name</label>
+          <label className="block text-sm font-medium text-slate-700">
+            Course Name
+          </label>
           <Input
             type="text"
             value={courseName}
@@ -287,22 +338,36 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
           />
         </div>
         <div className="space-y-2">
-          <label className="block text-sm font-medium text-slate-700">Duration (Years)</label>
+          <label className="block text-sm font-medium text-slate-700">
+            Duration (Years)
+          </label>
           <Input
             type="number"
             value={courseDuration}
-            onChange={(e) => setCourseDuration(parseInt(e.target.value, 10) || 1)}
+            onChange={(e) =>
+              setCourseDuration(parseInt(e.target.value, 10) || 1)
+            }
             min={1}
             max={10}
             className="h-11 rounded-xl border-slate-200 bg-slate-50"
           />
         </div>
         <div className="flex items-end gap-2">
-          <Button type="button" onClick={addCourse} disabled={!courseName || courseDuration < 1} className="w-full justify-center">
+          <Button
+            type="button"
+            onClick={addCourse}
+            disabled={!courseName || courseDuration < 1}
+            className="w-full justify-center"
+          >
             {editingCourseId ? "Update Course" : "Add Course"}
           </Button>
           {editingCourseId && (
-            <Button type="button" variant="outline" onClick={resetCourseForm} className="justify-center">
+            <Button
+              type="button"
+              variant="outline"
+              onClick={resetCourseForm}
+              className="justify-center"
+            >
               Cancel
             </Button>
           )}
@@ -311,18 +376,30 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
 
       {data.length === 0 ? (
         <Card className="border-dashed border-slate-300 bg-slate-50/70">
-          <div className="p-6 text-center text-sm text-slate-500">No courses added yet.</div>
+          <div className="p-6 text-center text-sm text-slate-500">
+            No courses added yet.
+          </div>
         </Card>
       ) : (
         <div className="overflow-hidden rounded-xl border border-slate-200 bg-white">
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Name</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Duration</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Years</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Units</th>
-                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">Action</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Duration
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Years
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Units
+                </th>
+                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -330,13 +407,21 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                 const yearCount = course.years.length;
                 const unitCount = (course.years || []).reduce(
                   (sum, y) =>
-                    sum + (y.semesters || []).reduce((sumS, s) => sumS + (s.units || []).length, 0),
-                  0
+                    sum +
+                    (y.semesters || []).reduce(
+                      (sumS, s) => sumS + (s.units || []).length,
+                      0,
+                    ),
+                  0,
                 );
                 return (
                   <tr key={course.id} className="border-t border-slate-200">
-                    <td className="px-4 py-3 font-medium text-slate-800">{course.name}</td>
-                    <td className="px-4 py-3 text-slate-600">{course.duration} years</td>
+                    <td className="px-4 py-3 font-medium text-slate-800">
+                      {course.name}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {course.duration} years
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{yearCount}</td>
                     <td className="px-4 py-3 text-slate-600">{unitCount}</td>
                     <td className="px-4 py-3 text-right">
@@ -404,7 +489,10 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
               {course.name} — Duration {course.duration} years
             </h3>
           </div>
-          <Badge variant="outline" className="border-slate-200 bg-slate-50 text-slate-700">
+          <Badge
+            variant="outline"
+            className="border-slate-200 bg-slate-50 text-slate-700"
+          >
             {course.years.length} years
           </Badge>
         </div>
@@ -413,22 +501,34 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Year</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Semesters</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Units</th>
-                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">Action</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Year
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Semesters
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Units
+                </th>
+                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
               {course.years.map((year) => {
                 const unitCount = (year.semesters || []).reduce(
                   (sum, s) => sum + (s.units || []).length,
-                  0
+                  0,
                 );
                 return (
                   <tr key={year.id} className="border-t border-slate-200">
-                    <td className="px-4 py-3 text-slate-800">Year {year.yearNumber}</td>
-                    <td className="px-4 py-3 text-slate-600">{(year.semesters || []).length}</td>
+                    <td className="px-4 py-3 text-slate-800">
+                      Year {year.yearNumber}
+                    </td>
+                    <td className="px-4 py-3 text-slate-600">
+                      {(year.semesters || []).length}
+                    </td>
                     <td className="px-4 py-3 text-slate-600">{unitCount}</td>
                     <td className="px-4 py-3 text-right">
                       <button
@@ -455,7 +555,10 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
 
   const renderSemestersView = () => {
     const course = selectedCourseId ? getCourse(selectedCourseId) : null;
-    const year = selectedCourseId && selectedYearId ? getYear(selectedCourseId, selectedYearId) : null;
+    const year =
+      selectedCourseId && selectedYearId
+        ? getYear(selectedCourseId, selectedYearId)
+        : null;
     if (!course || !year) return null;
 
     return (
@@ -476,7 +579,10 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
               {course.name} — Year {year.yearNumber}
             </h3>
           </div>
-          <Badge variant="secondary" className="rounded-full bg-blue-50 text-blue-700">
+          <Badge
+            variant="secondary"
+            className="rounded-full bg-blue-50 text-blue-700"
+          >
             Semester plan
           </Badge>
         </div>
@@ -485,18 +591,30 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
           <table className="w-full text-sm">
             <thead className="bg-slate-50">
               <tr>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Name</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Semester #</th>
-                <th className="px-4 py-3 text-left font-medium text-slate-700">Units</th>
-                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">Action</th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Name
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Semester #
+                </th>
+                <th className="px-4 py-3 text-left font-medium text-slate-700">
+                  Units
+                </th>
+                <th className="w-24 px-4 py-3 text-right font-medium text-slate-700">
+                  Action
+                </th>
               </tr>
             </thead>
             <tbody>
               {(year.semesters || []).map((sem) => (
                 <tr key={sem.id} className="border-t border-slate-200">
                   <td className="px-4 py-3 text-slate-800">{sem.name}</td>
-                  <td className="px-4 py-3 text-slate-600">{sem.semesterNum}</td>
-                  <td className="px-4 py-3 text-slate-600">{(sem.units || []).length}</td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {sem.semesterNum}
+                  </td>
+                  <td className="px-4 py-3 text-slate-600">
+                    {(sem.units || []).length}
+                  </td>
                   <td className="px-4 py-3 text-right">
                     <button
                       type="button"
@@ -532,8 +650,13 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
   };
 
   const renderUnitsView = () => {
-    if (!selectedCourseId || !selectedYearId || !selectedSemesterId) return null;
-    const semester = getSemester(selectedCourseId, selectedYearId, selectedSemesterId);
+    if (!selectedCourseId || !selectedYearId || !selectedSemesterId)
+      return null;
+    const semester = getSemester(
+      selectedCourseId,
+      selectedYearId,
+      selectedSemesterId,
+    );
     if (!semester) return null;
 
     return (
@@ -541,14 +664,19 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
         <div className="space-y-5 p-4 sm:p-5">
           <div className="flex items-center justify-between gap-3">
             <h3 className="text-lg font-semibold text-slate-900">Units</h3>
-            <Badge variant="outline" className="border-slate-200 bg-white text-slate-700">
+            <Badge
+              variant="outline"
+              className="border-slate-200 bg-white text-slate-700"
+            >
               {semester.units.length} in this term
             </Badge>
           </div>
 
           <div className="grid gap-4 md:grid-cols-2">
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Unit Name</label>
+              <label className="block text-sm font-medium text-slate-700">
+                Unit Name
+              </label>
               <Input
                 type="text"
                 value={unitName}
@@ -558,7 +686,9 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
               />
             </div>
             <div className="space-y-2">
-              <label className="block text-sm font-medium text-slate-700">Unit Code</label>
+              <label className="block text-sm font-medium text-slate-700">
+                Unit Code
+              </label>
               <Input
                 type="text"
                 value={unitCode}
@@ -572,7 +702,13 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
           <div className="flex flex-col gap-3 sm:flex-row">
             <Button
               type="button"
-              onClick={() => addSingleUnit(selectedCourseId, selectedYearId, selectedSemesterId)}
+              onClick={() =>
+                addSingleUnit(
+                  selectedCourseId,
+                  selectedYearId,
+                  selectedSemesterId,
+                )
+              }
               disabled={!unitCode || !unitName}
               className="justify-center"
             >
@@ -581,7 +717,9 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
           </div>
 
           <div className="space-y-2">
-            <label className="block text-sm font-medium text-slate-700">Bulk Add Units (CSV format: code,name)</label>
+            <label className="block text-sm font-medium text-slate-700">
+              Bulk Add Units (CSV format: code,name)
+            </label>
             <textarea
               value={bulkUnitCsv}
               onChange={(e) => setBulkUnitCsv(e.target.value)}
@@ -589,13 +727,21 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
               rows={6}
               className="w-full rounded-xl border border-slate-200 bg-white px-3 py-2 font-mono text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
             />
-            <p className="text-xs text-slate-500">Enter one unit per line: code, name</p>
+            <p className="text-xs text-slate-500">
+              Enter one unit per line: code, name
+            </p>
           </div>
 
           <Button
             type="button"
             variant="secondary"
-            onClick={() => addUnitsFromCsv(selectedCourseId, selectedYearId, selectedSemesterId)}
+            onClick={() =>
+              addUnitsFromCsv(
+                selectedCourseId,
+                selectedYearId,
+                selectedSemesterId,
+              )
+            }
             disabled={!bulkUnitCsv.trim()}
             className="justify-center"
           >
@@ -606,15 +752,24 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
             <table className="w-full text-sm">
               <thead className="bg-slate-50">
                 <tr>
-                  <th className="px-4 py-3 text-left font-medium text-slate-700">Unit Name</th>
-                  <th className="px-4 py-3 text-left font-medium text-slate-700">Unit Code</th>
-                  <th className="w-20 px-4 py-3 text-right font-medium text-slate-700">Action</th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-700">
+                    Unit Name
+                  </th>
+                  <th className="px-4 py-3 text-left font-medium text-slate-700">
+                    Unit Code
+                  </th>
+                  <th className="w-20 px-4 py-3 text-right font-medium text-slate-700">
+                    Action
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {semester.units.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="px-4 py-6 text-center text-slate-500">
+                    <td
+                      colSpan={3}
+                      className="px-4 py-6 text-center text-slate-500"
+                    >
                       No units added yet.
                     </td>
                   </tr>
@@ -626,7 +781,14 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
                       <td className="px-4 py-3 text-right">
                         <button
                           type="button"
-                          onClick={() => deleteUnit(selectedCourseId, selectedYearId, selectedSemesterId, unit.id)}
+                          onClick={() =>
+                            deleteUnit(
+                              selectedCourseId,
+                              selectedYearId,
+                              selectedSemesterId,
+                              unit.id,
+                            )
+                          }
                           className="text-sm font-medium text-red-600 hover:text-red-700"
                         >
                           Delete
@@ -663,14 +825,20 @@ export function ManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
           )}
         </div>
 
-        <Badge variant="secondary" className="rounded-full bg-slate-100 text-slate-700">
+        <Badge
+          variant="secondary"
+          className="rounded-full bg-slate-100 text-slate-700"
+        >
           {data.length} courses · {totalUnits} units
         </Badge>
       </div>
 
       {view === "courses" && renderCoursesView()}
       {view === "years" && selectedCourseId && renderYearsView()}
-      {view === "semesters" && selectedCourseId && selectedYearId && renderSemestersView()}
+      {view === "semesters" &&
+        selectedCourseId &&
+        selectedYearId &&
+        renderSemestersView()}
     </div>
   );
 }

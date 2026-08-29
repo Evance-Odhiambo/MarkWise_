@@ -75,6 +75,23 @@ export const getActiveInPersonSessionByUnit = (
     token,
   );
 
+export const submitPinByUnit = (
+  input: {
+    unitCode: string;
+    pin: string;
+    scannedAt: number;
+    deviceId?: string;
+  },
+  token: string,
+) =>
+  request<{
+    success: boolean;
+    data: { status: 'verified' | 'duplicate' | 'queued' };
+  }>('/attendance/in-person/pin-submit', token, {
+    method: 'POST',
+    body: JSON.stringify(input),
+  });
+
 export const getInPersonSessionByRelayToken = (
   relayToken: string,
   token: string,
@@ -82,6 +99,13 @@ export const getInPersonSessionByRelayToken = (
   request<{ success: true; data: InPersonSession }>(
     `/attendance/in-person/sessions/by-relay/${encodeURIComponent(relayToken)}`,
     token,
+  );
+
+export const createInPersonRelayToken = (sessionId: string, token: string) =>
+  request<{ success: true; data: { payload: string } }>(
+    '/attendance/in-person/relay/create-token',
+    token,
+    { method: 'POST', body: JSON.stringify({ sessionId }) },
   );
 
 export const submitInPersonAttendance = (

@@ -15,7 +15,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "MarkWise",
-  description: "MarkWise is an attendance platform that helps you track and manage student attendance efficiently.",
+  description:
+    "MarkWise is an attendance platform that helps you track and manage student attendance efficiently.",
 };
 
 export default function RootLayout({ children }: PropsWithChildren) {

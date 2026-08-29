@@ -42,10 +42,12 @@ export function CsvImportForm({ onDataImported }: CsvImportFormProps) {
 
     try {
       const result = parseCsv(csvText);
-      const missingCols = expectedColumns.filter((col) => !result.headers.includes(col));
+      const missingCols = expectedColumns.filter(
+        (col) => !result.headers.includes(col),
+      );
       if (missingCols.length > 0) {
         setError(
-          `Missing required columns: ${missingCols.join(", ")}. Expected columns: ${expectedColumns.join(", ")}. Optional columns: yearNumber, semesterName, semesterNumber, unitName, unitCode`
+          `Missing required columns: ${missingCols.join(", ")}. Expected columns: ${expectedColumns.join(", ")}. Optional columns: yearNumber, semesterName, semesterNumber, unitName, unitCode`,
         );
         return;
       }
@@ -69,7 +71,9 @@ export function CsvImportForm({ onDataImported }: CsvImportFormProps) {
   return (
     <div className="space-y-5">
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700">Upload CSV File</label>
+        <label className="block text-sm font-medium text-slate-700">
+          Upload CSV File
+        </label>
         <input
           type="file"
           accept=".csv,text/csv"
@@ -80,14 +84,14 @@ export function CsvImportForm({ onDataImported }: CsvImportFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700">Or paste CSV data</label>
+        <label className="block text-sm font-medium text-slate-700">
+          Or paste CSV data
+        </label>
         <textarea
           value={csvText}
           onChange={(e) => setCsvText(e.target.value)}
           placeholder={
-            `courseName,duration\n` +
-            `Computer Science,4\n` +
-            `Mathematics,3`
+            `courseName,duration\n` + `Computer Science,4\n` + `Mathematics,3`
           }
           rows={8}
           className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2 font-mono text-sm text-slate-700 outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
@@ -95,17 +99,27 @@ export function CsvImportForm({ onDataImported }: CsvImportFormProps) {
       </div>
 
       <p className="text-sm leading-6 text-slate-600">
-        Required columns: <strong>courseName</strong>, <strong>duration</strong> (years)
+        Required columns: <strong>courseName</strong>, <strong>duration</strong>{" "}
+        (years)
         <br />
-        Optional columns: <strong>yearNumber</strong>, <strong>semesterNumber</strong>, <strong>unitName</strong>, <strong>unitCode</strong>
+        Optional columns: <strong>yearNumber</strong>,{" "}
+        <strong>semesterNumber</strong>, <strong>unitName</strong>,{" "}
+        <strong>unitCode</strong>
       </p>
 
       {fileName && <p className="text-sm text-slate-600">Loaded: {fileName}</p>}
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-emerald-600">{successMessage}</p>}
+      {successMessage && (
+        <p className="text-sm text-emerald-600">{successMessage}</p>
+      )}
 
-      <Button type="button" onClick={handlePaste} className="w-full justify-center" size="lg">
+      <Button
+        type="button"
+        onClick={handlePaste}
+        className="w-full justify-center"
+        size="lg"
+      >
         Parse and Import CSV
       </Button>
     </div>

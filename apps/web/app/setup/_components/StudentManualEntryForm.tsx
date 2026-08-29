@@ -9,7 +9,11 @@ interface ManualEntryFormProps {
   selectedCourse: string;
 }
 
-export function StudentManualEntryForm({ data, onDataChange, selectedCourse }: ManualEntryFormProps) {
+export function StudentManualEntryForm({
+  data,
+  onDataChange,
+  selectedCourse,
+}: ManualEntryFormProps) {
   const [name, setName] = useState("");
   const [admissionNumber, setAdmissionNumber] = useState("");
 
@@ -86,8 +90,12 @@ export function StudentManualEntryForm({ data, onDataChange, selectedCourse }: M
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Name</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Admission Number</th>
+                <th className="text-left py-2 px-3 font-medium text-gray-700">
+                  Name
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-700">
+                  Admission Number
+                </th>
                 <th className="w-1"></th>
               </tr>
             </thead>

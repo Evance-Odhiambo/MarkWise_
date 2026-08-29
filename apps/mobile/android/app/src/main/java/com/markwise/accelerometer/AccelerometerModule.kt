@@ -26,7 +26,7 @@ class AccelerometerModule(reactContext: ReactApplicationContext) :
     ReactContextBaseJavaModule(reactContext), SensorEventListener {
 
     companion object {
-        private const val TAG = "AccelerometerModule"
+        private const val TAG = "Accelerometer"
         private const val EVENT_NAME = "onAccelerometerData"
     }
 
@@ -79,8 +79,11 @@ class AccelerometerModule(reactContext: ReactApplicationContext) :
             return
         }
         val intervalUs = updateIntervalUs.coerceAtMost(Int.MAX_VALUE.toLong()).toInt()
-        sensorManager.registerListener(this, accelerometerSensor, intervalUs)
-        isRegistered = true
+        isRegistered = sensorManager.registerListener(
+            this,
+            accelerometerSensor,
+            intervalUs,
+        )
     }
 
     override fun onSensorChanged(event: SensorEvent) {

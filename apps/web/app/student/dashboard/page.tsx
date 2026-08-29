@@ -118,7 +118,7 @@ export default function StudentDashboardPage() {
                   MarkWise
                 </span>
                 <span className="block text-sm font-semibold text-slate-900">
-                  Student space
+                  Student WorkSpace
                 </span>
               </span>
             </Link>

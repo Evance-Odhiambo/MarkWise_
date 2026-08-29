@@ -6,7 +6,10 @@ interface ParseResult {
 }
 
 export function parseCsv(csvText: string): ParseResult {
-  const lines = csvText.split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = csvText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   if (lines.length === 0) {
     throw new Error("CSV file is empty");
@@ -15,12 +18,18 @@ export function parseCsv(csvText: string): ParseResult {
   const headers = parseCsvLine(lines[0]);
 
   const requiredColumns = ["courseName", "duration"];
-  const optionalColumns = ["yearNumber", "semesterName", "semesterNumber", "unitName", "unitCode"];
+  const optionalColumns = [
+    "yearNumber",
+    "semesterName",
+    "semesterNumber",
+    "unitName",
+    "unitCode",
+  ];
 
   const missing = requiredColumns.filter((col) => !headers.includes(col));
   if (missing.length > 0) {
     throw new Error(
-      `Missing required columns: ${missing.join(", ")}. Required columns: ${requiredColumns.join(", ")}. Optional columns: ${optionalColumns.join(", ")}`
+      `Missing required columns: ${missing.join(", ")}. Required columns: ${requiredColumns.join(", ")}. Optional columns: ${optionalColumns.join(", ")}`,
     );
   }
 
@@ -84,10 +93,12 @@ export function parseCsv(csvText: string): ParseResult {
       if (year && year.semesters.length > 0) {
         const semesterNum = parseInt(
           values[headerIndex.get("semesterNumber")!] || "1",
-          10
+          10,
         );
-        const semester = year.semesters.find((s) => s.semesterNum === semesterNum) || year.semesters[0];
-        
+        const semester =
+          year.semesters.find((s) => s.semesterNum === semesterNum) ||
+          year.semesters[0];
+
         // Check if unit already exists
         const existingUnit = semester.units.find((u) => u.code === unitCode);
         if (!existingUnit) {

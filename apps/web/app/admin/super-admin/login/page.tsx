@@ -3,10 +3,24 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useState } from "react";
-import { ArrowRight, ShieldCheck, Building2, Mail, LockKeyhole, Eye, EyeOff } from "lucide-react";
+import {
+  ArrowRight,
+  ShieldCheck,
+  Building2,
+  Mail,
+  LockKeyhole,
+  Eye,
+  EyeOff,
+} from "lucide-react";
 
 import { Button } from "@/components/ui/button";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 
 export default function AdminLoginPage() {
@@ -47,19 +61,21 @@ export default function AdminLoginPage() {
             institutionId: data.institutionId,
             institutionName: data.institutionName,
             token: data.token,
-          })
+          }),
         );
         router.push(
           data.role === "INSTITUTION_ADMIN"
             ? "/admin/institution/dashboard"
             : data.role === "SUPER_ADMIN"
-              ? "/admin/super-admin/onboarding"
-              : "/admin/super-admin/onboarding"
+              ? "/admin/super-admin"
+              : "/admin/super-admin",
         );
         return;
       }
 
-      const data = await response.json().catch(() => ({ error: "Login failed" }));
+      const data = await response
+        .json()
+        .catch(() => ({ error: "Login failed" }));
       setError(data.error || "Login failed");
     } catch {
       setError("An unexpected error occurred");
@@ -79,9 +95,12 @@ export default function AdminLoginPage() {
             </div>
 
             <div>
-              <p className="text-sm font-medium text-sky-200">MarkWise Control Center</p>
+              <p className="text-sm font-medium text-sky-200">
+                MarkWise Control Center
+              </p>
               <h1 className="mt-3 max-w-md text-4xl font-semibold tracking-tight text-white">
-                Manage institutions, staff, and academic operations from one secure hub.
+                Manage institutions, staff, and academic operations from one
+                secure hub.
               </h1>
             </div>
           </div>
@@ -90,12 +109,18 @@ export default function AdminLoginPage() {
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <Building2 className="mb-3 h-8 w-8 text-sky-300" />
               <p className="text-lg font-semibold">Institution oversight</p>
-              <p className="mt-2 text-sm text-slate-300">Monitor registration, setup, and operational health across your network.</p>
+              <p className="mt-2 text-sm text-slate-300">
+                Monitor registration, setup, and operational health across your
+                network.
+              </p>
             </div>
             <div className="rounded-2xl border border-white/10 bg-white/5 p-4">
               <ShieldCheck className="mb-3 h-8 w-8 text-sky-300" />
               <p className="text-lg font-semibold">Role-based security</p>
-              <p className="mt-2 text-sm text-slate-300">Keep access controlled for admins, lecturers, and students with clear governance.</p>
+              <p className="mt-2 text-sm text-slate-300">
+                Keep access controlled for admins, lecturers, and students with
+                clear governance.
+              </p>
             </div>
           </div>
         </section>
@@ -107,7 +132,9 @@ export default function AdminLoginPage() {
                 <ShieldCheck className="h-6 w-6" />
               </div>
               <div>
-                <CardTitle className="text-3xl font-semibold tracking-tight text-slate-900">Admin staff sign in</CardTitle>
+                <CardTitle className="text-3xl font-semibold tracking-tight text-slate-900">
+                  Admin staff sign in
+                </CardTitle>
                 <CardDescription className="mt-2 text-base text-slate-600">
                   Sign in as a super admin to manage MarkWise operations.
                 </CardDescription>
@@ -117,7 +144,10 @@ export default function AdminLoginPage() {
             <CardContent>
               <form onSubmit={handleSubmit} className="space-y-5">
                 <div className="space-y-2">
-                  <label htmlFor="email" className="text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="email"
+                    className="text-sm font-medium text-slate-700"
+                  >
                     Email address
                   </label>
                   <div className="relative">
@@ -135,7 +165,10 @@ export default function AdminLoginPage() {
                 </div>
 
                 <div className="space-y-2">
-                  <label htmlFor="password" className="text-sm font-medium text-slate-700">
+                  <label
+                    htmlFor="password"
+                    className="text-sm font-medium text-slate-700"
+                  >
                     Password
                   </label>
                   <div className="relative">
@@ -151,11 +184,17 @@ export default function AdminLoginPage() {
                     />
                     <button
                       type="button"
-                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      aria-label={
+                        showPassword ? "Hide password" : "Show password"
+                      }
                       onClick={() => setShowPassword((value) => !value)}
                       className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-slate-700"
                     >
-                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
                     </button>
                   </div>
                 </div>
@@ -166,7 +205,11 @@ export default function AdminLoginPage() {
                   </div>
                 )}
 
-                <Button type="submit" disabled={isSubmitting} className="h-11 w-full bg-sky-600 text-white hover:bg-sky-700">
+                <Button
+                  type="submit"
+                  disabled={isSubmitting}
+                  className="h-11 w-full bg-sky-600 text-white hover:bg-sky-700"
+                >
                   {isSubmitting ? "Signing in..." : "Sign in"}
                   <ArrowRight className="ml-2 h-4 w-4" />
                 </Button>
@@ -174,7 +217,10 @@ export default function AdminLoginPage() {
 
               <div className="mt-6 flex items-center justify-between border-t border-slate-200 pt-5 text-sm text-slate-600">
                 <span>Need to onboard an institution?</span>
-                <Link href="/admin/institution/register" className="font-medium text-sky-700 transition hover:text-sky-800">
+                <Link
+                  href="/admin/institution/register"
+                  className="font-medium text-sky-700 transition hover:text-sky-800"
+                >
                   Request onboarding
                 </Link>
               </div>

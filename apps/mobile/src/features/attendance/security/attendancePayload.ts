@@ -3,6 +3,7 @@ import { hmacSha256Hex, base64ToUtf8, utf8ToBase64 } from './attendanceCrypto';
 import {
   ATTENDANCE_PROTOCOL_VERSION,
   deriveCounter,
+  BLE_ROTATION_SECONDS,
   QR_ROTATION_SECONDS,
   normalizeUnitCode,
 } from './attendanceProtocol';
@@ -76,7 +77,7 @@ export const createCompactBlePayload = async (
     throw new Error('BLE unit mapping unavailable');
   const counter = deriveCounter(
     Math.floor(session.sessionStart / 1000),
-    QR_ROTATION_SECONDS,
+    BLE_ROTATION_SECONDS,
     nowMs,
   );
   const bytes = new Uint8Array(9);

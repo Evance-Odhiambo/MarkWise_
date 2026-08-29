@@ -33,7 +33,7 @@ const IN_PERSON_FEATURES = [
     description:
       "Lecturers can manually mark students present directly from their device- perfect for studennts without smartphones or in case of technical issues.",
     color: "from-green-500 to-teal-600",
-  },  
+  },
   {
     icon: "🌐",
     title: "Self-Extending Relay Mesh",
@@ -121,19 +121,22 @@ const HOW_IT_WORKS_STEPS = [
 
 const TESTIMONIALS = [
   {
-    quote: "MarkWise has completely transformed how we manage attendance. Our lecturers save 5+ hours every week — hours they now spend on actual teaching.",
+    quote:
+      "MarkWise has completely transformed how we manage attendance. Our lecturers save 5+ hours every week — hours they now spend on actual teaching.",
     author: "Dr. Lawrence Nderu",
     role: "Head of Computer Sciences",
     institution: "Jomo Kenyatta University of Agriculture and Technology",
   },
   {
-    quote: "Switching from paper sheets to MarkWise was instant. The check-in takes seconds, and we've cut attendance time by 90%.",
+    quote:
+      "Switching from paper sheets to MarkWise was instant. The check-in takes seconds, and we've cut attendance time by 90%.",
     author: "Prof. Michael Chen",
     role: "Dean of Academics",
     institution: "Oxford University",
   },
   {
-    quote: "Students love the convenience, and I love the real-time dashboard. I can see exactly who's present before the lecture even starts.",
+    quote:
+      "Students love the convenience, and I love the real-time dashboard. I can see exactly who's present before the lecture even starts.",
     author: "Eng. Emily Rodriguez",
     role: "Head of Student Services",
     institution: "Stanford University",
@@ -152,22 +155,27 @@ const HomePage: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true);
   const [visibleCards, setVisibleCards] = useState<Set<string>>(new Set());
   const [activeFlowStep, setActiveFlowStep] = useState(0);
-  const [activeMode, setActiveMode] = useState<"in-person" | "online">("in-person");
+  const [activeMode, setActiveMode] = useState<"in-person" | "online">(
+    "in-person",
+  );
 
   useEffect(() => {
-    const observer = new IntersectionObserver((entries) => {
-      entries.forEach(entry => {
-        if (entry.isIntersecting) {
-          const cardId = entry.target.getAttribute('data-card-id');
-          if (cardId) {
-            setVisibleCards(prev => new Set(prev).add(cardId));
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            const cardId = entry.target.getAttribute("data-card-id");
+            if (cardId) {
+              setVisibleCards((prev) => new Set(prev).add(cardId));
+            }
           }
-        }
-      });
-    }, { threshold: 0.3 });
+        });
+      },
+      { threshold: 0.3 },
+    );
 
-    const cards = document.querySelectorAll('[data-card-id]');
-    cards.forEach(card => observer.observe(card));
+    const cards = document.querySelectorAll("[data-card-id]");
+    cards.forEach((card) => observer.observe(card));
 
     return () => observer.disconnect();
   }, []);
@@ -194,10 +202,13 @@ const HomePage: React.FC = () => {
         </div>
 
         {/* Grid Pattern */}
-        <div className="absolute inset-0 opacity-5" style={{
-          backgroundImage: `radial-gradient(circle at 20px 20px, white 1px, transparent 1px)`,
-          backgroundSize: '40px 40px',
-        }} />
+        <div
+          className="absolute inset-0 opacity-5"
+          style={{
+            backgroundImage: `radial-gradient(circle at 20px 20px, white 1px, transparent 1px)`,
+            backgroundSize: "40px 40px",
+          }}
+        />
 
         <div className="container mx-auto relative z-10">
           <div className="max-w-4xl mx-auto text-center">
@@ -211,22 +222,27 @@ const HomePage: React.FC = () => {
               </span>
             </div>
 
-            <h1 
+            <h1
               className={`text-4xl md:text-6xl lg:text-7xl font-extrabold text-white leading-tight tracking-tight mb-6 transition-all duration-700 ${
-                isVisible ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-8'
+                isVisible
+                  ? "opacity-100 transform translate-y-0"
+                  : "opacity-0 transform translate-y-8"
               }`}
             >
               Transform Your Campus
               <span className="block text-emerald-200">Attendance</span>
             </h1>
 
-            <p 
+            <p
               className={`text-lg md:text-xl text-white/80 max-w-2xl mx-auto mb-10 transition-all duration-700 delay-100 ${
-                isVisible ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-8'
+                isVisible
+                  ? "opacity-100 transform translate-y-0"
+                  : "opacity-0 transform translate-y-8"
               }`}
             >
-              MarkWise provides a comprehensive, secure, and intuitive solution for 
-              managing campus attendance efficiently — from classrooms to virtual lectures.
+              MarkWise provides a comprehensive, secure, and intuitive solution
+              for managing campus attendance efficiently — from classrooms to
+              virtual lectures.
             </p>
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
@@ -235,29 +251,56 @@ const HomePage: React.FC = () => {
                 className="group relative inline-flex items-center gap-2 bg-white text-emerald-700 hover:bg-emerald-50 px-8 py-4 rounded-xl font-semibold text-lg transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
               >
                 <span>Request institution onboarding</span>
-                <svg className="w-5 h-5 transition-transform group-hover:translate-x-1" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6" />
+                <svg
+                  className="w-5 h-5 transition-transform group-hover:translate-x-1"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M13 7l5 5m0 0l-5 5m5-5H6"
+                  />
                 </svg>
               </Link>
               <Link
                 href="/contact"
                 className="inline-flex items-center gap-2 px-8 py-4 rounded-xl font-semibold text-lg border-2 border-white/30 text-white hover:bg-white/10 transition-all"
               >
-                <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z" />
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                <svg
+                  className="w-5 h-5"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"
+                  />
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"
+                  />
                 </svg>
-                Book a  Demo
+                Book a Demo
               </Link>
             </div>
 
             {/* ─── Stats ──────────────────────────────────────── */}
             <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6">
               {STATS.map((stat, index) => (
-                <div 
+                <div
                   key={index}
                   className={`bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10 transition-all duration-700 delay-${index * 100} ${
-                    isVisible ? 'opacity-100 transform translate-y-0' : 'opacity-0 transform translate-y-8'
+                    isVisible
+                      ? "opacity-100 transform translate-y-0"
+                      : "opacity-0 transform translate-y-8"
                   }`}
                 >
                   <div className="text-2xl md:text-3xl font-bold text-white">
@@ -274,19 +317,27 @@ const HomePage: React.FC = () => {
             <div className="mt-16 flex flex-wrap justify-center gap-4">
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-green-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">Secure by default</span>
+                <span className="text-sm font-medium text-white">
+                  Secure by default
+                </span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-blue-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">Zero hardware</span>
+                <span className="text-sm font-medium text-white">
+                  Zero hardware
+                </span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-purple-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">Offline resilient</span>
+                <span className="text-sm font-medium text-white">
+                  Offline resilient
+                </span>
               </div>
               <div className="flex items-center gap-2 bg-white/10 backdrop-blur-sm rounded-full px-4 py-2 border border-white/10">
                 <span className="text-amber-300 text-xl">✓</span>
-                <span className="text-sm font-medium text-white">Real-time tracking</span>
+                <span className="text-sm font-medium text-white">
+                  Real-time tracking
+                </span>
               </div>
             </div>
           </div>
@@ -294,8 +345,15 @@ const HomePage: React.FC = () => {
 
         {/* Bottom Wave */}
         <div className="absolute bottom-0 left-0 right-0">
-          <svg viewBox="0 0 1440 120" fill="none" xmlns="http://www.w3.org/2000/svg">
-            <path d="M0 120L60 110C120 100 240 80 360 70C480 60 600 60 720 65C840 70 960 80 1080 85C1200 90 1320 90 1380 90L1440 90V120H1380C1320 120 1200 120 1080 120H360C240 120 120 120 60 120H0Z" fill="#F8FAFC" />
+          <svg
+            viewBox="0 0 1440 120"
+            fill="none"
+            xmlns="http://www.w3.org/2000/svg"
+          >
+            <path
+              d="M0 120L60 110C120 100 240 80 360 70C480 60 600 60 720 65C840 70 960 80 1080 85C1200 90 1320 90 1380 90L1440 90V120H1380C1320 120 1200 120 1080 120H360C240 120 120 120 60 120H0Z"
+              fill="#F8FAFC"
+            />
           </svg>
         </div>
       </section>
@@ -311,7 +369,8 @@ const HomePage: React.FC = () => {
               Everything You Need for Modern Attendance
             </h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              Whether your lectures are in-person or online, MarkWise adapts to your teaching style with specialized tools for every scenario.
+              Whether your lectures are in-person or online, MarkWise adapts to
+              your teaching style with specialized tools for every scenario.
             </p>
           </div>
 
@@ -322,8 +381,13 @@ const HomePage: React.FC = () => {
                 📱
               </div>
               <div>
-                <h3 className="text-3xl font-bold text-slate-900 mb-1">In-Person Attendance</h3>
-                <p className="text-slate-600">For physical classes — BLE, QR, PIN, lecturer-assisted, and relay mesh coverage.</p>
+                <h3 className="text-3xl font-bold text-slate-900 mb-1">
+                  In-Person Attendance
+                </h3>
+                <p className="text-slate-600">
+                  For physical classes — BLE, QR, PIN, lecturer-assisted, and
+                  relay mesh coverage.
+                </p>
               </div>
             </div>
 
@@ -336,23 +400,32 @@ const HomePage: React.FC = () => {
                     key={index}
                     data-card-id={cardId}
                     className={`group relative bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-md hover:shadow-2xl transition-all duration-500 border-2 border-slate-200 hover:border-green-300 ${
-                      isAnimated ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+                      isAnimated
+                        ? "opacity-100 translate-y-0"
+                        : "opacity-0 translate-y-8"
                     }`}
                     style={{ transitionDelay: `${index * 100}ms` }}
                   >
-                    <div className={`w-16 h-16 rounded-2xl bg-linear-to-br ${feature.color} flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform shadow-lg relative`}>
+                    <div
+                      className={`w-16 h-16 rounded-2xl bg-linear-to-br ${feature.color} flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform shadow-lg relative`}
+                    >
                       {feature.icon}
                       {isAnimated && (
-                        <svg 
+                        <svg
                           className="absolute -top-1 -right-1 w-5 h-5 text-green-500"
-                          fill="none" 
-                          stroke="currentColor" 
+                          fill="none"
+                          stroke="currentColor"
                           viewBox="0 0 24 24"
                           style={{
-                            animation: 'checkmarkDraw 0.6s ease-out 0.3s both'
+                            animation: "checkmarkDraw 0.6s ease-out 0.3s both",
                           }}
                         >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M5 13l4 4L19 7"
+                          />
                         </svg>
                       )}
                     </div>
@@ -363,8 +436,18 @@ const HomePage: React.FC = () => {
                       {feature.description}
                     </p>
                     <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H7" />
+                      <svg
+                        className="w-5 h-5 text-slate-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M17 8l4 4m0 0l-4 4m4-4H7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -380,8 +463,13 @@ const HomePage: React.FC = () => {
                 💻
               </div>
               <div>
-                <h3 className="text-3xl font-bold text-slate-900 mb-1">Online Attendance</h3>
-                <p className="text-slate-600">For virtual lectures — live tracking, seamless video integration.</p>
+                <h3 className="text-3xl font-bold text-slate-900 mb-1">
+                  Online Attendance
+                </h3>
+                <p className="text-slate-600">
+                  For virtual lectures — live tracking, seamless video
+                  integration.
+                </p>
               </div>
             </div>
 
@@ -394,23 +482,32 @@ const HomePage: React.FC = () => {
                     key={index}
                     data-card-id={cardId}
                     className={`group relative bg-white dark:bg-slate-800 rounded-2xl p-8 shadow-md hover:shadow-2xl transition-all duration-500 border-2 border-slate-200 hover:border-green-300 ${
-                      isAnimated ? 'opacity-100 translate-y-0' : 'opacity-0 translate-y-8'
+                      isAnimated
+                        ? "opacity-100 translate-y-0"
+                        : "opacity-0 translate-y-8"
                     }`}
                     style={{ transitionDelay: `${index * 100 + 300}ms` }}
                   >
-                    <div className={`w-16 h-16 rounded-2xl bg-linear-to-br ${feature.color} flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform shadow-lg relative`}>
+                    <div
+                      className={`w-16 h-16 rounded-2xl bg-linear-to-br ${feature.color} flex items-center justify-center text-3xl mb-6 group-hover:scale-110 transition-transform shadow-lg relative`}
+                    >
                       {feature.icon}
                       {isAnimated && (
-                        <svg 
+                        <svg
                           className="absolute -top-1 -right-1 w-5 h-5 text-green-500"
-                          fill="none" 
-                          stroke="currentColor" 
+                          fill="none"
+                          stroke="currentColor"
                           viewBox="0 0 24 24"
                           style={{
-                            animation: 'checkmarkDraw 0.6s ease-out 0.3s both'
+                            animation: "checkmarkDraw 0.6s ease-out 0.3s both",
                           }}
                         >
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7" />
+                          <path
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                            strokeWidth="2"
+                            d="M5 13l4 4L19 7"
+                          />
                         </svg>
                       )}
                     </div>
@@ -421,8 +518,18 @@ const HomePage: React.FC = () => {
                       {feature.description}
                     </p>
                     <div className="absolute top-6 right-6 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <svg className="w-5 h-5 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H7" />
+                      <svg
+                        className="w-5 h-5 text-slate-300"
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          strokeWidth="2"
+                          d="M17 8l4 4m0 0l-4 4m4-4H7"
+                        />
                       </svg>
                     </div>
                   </div>
@@ -431,7 +538,7 @@ const HomePage: React.FC = () => {
             </div>
           </div>
         </div>
-      </section>      
+      </section>
 
       {/* ─── How It Works ────────────────────────────────────── */}
       <section id="how-it-works" className="py-20 px-4 bg-white">
@@ -444,7 +551,9 @@ const HomePage: React.FC = () => {
               Dead Simple. Powerful Results.
             </h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              MarkWise simplifies attendance management in three effortless steps. No training, no hardware — just fast, secure and accurate check-ins for every lecture.
+              MarkWise simplifies attendance management in three effortless
+              steps. No training, no hardware — just fast, secure and accurate
+              check-ins for every lecture.
             </p>
           </div>
 
@@ -469,9 +578,7 @@ const HomePage: React.FC = () => {
                 <h3 className="text-xl font-bold text-slate-900 mb-3">
                   {step.title}
                 </h3>
-                <p className="text-slate-600">
-                  {step.description}
-                </p>
+                <p className="text-slate-600">{step.description}</p>
               </div>
             ))}
           </div>
@@ -489,7 +596,8 @@ const HomePage: React.FC = () => {
               Trusted by Leading Educators
             </h2>
             <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              See what lecturers, administrators, and institutions are achieving with MarkWise.
+              See what lecturers, administrators, and institutions are achieving
+              with MarkWise.
             </p>
           </div>
 
@@ -501,20 +609,32 @@ const HomePage: React.FC = () => {
               >
                 <div className="flex text-green-400 mb-5">
                   {[...Array(5)].map((_, i) => (
-                    <svg key={i} className="w-4 h-4 fill-current" viewBox="0 0 24 24">
+                    <svg
+                      key={i}
+                      className="w-4 h-4 fill-current"
+                      viewBox="0 0 24 24"
+                    >
                       <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
                     </svg>
                   ))}
                 </div>
                 <blockquote className="text-slate-700 text-lg leading-relaxed mb-6 italic">
-                  <span className="text-4xl text-green-200 leading-none mr-2">“</span>
+                  <span className="text-4xl text-green-200 leading-none mr-2">
+                    “
+                  </span>
                   {testimonial.quote}
-                  <span className="text-4xl text-green-200 leading-none ml-2">”</span>
+                  <span className="text-4xl text-green-200 leading-none ml-2">
+                    ”
+                  </span>
                 </blockquote>
                 <div className="border-t border-green-100 pt-4">
-                  <p className="font-semibold text-green-800">{testimonial.author}</p>
+                  <p className="font-semibold text-green-800">
+                    {testimonial.author}
+                  </p>
                   <p className="text-sm text-slate-500">{testimonial.role}</p>
-                  <p className="text-sm text-slate-400">{testimonial.institution}</p>
+                  <p className="text-sm text-slate-400">
+                    {testimonial.institution}
+                  </p>
                 </div>
               </div>
             ))}
@@ -538,14 +658,20 @@ const HomePage: React.FC = () => {
               Start Managing Attendance the Smart Way
             </h2>
             <p className="text-lg text-white/80 mb-8">
-              Join thousands of educators who have simplified their attendance management with MarkWise.
+              Join thousands of educators who have simplified their attendance
+              management with MarkWise.
             </p>
             <Link
               href="/setup"
               className="inline-flex items-center gap-2 bg-white text-green-700 hover:bg-green-50 px-10 py-4 rounded-xl font-extrabold text-lg transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
             >
               Request institution onboarding
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg
+                className="w-5 h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
                 <path
                   strokeLinecap="round"
                   strokeLinejoin="round"

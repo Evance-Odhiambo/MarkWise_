@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -18,19 +19,30 @@ import { useAuth } from '../../auth/context/AuthContext';
 import {
   getInPersonSession,
   getInPersonSessionByBleNonce,
+  getInPersonSessionByRelayToken,
+  getActiveInPersonSessionByUnit,
+  submitPinByUnit,
+  ApiRequestError,
 } from '../api/inPersonAttendanceApi';
 import { createSubmittedPinPayload } from '../security/attendancePin';
+import { RELAY_ROTATION_SECONDS } from '../security/attendanceProtocol';
+import { shouldElectRelay } from '../security/relayElection';
 import { PinInput } from '../components/PinInput';
+import { useUnitSelection } from '../../unit-selection/hooks/useUnitSelection';
+import { enqueuePendingPin } from '../../../shared/storage/pendingPinQueue';
+import { getOrCreateSecureDeviceId } from '../../../shared/storage/secureDeviceId';
 import { useInPersonCapture } from '../hooks/useInPersonCapture';
 import { useAttendanceSync } from '../hooks/useAttendanceSync';
 import type { InPersonSession } from '../types/inPerson';
 import {
   decodeAttendancePayload,
   decodeCompactBlePayload,
+  createCompactBlePayload,
 } from '../security/attendancePayload';
 import {
   createRelayPayload,
   decodeRelayPayload,
+  decodeOpaqueRelayPayload,
 } from '../security/attendanceRelay';
 import { QRCodeDisplay } from '../components/in-person/QRCodeDisplay';
 import { AttendanceBackHeader } from '../components/AttendanceBackHeader';
@@ -42,6 +54,7 @@ import {
   cacheInPersonSession,
   getCachedInPersonSession,
   getCachedInPersonSessionById,
+  getCachedActiveInPersonSessionByUnit,
 } from '../../../shared/storage/inPersonSessionCache';
 import {
   FadeSlideIn,
@@ -49,12 +62,8 @@ import {
   SpinView,
 } from '../components/in-person/AnimatedAttendance';
 import {
-  HelpCircle,
-  Info,
-  BookOpen,
   Clock,
   Radio,
-  WifiOff,
   QrCode,
   KeyRound,
   PersonStanding,
@@ -75,15 +84,21 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const [submitting, setSubmitting] = useState(false);
   const [success, setSuccess] = useState(false);
   const [relayPayload, setRelayPayload] = useState<string | null>(null);
+  const [relayBlePayload, setRelayBlePayload] = useState<string | null>(null);
+  const [relayBleActive, setRelayBleActive] = useState(false);
+  const [relayError, setRelayError] = useState<string | null>(null);
   const [bluetoothEnabled, setBluetoothEnabled] = useState(false);
+  const [bleAdvertisingSupported, setBleAdvertisingSupported] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
   const [showInfo, setShowInfo] = useState(false);
   const [scanCount, setScanCount] = useState(0);
   const [motionVerified, setMotionVerified] = useState(false);
   const [showPin, setShowPin] = useState(false);
   const [pinValue, setPinValue] = useState('');
+  const [pinUnitCode, setPinUnitCode] = useState('');
   const [pinRemainingSeconds, setPinRemainingSeconds] = useState(0);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
+  const pinWindowRef = useRef<number | null>(null);
   const autoMarkedSessions = useRef(new Set<string>());
   const lastAcceleration = useRef<{ x: number; y: number; z: number } | null>(
     null,
@@ -100,11 +115,19 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     evidence: string;
     method: 'qr';
   } | null>(null);
+  const relayParentRef = useRef<{
+    session: InPersonSession;
+    evidence: string;
+  } | null>(null);
+  const relayNeighborsRef = useRef(
+    new Map<string, { nonce: number; seenAt: number }>(),
+  );
   const { capture } = useInPersonCapture(session);
   const { sync } = useAttendanceSync(token);
   const screenClasses = isDark ? 'bg-slate-950' : 'bg-slate-50';
   const titleClasses = isDark ? 'text-white' : 'text-slate-900';
   const bodyClasses = isDark ? 'text-slate-300' : 'text-slate-600';
+  const { selectedUnits: enrolledUnits } = useUnitSelection('student');
 
   const refreshBluetooth = async () => {
     try {
@@ -138,6 +161,33 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     return () => clearInterval(interval);
   }, []);
 
+  // Some Android devices expose the advertiser a moment after Bluetooth is
+  // enabled. Retry briefly instead of showing a false unsupported state.
+  useEffect(() => {
+    let cancelled = false;
+    if (!bluetoothEnabled) {
+      setBleAdvertisingSupported(false);
+      return;
+    }
+    const check = async (attempt = 1) => {
+      try {
+        const supported = await NativeBLEAdvertiser.isAdvertisingSupported();
+        if (cancelled) return;
+        if (!supported && attempt < 4) {
+          setTimeout(() => void check(attempt + 1), 500);
+          return;
+        }
+        setBleAdvertisingSupported(Boolean(supported));
+      } catch {
+        if (!cancelled) setBleAdvertisingSupported(false);
+      }
+    };
+    void check();
+    return () => {
+      cancelled = true;
+    };
+  }, [bluetoothEnabled]);
+
   useEffect(() => {
     const update = () => {
       if (!session || session.status !== 'active') {
@@ -155,9 +205,15 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
 
   useEffect(() => {
     const update = () => {
-      setPinRemainingSeconds(
-        30 - (Math.floor(Date.now() / 1000) % 30),
-      );
+      const currentWindow = Math.floor(Date.now() / 1000 / 30);
+      if (
+        pinWindowRef.current !== null &&
+        pinWindowRef.current !== currentWindow
+      ) {
+        setPinValue('');
+      }
+      pinWindowRef.current = currentWindow;
+      setPinRemainingSeconds(30 - (Math.floor(Date.now() / 1000) % 30));
     };
     update();
     const timer = setInterval(update, 1_000);
@@ -193,17 +249,140 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   }, []);
 
   const scheduleRelay = useCallback(
-    async (attendanceSession: InPersonSession, evidence: string) => {
-      if (!userId || evidence.trim().startsWith('MWIR1:')) return;
-      const relayQr = await createRelayPayload(
-        evidence,
-        attendanceSession.id,
-        userId,
-      );
-      setRelayPayload(relayQr);
+    async (
+      attendanceSession: InPersonSession,
+      evidence: string,
+      attendanceMethod: 'qr' | 'ble' | 'pin',
+      verificationStatus: 'verified' | 'duplicate' | 'queued' = 'verified',
+      rssi?: number,
+    ) => {
+      if (
+        !userId ||
+        (attendanceMethod === 'pin' &&
+          verificationStatus !== 'verified' &&
+          verificationStatus !== 'duplicate') ||
+        evidence.trim().startsWith('MWIR1:')
+      )
+        return;
+      if (attendanceMethod === 'ble') {
+        const now = Date.now();
+        for (const [id, neighbor] of relayNeighborsRef.current) {
+          if (now - neighbor.seenAt > RELAY_ROTATION_SECONDS * 3_000)
+            relayNeighborsRef.current.delete(id);
+        }
+        const neighborCount = Array.from(relayNeighborsRef.current.values()).filter(
+          neighbor =>
+            neighbor.nonce === attendanceSession.sessionNonce &&
+            now - neighbor.seenAt <= RELAY_ROTATION_SECONDS * 3_000,
+        ).length;
+        if (!shouldElectRelay({ rssi, neighborCount })) return;
+      }
+      relayParentRef.current = { session: attendanceSession, evidence };
+      setRelayError(null);
+      try {
+        setRelayBlePayload(
+          // BLE is a compact discovery signal. The signed relay QR carries
+          // the relayer identity and proof; BLE rebroadcasts the 9-byte v1
+          // session beacon for maximum room coverage.
+          await createCompactBlePayload(attendanceSession, ''),
+        );
+      } catch {
+        setRelayError(
+          'Offline BLE relay is unavailable for this unit. The relay QR remains available.',
+        );
+      }
+
+      // QR and BLE relay proofs are generated locally. The backend verifies
+      // the relayer key and parent attendance when queued records sync.
     },
     [userId],
   );
+
+  useEffect(() => {
+    const parent = relayParentRef.current;
+    if (!parent) return;
+    let active = true;
+    const updateQr = async () => {
+      if (parent.session.expiresAt <= Date.now()) {
+        if (active) setRelayPayload(null);
+        return;
+      }
+      try {
+        const value = await createRelayPayload(
+          parent.evidence,
+          parent.session.id,
+          userId || '',
+        );
+        if (active) setRelayPayload(value);
+      } catch {
+        if (active) setRelayError('Unable to prepare the relay QR code.');
+      }
+    };
+    void updateQr();
+    const timer = setInterval(() => void updateQr(), 3_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+      relayParentRef.current = null;
+    };
+  }, [success, userId]);
+
+  useEffect(() => {
+    const stop = async () => {
+      await NativeBLEAdvertiser.stopBackgroundAdvertising().catch(
+        () => undefined,
+      );
+      setRelayBleActive(false);
+    };
+    if (
+      !success ||
+      !bluetoothEnabled ||
+      !bleAdvertisingSupported ||
+      !session ||
+      session.expiresAt <= Date.now()
+    ) {
+      void stop();
+      return;
+    }
+    let active = true;
+    const advertiseCurrent = async () => {
+      if (session.expiresAt <= Date.now()) {
+        await stop();
+        return;
+      }
+      try {
+        const nextPayload = await createCompactBlePayload(session, '');
+        const base64Payload = nextPayload.slice(7);
+        if (Platform.OS === 'android')
+          await NativeBLEAdvertiser.startBackgroundAdvertising(
+            base64Payload,
+            Math.ceil((session.expiresAt - Date.now()) / 1_000),
+          );
+        else await NativeBLEAdvertiser.startAdvertising(base64Payload);
+        if (active) {
+          setRelayBlePayload(nextPayload);
+          setRelayBleActive(true);
+        }
+      } catch {
+        if (active) {
+          setRelayBleActive(false);
+          setRelayError(
+            'BLE relay could not start. Keep the relay QR visible instead.',
+          );
+        }
+      }
+    };
+    void advertiseCurrent();
+    const rotationTimer = setInterval(
+      () => void advertiseCurrent(),
+      RELAY_ROTATION_SECONDS * 1_000,
+    );
+    return () => {
+      active = false;
+      clearInterval(rotationTimer);
+      void stop();
+    };
+  }, [bleAdvertisingSupported, bluetoothEnabled, session, success]);
 
   const handleJoin = useCallback(
     async (override?: {
@@ -224,17 +403,26 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           attendanceSession,
         );
         const result = await sync(record);
-        if (
-          result.data.status === 'verified' ||
-          result.data.status === 'duplicate'
-        )
-          await scheduleRelay(attendanceSession, evidence);
+        await scheduleRelay(
+          attendanceSession,
+          evidence,
+          attendanceMethod,
+          result.data.status,
+          override?.rssi,
+        );
         setSuccess(
           result.data.status === 'verified' ||
             result.data.status === 'duplicate' ||
             result.data.status === 'queued',
         );
       } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 404) {
+          Alert.alert(
+            'Session not found',
+            'There is no active attendance session for this unit.',
+          );
+          return;
+        }
         if (override) autoMarkedSessions.current.delete(override.session.id);
         Alert.alert(
           'Attendance not verified',
@@ -250,22 +438,125 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   );
 
   const submitPin = async () => {
-    if (!session || session.status !== 'active') {
+    const pinScannedAt = Date.now();
+    if (!pinUnitCode) {
+      Alert.alert(
+        'Select a unit',
+        'Choose the enrolled unit for this attendance PIN.',
+      );
+      return;
+    }
+    let pinSession = session;
+    if (!pinSession || pinSession.unitCode !== pinUnitCode) {
+      pinSession = await getCachedActiveInPersonSessionByUnit(pinUnitCode);
+    }
+    if (!pinSession || pinSession.unitCode !== pinUnitCode) {
+      if (!token) return;
+      try {
+        const result = await submitPinByUnit(
+          {
+            unitCode: pinUnitCode,
+            pin: pinValue,
+            scannedAt: pinScannedAt,
+            deviceId: await getOrCreateSecureDeviceId(),
+          },
+          token,
+        );
+        setShowPin(false);
+        setPinValue('');
+        if (result.data.status === 'queued') {
+          await enqueuePendingPin({
+            unitCode: pinUnitCode,
+            pin: pinValue,
+            scannedAt: pinScannedAt,
+            deviceId: await getOrCreateSecureDeviceId(),
+          });
+          Alert.alert(
+            'PIN saved for validation',
+            'The lecturer session is not available yet. We will retry validation for 24 hours.',
+          );
+          return;
+        }
+        if (
+          result.data.status === 'verified' ||
+          result.data.status === 'duplicate'
+        ) {
+          try {
+            const activeResponse = await getActiveInPersonSessionByUnit(
+              pinUnitCode,
+              token,
+            );
+            const activeSession = activeResponse.data;
+            await cacheInPersonSession(activeSession);
+            setSession(activeSession);
+            await scheduleRelay(
+              activeSession,
+              createSubmittedPinPayload(activeSession, pinValue, pinScannedAt),
+              'pin',
+              result.data.status,
+            );
+          } catch {
+            // Attendance is already accepted; relay setup is best effort.
+          }
+        }
+        setSuccess(
+          result.data.status === 'verified' ||
+            result.data.status === 'duplicate',
+        );
+        return;
+      } catch (error) {
+        if (error instanceof ApiRequestError && error.status === 404) {
+          Alert.alert(
+            'Session not found',
+            'There is no active attendance session for this unit.',
+          );
+          return;
+        }
+        try {
+          const pending = await enqueuePendingPin({
+            unitCode: pinUnitCode,
+            pin: pinValue,
+            scannedAt: Date.now(),
+            deviceId: await getOrCreateSecureDeviceId(),
+          });
+          setShowPin(false);
+          setPinValue('');
+          Alert.alert(
+            'PIN saved offline',
+            `PIN ${pending.unitCode} will be sent for validation when connectivity returns.`,
+          );
+        } catch {
+          Alert.alert(
+            'PIN not submitted',
+            'The PIN could not be saved locally.',
+          );
+        }
+        return;
+      }
+    }
+    if (!pinSession || pinSession.status !== 'active') {
       Alert.alert(
         'Session not detected',
         'Scan the lecturer QR code or wait for Bluetooth detection first.',
       );
       return;
     }
-    if (session.expiresAt <= Date.now()) {
-      Alert.alert('Session ended', 'This attendance session is no longer active.');
+    if (pinSession.expiresAt <= Date.now()) {
+      Alert.alert(
+        'Session ended',
+        'This attendance session is no longer active.',
+      );
       return;
     }
     try {
-      const payload = createSubmittedPinPayload(session, pinValue);
+      const payload = createSubmittedPinPayload(pinSession, pinValue);
       setShowPin(false);
       setPinValue('');
-      await handleJoin({ session, evidence: payload, method: 'pin' });
+      await handleJoin({
+        session: pinSession,
+        evidence: payload,
+        method: 'pin',
+      });
     } catch (error) {
       Alert.alert(
         'PIN not submitted',
@@ -356,11 +647,32 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
 
   useEffect(() => {
     if (!token) return;
-    const listener = NativeBLEScanner.addDeviceListener(device => {
+    const listener = NativeBLEScanner.addDeviceListener(async device => {
       if (!device.payload) return;
+      const opaqueValue = `MWR1:${device.payload}`;
+      try {
+        const relayToken = decodeOpaqueRelayPayload(opaqueValue);
+        if (!token) return;
+        getInPersonSessionByRelayToken(relayToken, token)
+          .then(async response => {
+            await cacheInPersonSession(response.data);
+            setRawPayload(opaqueValue);
+            setSession(response.data);
+            setMethod('ble');
+            autoMarkBle(response.data, opaqueValue, device.rssi);
+          })
+          .catch(() => undefined);
+        return;
+      } catch {
+        // This is a normal compact lecturer beacon or unrelated BLE device.
+      }
       const value = `MWBLE1:${device.payload}`;
       try {
         const beacon = decodeCompactBlePayload(value);
+        relayNeighborsRef.current.set(device.deviceId || device.payload, {
+          nonce: beacon.nonce,
+          seenAt: Date.now(),
+        });
         getInPersonSessionByBleNonce(beacon.nonce, token)
           .then(async response => {
             await cacheInPersonSession(response.data);
@@ -393,6 +705,23 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     setScanCount(current => Math.min(2, current + 1));
     setRawPayload(value);
     try {
+      if (value.trim().startsWith('MWR1:')) {
+        if (!token) return;
+        const relayToken = decodeOpaqueRelayPayload(value.trim());
+        const response = await getInPersonSessionByRelayToken(
+          relayToken,
+          token,
+        );
+        await cacheInPersonSession(response.data);
+        setSession(response.data);
+        setMethod('qr');
+        await handleJoin({
+          session: response.data,
+          evidence: value.trim(),
+          method: 'qr',
+        });
+        return;
+      }
       if (value.trim().startsWith('MWIR1:')) {
         const relay = decodeRelayPayload(value.trim());
         if (!token) return;
@@ -469,15 +798,58 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             onPress={() => setShowPin(false)}
           >
             <Pressable
-              className={`rounded-3xl p-6 ${isDark ? 'bg-slate-900' : 'bg-white'}`}
+              className={`rounded-3xl p-6 ${
+                isDark ? 'bg-slate-900' : 'bg-white'
+              }`}
               onPress={event => event.stopPropagation()}
             >
               <Text className={`text-xl font-extrabold ${titleClasses}`}>
                 Enter attendance PIN
               </Text>
               <Text className={`mt-2 ${bodyClasses}`}>
-                Enter the current PIN displayed by your lecturer.
+                Get the current PIN from your lecturer or from a student who has
+                already been marked through the secure relay.
               </Text>
+              <View className="mt-4 rounded-xl border border-amber-300 bg-amber-50 p-3">
+                <Text className="text-sm font-semibold leading-5 text-amber-800">
+                  Enter the PIN carefully. It rotates frequently, and an
+                  incorrect or expired PIN will be rejected.
+                </Text>
+              </View>
+              <Text className={`mt-5 mb-2 font-bold ${titleClasses}`}>
+                Select enrolled unit
+              </Text>
+              <ScrollView
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                contentContainerStyle={{ gap: 8 }}
+              >
+                {enrolledUnits.map(unit => (
+                  <TouchableOpacity
+                    key={unit.code}
+                    onPress={() => setPinUnitCode(unit.code)}
+                    className={`rounded-xl border px-4 py-3 ${
+                      pinUnitCode === unit.code
+                        ? 'border-emerald-500 bg-emerald-500/15'
+                        : isDark
+                        ? 'border-slate-700 bg-slate-800'
+                        : 'border-slate-200 bg-slate-50'
+                    }`}
+                  >
+                    <Text className={`font-bold ${titleClasses}`}>
+                      {unit.code}
+                    </Text>
+                    <Text className={`mt-1 text-xs ${bodyClasses}`}>
+                      {unit.name}
+                    </Text>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
+              {!enrolledUnits.length && (
+                <Text className={`mt-3 text-sm ${bodyClasses}`}>
+                  No enrolled units are available on this device.
+                </Text>
+              )}
               <Text className="mt-4 text-center font-bold text-emerald-600">
                 PIN rotates in {pinRemainingSeconds}s
               </Text>
@@ -485,16 +857,35 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                 <PinInput value={pinValue} onChangeText={setPinValue} />
               </View>
               <TouchableOpacity
-                disabled={submitting || pinValue.length !== 6}
+                disabled={submitting || pinValue.length !== 6 || !pinUnitCode}
                 onPress={() => void submitPin()}
                 className={`mt-6 rounded-xl py-4 ${
-                  submitting || pinValue.length !== 6
+                  submitting || pinValue.length !== 6 || !pinUnitCode
                     ? 'bg-slate-300'
                     : 'bg-emerald-600'
                 }`}
               >
                 <Text className="text-center font-bold text-white">
                   {submitting ? 'Submitting...' : 'Submit PIN'}
+                </Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                disabled={submitting}
+                onPress={() => {
+                  setPinValue('');
+                  setPinUnitCode('');
+                  setShowPin(false);
+                }}
+                className={`mt-3 rounded-xl border py-4 ${
+                  isDark ? 'border-slate-700' : 'border-slate-300'
+                }`}
+              >
+                <Text
+                  className={`text-center font-bold ${
+                    isDark ? 'text-slate-200' : 'text-slate-700'
+                  }`}
+                >
+                  Cancel
                 </Text>
               </TouchableOpacity>
             </Pressable>
@@ -580,42 +971,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
               isTablet ? '8' : '5'
             } py-6`}
           >
-            <View className="mb-5 flex-row items-center justify-between">
-              <View className="flex-row items-center">
-                <View className="mr-3 h-11 w-11 items-center justify-center rounded-2xl bg-emerald-600">
-                  <Radio size={22} color="white" />
-                </View>
-                <View>
-                  <Text className={`text-2xl font-extrabold ${titleClasses}`}>
-                    Mark Attendance
-                  </Text>
-                  <Text className={`mt-1 text-xs ${bodyClasses}`}>
-                    In-person attendance
-                  </Text>
-                </View>
-              </View>
-              <View className="flex-row items-center">
-                <TouchableOpacity
-                  onPress={() => setShowHelp(true)}
-                  className="mr-3"
-                >
-                  <HelpCircle
-                    size={23}
-                    color={isDark ? '#cbd5e1' : '#64748b'}
-                  />
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => setShowInfo(true)}>
-                  <Info size={23} color={isDark ? '#cbd5e1' : '#64748b'} />
-                </TouchableOpacity>
-              </View>
-            </View>
-            <View className="mb-4 flex-row items-center rounded-xl border border-sky-500/20 bg-sky-500/10 p-3">
-              <WifiOff size={17} color="#0284c7" />
-              <Text className="ml-2 flex-1 text-xs font-semibold text-sky-700">
-                Offline-ready: attendance is saved locally and syncs when
-                online.
-              </Text>
-            </View>
             {loading ? (
               <View className="items-center rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-8">
                 <SpinView>
@@ -641,15 +996,43 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                 {relayPayload && (
                   <View className="items-center rounded-2xl border border-slate-200 bg-white p-5">
                     <Text className="mb-4 text-lg font-bold text-slate-900">
-                      Secure relay QR
+                      Rotating relay QR
                     </Text>
                     <QRCodeDisplay value={relayPayload} size={230} />
                     <Text className={`mt-3 text-center text-xs ${bodyClasses}`}>
-                      This relay proof is bound to your verified attendance and
-                      device key.
+                      Keep this code visible so nearby students can check in. It
+                      refreshes automatically every few seconds.
                     </Text>
                   </View>
                 )}
+                <View
+                  className={`rounded-2xl border p-4 ${
+                    relayBleActive
+                      ? 'border-emerald-300 bg-emerald-50'
+                      : isDark
+                      ? 'border-slate-700 bg-slate-900'
+                      : 'border-slate-200 bg-white'
+                  }`}
+                >
+                  <View className="flex-row items-center justify-between">
+                    <Text className={`font-extrabold ${titleClasses}`}>
+                      Bluetooth relay
+                    </Text>
+                    <Text
+                      className={`font-bold ${
+                        relayBleActive ? 'text-emerald-700' : 'text-amber-600'
+                      }`}
+                    >
+                      {relayBleActive ? 'Broadcasting' : 'QR relay active'}
+                    </Text>
+                  </View>
+                  <Text className={`mt-2 text-sm ${bodyClasses}`}>
+                    {relayBleActive
+                      ? 'Nearby students can detect this secure attendance relay automatically.'
+                      : relayError ||
+                        'Bluetooth relay starts after the server confirms your attendance. The QR relay remains available.'}
+                  </Text>
+                </View>
                 <TouchableOpacity
                   onPress={() => navigation.goBack()}
                   className="items-center rounded-2xl bg-emerald-600 py-4"
@@ -698,39 +1081,68 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                   </Text>
                 </View>
                 <View
-                  className={`mt-4 flex-row rounded-2xl border p-4 ${
+                  className={`mt-4 flex-row rounded-2xl border p-3 ${
                     isDark
                       ? 'border-slate-700 bg-slate-900'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
                   <View className="flex-1 items-center">
-                    <BookOpen size={17} color="#059669" />
+                    <QrCode size={18} color="#059669" />
                     <Text className={`mt-1 text-[11px] ${bodyClasses}`}>
-                      Unit
+                      QR
                     </Text>
                     <Text className={`mt-1 font-extrabold ${titleClasses}`}>
-                      {session?.unitCode ?? '—'}
+                      Active
                     </Text>
                   </View>
-                  <View className="mx-3 w-px bg-slate-200" />
+                  <View className="mx-1 w-px bg-slate-200" />
+                  <TouchableOpacity
+                    className={`mx-1 flex-1 items-center rounded-xl border p-2 ${
+                      isDark
+                        ? 'border-blue-400/50 bg-blue-500/15'
+                        : 'border-blue-200 bg-blue-50'
+                    }`}
+                    onPress={() => setShowPin(true)}
+                    activeOpacity={0.7}
+                  >
+                    <KeyRound size={18} color="#2563eb" />
+                    <Text className={`mt-1 text-[11px] ${bodyClasses}`}>
+                      PIN
+                    </Text>
+                    <Text className={`mt-1 font-extrabold ${titleClasses}`}>
+                      Enter
+                    </Text>
+                  </TouchableOpacity>
+                  <View className="mx-1 w-px bg-slate-200" />
                   <View className="flex-1 items-center">
-                    <Radio size={17} color="#2563eb" />
+                    <PersonStanding
+                      size={18}
+                      color={motionVerified ? '#059669' : '#d97706'}
+                    />
                     <Text className={`mt-1 text-[11px] ${bodyClasses}`}>
-                      Mode
+                      Motion
                     </Text>
-                    <Text className={`mt-1 font-extrabold ${titleClasses}`}>
-                      {method.toUpperCase()}
+                    <Text
+                      className={`mt-1 font-extrabold ${
+                        motionVerified ? 'text-emerald-600' : 'text-amber-600'
+                      }`}
+                    >
+                      {motionVerified ? 'Active' : 'Pending'}
                     </Text>
                   </View>
-                  <View className="mx-3 w-px bg-slate-200" />
+                  <View className="mx-1 w-px bg-slate-200" />
                   <View className="flex-1 items-center">
                     <Clock size={17} color="#d97706" />
                     <Text className={`mt-1 text-[11px] ${bodyClasses}`}>
                       Status
                     </Text>
                     <Text className="mt-1 font-extrabold text-emerald-600">
-                      {success ? 'Done' : 'Ready'}
+                      {remainingSeconds > 0
+                        ? `${Math.floor(remainingSeconds / 60)}:${String(
+                            remainingSeconds % 60,
+                          ).padStart(2, '0')}`
+                        : '—'}
                     </Text>
                   </View>
                 </View>
@@ -769,33 +1181,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                       </Text>
                     </TouchableOpacity>
                   )}
-                </View>
-                <View
-                  className={`mt-4 rounded-2xl border p-4 ${
-                    motionVerified
-                      ? 'border-emerald-500/30 bg-emerald-500/10'
-                      : isDark
-                      ? 'border-slate-700 bg-slate-900'
-                      : 'border-slate-200 bg-white'
-                  }`}
-                >
-                  <View className="flex-row items-center justify-between">
-                    <Text className={`font-extrabold ${titleClasses}`}>
-                      Motion check
-                    </Text>
-                    <Text
-                      className={`font-bold ${
-                        motionVerified ? 'text-emerald-600' : 'text-amber-600'
-                      }`}
-                    >
-                      {motionVerified ? 'Verified' : 'Pending'}
-                    </Text>
-                  </View>
-                  <Text className={`mt-2 text-sm ${bodyClasses}`}>
-                    {motionVerified
-                      ? 'Recent movement confirmed. BLE attendance can be submitted.'
-                      : 'Move your phone slightly to confirm that the device is with you.'}
-                  </Text>
                 </View>
               </>
             )}

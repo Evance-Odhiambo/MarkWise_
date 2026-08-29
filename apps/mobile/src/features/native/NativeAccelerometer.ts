@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter, ViewProps } from 'react-native';
+import { NativeModules, NativeEventEmitter } from 'react-native';
 
 const { Accelerometer } = NativeModules;
 
@@ -24,7 +24,7 @@ class AccelerometerAPI {
     remove: () => void;
   } {
     if (!this.emitter) {
-      this.emitter = new NativeEventEmitter(Accelerometer);
+      this.emitter = new NativeEventEmitter(Accelerometer ?? undefined);
     }
     const handler = callback as (data: any) => void;
     // Keep this event name aligned with AccelerometerModule.kt.

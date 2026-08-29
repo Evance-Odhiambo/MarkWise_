@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { Student } from "../types/student";
 
 interface ApiImportFormProps {
+  institutionId: string;
   selectedCourse: string;
   onDataImported: (data: Student[]) => void;
 }
@@ -17,7 +18,11 @@ const commonApiFormats = [
   "Custom",
 ];
 
-export function StudentApiImportForm({ selectedCourse, onDataImported }: ApiImportFormProps) {
+export function StudentApiImportForm({
+  institutionId,
+  selectedCourse,
+  onDataImported,
+}: ApiImportFormProps) {
   const [apiUrl, setApiUrl] = useState("");
   const [apiFormat, setApiFormat] = useState("");
   const [apiKey, setApiKey] = useState("");
@@ -37,10 +42,19 @@ export function StudentApiImportForm({ selectedCourse, onDataImported }: ApiImpo
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("/api/students/import", {
+      const storedUser = JSON.parse(localStorage.getItem("user") ?? "{}") as {
+        token?: string;
+      };
+      const response = await fetch("/api/v1/students/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(storedUser.token
+            ? { Authorization: `Bearer ${storedUser.token}` }
+            : {}),
+        },
         body: JSON.stringify({
+          institutionId,
           apiUrl,
           apiFormat,
           apiKey: apiKey || undefined,
@@ -48,7 +62,9 @@ export function StudentApiImportForm({ selectedCourse, onDataImported }: ApiImpo
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: "Import failed" }));
+        const err = await response
+          .json()
+          .catch(() => ({ error: "Import failed" }));
         throw new Error(err.error || "Import failed");
       }
 
@@ -59,11 +75,13 @@ export function StudentApiImportForm({ selectedCourse, onDataImported }: ApiImpo
       }));
 
       setSuccessMessage(
-        `Successfully imported ${studentsWithCourse.length} students`
+        `Successfully imported ${studentsWithCourse.length} students`,
       );
       onDataImported(studentsWithCourse);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -117,11 +135,14 @@ export function StudentApiImportForm({ selectedCourse, onDataImported }: ApiImpo
       </div>
 
       <p className="text-sm text-gray-600">
-        Course: <strong>{selectedCourse}</strong> (will be applied to all imported students)
+        Course: <strong>{selectedCourse}</strong> (will be applied to all
+        imported students)
       </p>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-green-600">{successMessage}</p>}
+      {successMessage && (
+        <p className="text-sm text-green-600">{successMessage}</p>
+      )}
 
       <button
         type="submit"

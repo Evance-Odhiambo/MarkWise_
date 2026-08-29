@@ -25,7 +25,14 @@ export const useInPersonCapture = (session: InPersonSession | null) => {
       if (!userId) throw new Error('Student account is required');
       // MWIR1 is a signed relay wrapper. The backend validates the wrapper,
       // its parent proof, relayer device key, counter, and enrollment.
-      if (!(method === 'qr' && rawPayload.trim().startsWith('MWIR1:'))) {
+      if (
+        !(
+          method === 'qr' &&
+          (rawPayload.trim().startsWith('MWIR1:') ||
+            rawPayload.trim().startsWith('MWR1:'))
+        ) &&
+        !(method === 'ble' && rawPayload.trim().startsWith('MWR1:'))
+      ) {
         const validation =
           method === 'pin'
             ? validateAttendancePinPayload(rawPayload, activeSession)

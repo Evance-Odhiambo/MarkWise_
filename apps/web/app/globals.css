@@ -49,7 +49,13 @@
 }
 
 body {
-  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-family:
+    var(--font-geist-sans),
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
   scroll-behavior: smooth;
 }
 
@@ -65,7 +71,8 @@ body {
 }
 
 @keyframes pulseGlow {
-  0%, 100% {
+  0%,
+  100% {
     opacity: 0.7;
     transform: scale(1);
   }
@@ -85,9 +92,15 @@ body {
 }
 
 @keyframes counterTick {
-  0% { transform: scale(1); }
-  50% { transform: scale(1.2) rotate(5deg); }
-  100% { transform: scale(1); }
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.2) rotate(5deg);
+  }
+  100% {
+    transform: scale(1);
+  }
 }
 
 :root {
@@ -169,4 +182,33 @@ body {
   html {
     @apply font-sans;
   }
+}
+
+/* Keep workspace chrome fixed while the page content scrolls internally. */
+[data-slot="sidebar-inset"] > main {
+  min-height: 0;
+  height: calc(100vh - 73px);
+  overflow-x: hidden;
+  overflow-y: auto;
+}
+
+/* Keep workspace navigation readable regardless of inherited theme variables. */
+[data-slot="sidebar-inner"] {
+  background: #ffffff;
+  color: #0f172a;
+}
+[data-slot="sidebar-inner"] [data-slot="sidebar-group-label"] {
+  color: #64748b;
+}
+[data-slot="sidebar-inner"] [data-slot="sidebar-menu-button"] {
+  color: #334155;
+}
+[data-slot="sidebar-inner"] [data-slot="sidebar-menu-button"]:hover {
+  background: #f1f5f9;
+  color: #0f172a;
+}
+[data-slot="sidebar-inner"] [data-slot="sidebar-menu-button"][data-active="true"] {
+  background: #e2e8f0;
+  color: #0f172a;
+  font-weight: 600;
 }

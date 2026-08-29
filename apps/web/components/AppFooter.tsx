@@ -15,7 +15,8 @@ const AppFooter: React.FC = () => {
               <h3 className="text-xl font-bold text-white">MarkWise</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
-              Digitised attendance for higher learning institutions. Fast, secure, and reliable.
+              Digitised attendance for higher learning institutions. Fast,
+              secure, and reliable.
             </p>
           </div>
 

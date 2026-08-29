@@ -24,11 +24,15 @@ const ContactPage: React.FC = () => {
   const [form, setForm] = useState<ContactForm>(initialForm);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isSubmitted, setIsSubmitted] = useState(false);
-  const [errors, setErrors] = useState<Partial<Record<keyof ContactForm, string>>>({});
+  const [errors, setErrors] = useState<
+    Partial<Record<keyof ContactForm, string>>
+  >({});
   const [serverError, setServerError] = useState<string | null>(null);
 
   const handleChange = (
-    e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement>
+    e: React.ChangeEvent<
+      HTMLInputElement | HTMLTextAreaElement | HTMLSelectElement
+    >,
   ) => {
     const { name, value } = e.target;
     setForm((prev) => ({ ...prev, [name]: value }));
@@ -38,7 +42,8 @@ const ContactPage: React.FC = () => {
     const nextErrors: Partial<Record<keyof ContactForm, string>> = {};
     if (!values.name.trim()) nextErrors.name = "Please enter your name.";
     if (!values.email.trim()) nextErrors.email = "Please enter your email.";
-    else if (!/^[\w-.]+@[\w-]+\.[A-Za-z]{2,}$/.test(values.email)) nextErrors.email = "Please enter a valid email.";
+    else if (!/^[\w-.]+@[\w-]+\.[A-Za-z]{2,}$/.test(values.email))
+      nextErrors.email = "Please enter a valid email.";
     if (!values.category) nextErrors.category = "Please choose a category.";
     if (!values.subject.trim()) nextErrors.subject = "Please enter a subject.";
     if (!values.message.trim()) nextErrors.message = "Please enter a message.";
@@ -62,7 +67,9 @@ const ContactPage: React.FC = () => {
 
       if (!res.ok) {
         const data = await res.json().catch(() => ({}));
-        setServerError(data?.message || "Something went wrong. Please try again.");
+        setServerError(
+          data?.message || "Something went wrong. Please try again.",
+        );
         setIsSubmitting(false);
         return;
       }
@@ -93,9 +100,9 @@ const ContactPage: React.FC = () => {
               </h1>
               <p className="text-lg text-slate-600 max-w-2xl mx-auto">
                 Have questions, feedback, or need assistance? Our team is here
-                to help. Whether you're evaluating MarkWise for your
-                institution or need support with an existing account, we'd love
-                to hear from you.
+                to help. Whether you're evaluating MarkWise for your institution
+                or need support with an existing account, we'd love to hear from
+                you.
               </p>
             </div>
 
@@ -104,20 +111,39 @@ const ContactPage: React.FC = () => {
               {/* Email Card */}
               <div className="group bg-white rounded-2xl p-8 shadow-md border border-slate-100 hover:shadow-xl transition-all duration-300">
                 <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z" />
+                  <svg
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M3 8l7.89 5.26a2 2 0 002.22 0L21 8M5 19h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v10a2 2 0 002 2z"
+                    />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-3">Email Us</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-3">
+                  Email Us
+                </h3>
                 <p className="text-slate-600 text-sm mb-4">
                   Send us an email and we'll respond within 24-48 hours.
                 </p>
                 <div className="space-y-2">
-                  <a href="mailto:info@markwise.com" className="block text-emerald-700 hover:text-emerald-800 font-medium transition-colors">
+                  <a
+                    href="mailto:info@markwise.com"
+                    className="block text-emerald-700 hover:text-emerald-800 font-medium transition-colors"
+                  >
                     info@markwise.com
                   </a>
-                  <a href="mailto:support@markwise.com" className="block text-slate-600 hover:text-emerald-700 transition-colors">
-                    support@markwise.com <span className="text-xs text-slate-500">(Support)</span>
+                  <a
+                    href="mailto:support@markwise.com"
+                    className="block text-slate-600 hover:text-emerald-700 transition-colors"
+                  >
+                    support@markwise.com{" "}
+                    <span className="text-xs text-slate-500">(Support)</span>
                   </a>
                 </div>
               </div>
@@ -125,18 +151,33 @@ const ContactPage: React.FC = () => {
               {/* Contact Card */}
               <div className="group bg-white rounded-2xl p-8 shadow-md border border-slate-100 hover:shadow-xl transition-all duration-300">
                 <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.124 3.372a1 1 0 01-.524 1.224l-2.074.828a1 1 0 00-.566.566l-.828 2.074a1 1 0 01-1.224.524V14a1 1 0 001 1h3m9-9V7a2 2 0 012-2h3a1 1 0 011 1v3m0 0v10a2 2 0 01-2 2h-5m-9 0h.01M12 12v6m-3-3h6" />
+                  <svg
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.124 3.372a1 1 0 01-.524 1.224l-2.074.828a1 1 0 00-.566.566l-.828 2.074a1 1 0 01-1.224.524V14a1 1 0 001 1h3m9-9V7a2 2 0 012-2h3a1 1 0 011 1v3m0 0v10a2 2 0 01-2 2h-5m-9 0h.01M12 12v6m-3-3h6"
+                    />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-3">Contact Info</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-3">
+                  Contact Info
+                </h3>
                 <p className="text-slate-600 text-sm mb-4">
                   Reach us by phone during business hours.
                 </p>
                 <div className="space-y-3">
-                  <p className="text-emerald-700 font-medium text-lg">+1 (617) 555-0123</p>
+                  <p className="text-emerald-700 font-medium text-lg">
+                    +1 (617) 555-0123
+                  </p>
                   <p className="text-slate-600 text-sm">
-                    Mon – Fri: 9:00 AM – 6:00 PM EST<br />
+                    Mon – Fri: 9:00 AM – 6:00 PM EST
+                    <br />
                     Sat – Sun: 10:00 AM – 4:00 PM EST
                   </p>
                   <a
@@ -145,7 +186,11 @@ const ContactPage: React.FC = () => {
                     rel="noopener noreferrer"
                     className="flex items-center gap-2 text-slate-600 hover:text-emerald-700 transition-colors text-sm"
                   >
-                    <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 24 24">
+                    <svg
+                      className="w-4 h-4"
+                      fill="currentColor"
+                      viewBox="0 0 24 24"
+                    >
                       <path d="M12.04 3.01C7.59 3.01 4 6.6 4 11.05c0 1.95.52 3.87 1.5 5.6l-.28 3.35 2.9-.73c1.16.82 2.54 1.29 4.05 1.29 4.45 0 8.04-3.59 8.04-8.04S16.49 3.01 12.04 3.01zm0 14.08c-1.41 0-2.75-.37-3.92-1.05l-.28-.16-2.49.62.64-2.62-.32-.52c-.82-1.31-1.27-2.78-1.27-4.3v-.27c0-2.9 2.37-5.27 5.28-5.27 1.41 0 2.75.37 3.92 1.05l.28.16 2.49-.62-.64 2.62.32.52.88 1.41.28.52c0 .01 0 .02.01.03 0 .19-.01.38-.01.57 0 2.9-2.37 5.28-5.28 5.28z" />
                     </svg>
                     WhatsApp
@@ -156,19 +201,37 @@ const ContactPage: React.FC = () => {
               {/* Location Card */}
               <div className="group bg-white rounded-2xl p-8 shadow-md border border-slate-100 hover:shadow-xl transition-all duration-300">
                 <div className="flex items-center justify-center w-14 h-14 rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 mb-6 group-hover:scale-110 transition-transform shadow-lg">
-                  <svg className="w-6 h-6 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17.657 16.657L12.394 21.92a1 1 0 01-1.414 0L5.343 16.657a1 1 0 01-.34-.533L3.5 12.25V7a1 1 0 011-1h4.5a.5.5 0 01.5.5v4a1 1 0 102 0V6.5a.5.5 0 01.5-.5H18a1 1 0 011 1v5.25l-.493 3.874a1 1 0 01-.34.533z" />
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 7V4a3 3 0 116 0v3m-3 5h.01M12 11v5" />
+                  <svg
+                    className="w-6 h-6 text-white"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M17.657 16.657L12.394 21.92a1 1 0 01-1.414 0L5.343 16.657a1 1 0 01-.34-.533L3.5 12.25V7a1 1 0 011-1h4.5a.5.5 0 01.5.5v4a1 1 0 102 0V6.5a.5.5 0 01.5-.5H18a1 1 0 011 1v5.25l-.493 3.874a1 1 0 01-.34.533z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 7V4a3 3 0 116 0v3m-3 5h.01M12 11v5"
+                    />
                   </svg>
                 </div>
-                <h3 className="text-xl font-bold text-slate-900 mb-3">Our Location</h3>
+                <h3 className="text-xl font-bold text-slate-900 mb-3">
+                  Our Location
+                </h3>
                 <p className="text-slate-600 text-sm mb-4">
                   Visit our office in Juja. We're open Mon-Fri 9am-6pm.
                 </p>
                 <div className="space-y-2">
                   <p className="text-slate-900 font-medium">JHUB Africa</p>
                   <p className="text-slate-600">
-                    Juja, Kenya<br />                 
+                    Juja, Kenya
+                    <br />
                   </p>
                   <a
                     href="https://maps.google.com/?q=123+University+Avenue,+Cambridge,+MA"
@@ -188,16 +251,26 @@ const ContactPage: React.FC = () => {
                 Need Immediate Help?
               </h4>
               <p className="text-slate-600 text-sm mb-4">
-                Check our comprehensive documentation and community forums
-                for quick answers.
+                Check our comprehensive documentation and community forums for
+                quick answers.
               </p>
               <a
                 href="/docs"
                 className="inline-flex items-center gap-2 text-emerald-700 hover:text-emerald-800 font-medium transition-colors"
               >
                 Visit Documentation
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M17 8l4 4m0 0l-4 4m4-4H7" />
+                <svg
+                  className="w-4 h-4"
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                >
+                  <path
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    strokeWidth="2"
+                    d="M17 8l4 4m0 0l-4 4m4-4H7"
+                  />
                 </svg>
               </a>
             </div>
@@ -211,8 +284,18 @@ const ContactPage: React.FC = () => {
               {isSubmitted ? (
                 <div className="text-center py-12">
                   <div className="w-16 h-16 rounded-full bg-linear-to-br from-green-500 to-emerald-600 flex items-center justify-center mx-auto mb-6">
-                    <svg className="w-8 h-8 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="3" d="M5 13l4 4L19 7" />
+                    <svg
+                      className="w-8 h-8 text-white"
+                      fill="none"
+                      stroke="currentColor"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                        strokeWidth="3"
+                        d="M5 13l4 4L19 7"
+                      />
                     </svg>
                   </div>
                   <h4 className="text-2xl font-bold text-slate-900 mb-3">
@@ -250,10 +333,19 @@ const ContactPage: React.FC = () => {
                         required
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
                         aria-invalid={!!errors.name}
-                        aria-describedby={errors.name ? "name-error" : undefined}
+                        aria-describedby={
+                          errors.name ? "name-error" : undefined
+                        }
                         placeholder="Jane Smith"
                       />
-                      {errors.name && <p id="name-error" className="text-xs text-red-600 mt-2">{errors.name}</p>}
+                      {errors.name && (
+                        <p
+                          id="name-error"
+                          className="text-xs text-red-600 mt-2"
+                        >
+                          {errors.name}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -268,10 +360,19 @@ const ContactPage: React.FC = () => {
                         required
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
                         aria-invalid={!!errors.email}
-                        aria-describedby={errors.email ? "email-error" : undefined}
+                        aria-describedby={
+                          errors.email ? "email-error" : undefined
+                        }
                         placeholder="jane@university.edu"
                       />
-                      {errors.email && <p id="email-error" className="text-xs text-red-600 mt-2">{errors.email}</p>}
+                      {errors.email && (
+                        <p
+                          id="email-error"
+                          className="text-xs text-red-600 mt-2"
+                        >
+                          {errors.email}
+                        </p>
+                      )}
                     </div>
 
                     <div>
@@ -285,7 +386,9 @@ const ContactPage: React.FC = () => {
                         required
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors bg-white"
                         aria-invalid={!!errors.category}
-                        aria-describedby={errors.category ? "category-error" : undefined}
+                        aria-describedby={
+                          errors.category ? "category-error" : undefined
+                        }
                       >
                         <option value="">Select a category</option>
                         <option value="general">General Inquiry</option>
@@ -293,7 +396,14 @@ const ContactPage: React.FC = () => {
                         <option value="sales">Sales & Partnerships</option>
                         <option value="feedback">Feedback & Suggestions</option>
                       </select>
-                      {errors.category && <p id="category-error" className="text-xs text-red-600 mt-2">{errors.category}</p>}
+                      {errors.category && (
+                        <p
+                          id="category-error"
+                          className="text-xs text-red-600 mt-2"
+                        >
+                          {errors.category}
+                        </p>
+                      )}
                     </div>
 
                     <div className="md:col-span-2">
@@ -308,10 +418,19 @@ const ContactPage: React.FC = () => {
                         required
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors"
                         aria-invalid={!!errors.subject}
-                        aria-describedby={errors.subject ? "subject-error" : undefined}
+                        aria-describedby={
+                          errors.subject ? "subject-error" : undefined
+                        }
                         placeholder="How can we help you?"
                       />
-                      {errors.subject && <p id="subject-error" className="text-xs text-red-600 mt-2">{errors.subject}</p>}
+                      {errors.subject && (
+                        <p
+                          id="subject-error"
+                          className="text-xs text-red-600 mt-2"
+                        >
+                          {errors.subject}
+                        </p>
+                      )}
                     </div>
 
                     <div className="md:col-span-2">
@@ -326,10 +445,19 @@ const ContactPage: React.FC = () => {
                         rows={6}
                         className="w-full px-4 py-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:border-transparent transition-colors resize-none"
                         aria-invalid={!!errors.message}
-                        aria-describedby={errors.message ? "message-error" : undefined}
+                        aria-describedby={
+                          errors.message ? "message-error" : undefined
+                        }
                         placeholder="Please provide as much detail as possible..."
                       />
-                      {errors.message && <p id="message-error" className="text-xs text-red-600 mt-2">{errors.message}</p>}
+                      {errors.message && (
+                        <p
+                          id="message-error"
+                          className="text-xs text-red-600 mt-2"
+                        >
+                          {errors.message}
+                        </p>
+                      )}
                     </div>
 
                     <div className="md:col-span-2">

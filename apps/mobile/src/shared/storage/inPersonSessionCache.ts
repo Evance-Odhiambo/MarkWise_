@@ -62,3 +62,15 @@ export const getCachedInPersonSessionById = async (
     .fetch();
   return records[0] ? toSession(records[0]) : null;
 };
+
+export const getCachedActiveInPersonSessionByUnit = async (
+  unitCode: string,
+): Promise<Session | null> => {
+  const records = await collection()
+    .query(Q.where('unit_code', unitCode.trim().toUpperCase()))
+    .fetch();
+  const active = records.find(
+    record => record.status === 'active' && record.expiresAt > Date.now(),
+  );
+  return active ? toSession(active) : null;
+};

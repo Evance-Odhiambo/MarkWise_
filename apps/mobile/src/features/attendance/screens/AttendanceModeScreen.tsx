@@ -126,7 +126,10 @@ const AttendanceModeScreen = ({ navigation }: Props) => {
       navigation.navigate('TakeInPerson', {});
       return;
     }
-    if (!unitsLoading && selectedUnit) {
+    // Selected units are restored from local storage before remote loading
+    // completes, so do not force returning students through enrollment just
+    // because the catalogue request is still in progress.
+    if (selectedUnit) {
       const unit = {
         unitCode: selectedUnit.code,
         unitName: selectedUnit.name,
@@ -138,6 +141,7 @@ const AttendanceModeScreen = ({ navigation }: Props) => {
       else navigation.navigate('MarkOnline', { sessionId: '', ...unit });
       return;
     }
+    if (unitsLoading) return;
     if (role === 'lecturer') {
       navigation.navigate('LecturerUnitSelection', {
         next: screen as 'TakeInPerson' | 'TakeOnline',

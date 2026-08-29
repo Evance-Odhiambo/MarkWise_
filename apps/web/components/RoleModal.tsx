@@ -1,5 +1,11 @@
 "use client";
-import React, { Fragment, useEffect, useState, Dispatch, SetStateAction } from "react";
+import React, {
+  Fragment,
+  useEffect,
+  useState,
+  Dispatch,
+  SetStateAction,
+} from "react";
 import { useRouter } from "next/navigation";
 
 interface RoleModalProps {
@@ -36,11 +42,11 @@ const roles = [
   },
   {
     id: "admin",
-    name: "Institution Administrator",
+    name: "Institutional Representative",
     description: "Manage your institution, staff, students, and academic data",
     icon: "⚙️",
     signInPath: "/admin/institution/login",
-    signUpPath: "/admin/institution/register",
+    signUpPath: "/admin/institution/onboarding",
     gradient: "from-violet-500 to-purple-600",
     bgHover: "hover:bg-violet-50",
     borderHover: "hover:border-violet-300",
@@ -48,19 +54,24 @@ const roles = [
   },
 ];
 
-export const RoleModal: React.FC<RoleModalProps> = ({ isOpen, onClose, mode, onModeChange }) => {
+export const RoleModal: React.FC<RoleModalProps> = ({
+  isOpen,
+  onClose,
+  mode,
+  onModeChange,
+}) => {
   const router = useRouter();
   const [mounted, setMounted] = useState(false);
 
   useEffect(() => {
     setMounted(true);
     if (isOpen) {
-      document.body.style.overflow = 'hidden';
+      document.body.style.overflow = "hidden";
     } else {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     }
     return () => {
-      document.body.style.overflow = 'unset';
+      document.body.style.overflow = "unset";
     };
   }, [isOpen]);
 
@@ -78,124 +89,155 @@ export const RoleModal: React.FC<RoleModalProps> = ({ isOpen, onClose, mode, onM
   if (!isOpen || !mounted) return null;
 
   const title = mode === "signin" ? "Welcome Back" : "Join MarkWise";
-  const subtitle = mode === "signin" 
-    ? "Choose your role to sign in" 
-    : "Select your role to get started";
+  const subtitle =
+    mode === "signin"
+      ? "Choose your role to sign in"
+      : "Select your role to get started";
 
   return (
     <Fragment>
       <div
-        className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-4"
+        className="fixed inset-0 bg-black/60 backdrop-blur-md flex items-center justify-center z-50 p-2 sm:p-4"
         onClick={handleOverlayClick}
         style={{
-          animation: 'fadeIn 0.3s ease-out',
+          animation: "fadeIn 0.3s ease-out",
         }}
       >
-        {/* ─── Modal Container ────────────────────────────────── */}
+        {/* Modal Container */}
         <div
-          className="bg-white rounded-3xl shadow-2xl w-full max-w-md mx-auto overflow-hidden transform transition-all"
+          className="bg-white rounded-3xl shadow-2xl w-full max-w-sm sm:max-w-md lg:max-w-lg xl:max-w-xl mx-auto flex flex-col max-h-[90vh] transform transition-all"
           style={{
-            animation: 'slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)',
-            maxHeight: '90vh',
+            animation: "slideUp 0.4s cubic-bezier(0.34, 1.56, 0.64, 1)",
           }}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* ─── Header ────────────────────────────────────────── */}
-          <div className="relative p-6 pb-4">
+          {/* Header */}
+          <div className="relative p-4 sm:p-6 pb-3 flex-shrink-0">
             {/* Decorative Gradient Bar */}
             <div className="absolute top-0 left-0 right-0 h-1 bg-linear-to-r from-emerald-400 via-blue-400 to-violet-400" />
-            
+
             {/* Close Button */}
             <button
               onClick={onClose}
-              className="absolute top-4 right-4 w-8 h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all duration-200"
+              className="absolute top-3 sm:top-4 right-3 sm:right-4 w-7 h-7 sm:w-8 sm:h-8 rounded-full hover:bg-slate-100 flex items-center justify-center text-slate-400 hover:text-slate-600 transition-all duration-200"
               aria-label="Close modal"
             >
-              <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18L18 6M6 6l12 12" />
+              <svg
+                className="w-4 h-4 sm:w-5 sm:h-5"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth="2"
+                  d="M6 18L18 6M6 6l12 12"
+                />
               </svg>
             </button>
 
             {/* Icon */}
-            <div className="w-14 h-14 rounded-2xl bg-linear-to-br from-emerald-100 to-emerald-50 flex items-center justify-center mb-3">
-              <span className="text-2xl">👋</span>
+            <div className="w-10 h-10 sm:w-14 sm:h-14 rounded-2xl bg-linear-to-br from-emerald-100 to-emerald-50 flex items-center justify-center mb-2 sm:mb-3">
+              <span className="text-xl sm:text-2xl">👋</span>
             </div>
 
             {/* Title */}
-            <h2 className="text-2xl font-extrabold text-slate-900">
+            <h2 className="text-xl sm:text-2xl font-extrabold text-slate-900 leading-none sm:leading-tight break-words">
               {title}
             </h2>
-            
+
             {/* Subtitle */}
-            <p className="text-sm font-semibold text-slate-500 mt-1">
+            <p className="text-xs sm:text-sm font-semibold text-slate-500 mt-1 break-words">
               {subtitle}
             </p>
           </div>
 
-          {/* ─── Role Cards ────────────────────────────────────── */}
-          <div className="px-6 pb-6 space-y-3">
+          {/* Role Cards */}
+          <div className="px-4 sm:px-6 pb-6 space-y-2 sm:space-y-3 overflow-y-auto flex-1">
             {roles.map((role) => (
               <button
                 key={role.id}
-                onClick={() => handleSelect(mode === "signin" ? role.signInPath : role.signUpPath)}
+                onClick={() =>
+                  handleSelect(
+                    mode === "signin" ? role.signInPath : role.signUpPath,
+                  )
+                }
                 className={`
-                  w-full flex items-center gap-4 p-4 rounded-2xl border-2 border-slate-200 
+                  w-full flex items-center gap-3 sm:gap-4 p-3 sm:p-4 rounded-2xl border-2 border-slate-200 
                   ${role.bgHover} ${role.borderHover} 
                   transition-all duration-200 group
                   active:scale-[0.98]
                 `}
               >
                 {/* Icon */}
-                <div className={`
-                  w-12 h-12 rounded-xl bg-linear-to-br ${role.gradient} 
-                  flex items-center justify-center text-xl
+                <div
+                  className={`
+                  w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-linear-to-br ${role.gradient} 
+                  flex items-center justify-center text-lg sm:text-xl
                   shadow-md group-hover:shadow-lg transition-shadow
                   shrink-0
-                `}>
+                `}
+                >
                   <span>{role.icon}</span>
                 </div>
 
                 {/* Content */}
-                <div className="flex-1 text-left">
-                  <h3 className={`
-                    font-bold text-slate-900 text-base
+                <div className="flex-1 text-left min-w-0">
+                  <h3
+                    className={`
+                    font-bold text-slate-900 text-sm sm:text-base
                     ${role.textHover} transition-colors
-                  `}>
+                  `}
+                  >
                     {role.name}
                   </h3>
-                  <p className="text-xs text-slate-500">
+                  <p className="text-xs text-slate-500 leading-tight">
                     {role.description}
                   </p>
                 </div>
 
                 {/* Arrow */}
-                <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-white group-hover:shadow-md transition-all shrink-0">
-                  <svg className="w-4 h-4 text-slate-400 group-hover:text-slate-600 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 5l7 7-7 7" />
+                <div className="w-6 h-6 sm:w-8 sm:h-8 rounded-full bg-slate-100 flex items-center justify-center group-hover:bg-white group-hover:shadow-md transition-all shrink-0">
+                  <svg
+                    className="w-3 h-3 sm:w-4 sm:h-4 text-slate-400 group-hover:text-slate-600 transition-colors"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth="2"
+                      d="M9 5l7 7-7 7"
+                    />
                   </svg>
                 </div>
               </button>
             ))}
           </div>
 
-          {/* ─── Footer ────────────────────────────────────────── */}
-          <div className="px-6 pb-6 pt-2 border-t border-slate-100 flex items-center justify-between">
-            <p className="text-xs text-slate-400">
-              {mode === "signin" ? "Don't have an account?" : "Already have an account?"}
+          {/* Footer */}
+          <div className="px-4 sm:px-6 pb-4 sm:pb-6 pt-2 border-t border-slate-100 flex items-center justify-between gap-2 sm:gap-0 flex-shrink-0">
+            <p className="text-xs text-slate-400 truncate">
+              {mode === "signin"
+                ? "Don't have an account?"
+                : "Already have an account?"}
             </p>
             <button
               onClick={() => {
-                const newMode: "signin" | "signup" = mode === "signin" ? "signup" : "signin";
+                const newMode: "signin" | "signup" =
+                  mode === "signin" ? "signup" : "signin";
                 onModeChange?.(newMode);
               }}
-              className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors"
+              className="text-sm font-semibold text-emerald-600 hover:text-emerald-700 transition-colors whitespace-nowrap"
             >
               {mode === "signin" ? "Sign Up" : "Sign In"}
             </button>
           </div>
         </div>
 
-        {/* ─── CSS Animations ──────────────────────────────────── */}
+        {/* CSS Animations */}
         <style>{`
           @keyframes fadeIn {
             from { opacity: 0; }
@@ -209,11 +251,6 @@ export const RoleModal: React.FC<RoleModalProps> = ({ isOpen, onClose, mode, onM
             to {
               opacity: 1;
               transform: scale(1) translateY(0);
-            }
-          }
-          @media (max-width: 640px) {
-            .w-full {
-              margin: 16px;
             }
           }
         `}</style>

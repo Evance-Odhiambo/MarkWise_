@@ -8,7 +8,10 @@ interface ManualEntryFormProps {
   onDataChange: (data: Lecturer[]) => void;
 }
 
-export function LecturerManualEntryForm({ data, onDataChange }: ManualEntryFormProps) {
+export function LecturerManualEntryForm({
+  data,
+  onDataChange,
+}: ManualEntryFormProps) {
   const [name, setName] = useState("");
   const [staffNumber, setStaffNumber] = useState("");
 
@@ -84,8 +87,12 @@ export function LecturerManualEntryForm({ data, onDataChange }: ManualEntryFormP
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gray-50">
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Name</th>
-                <th className="text-left py-2 px-3 font-medium text-gray-700">Staff Number</th>
+                <th className="text-left py-2 px-3 font-medium text-gray-700">
+                  Name
+                </th>
+                <th className="text-left py-2 px-3 font-medium text-gray-700">
+                  Staff Number
+                </th>
                 <th className="w-1"></th>
               </tr>
             </thead>

@@ -7,11 +7,17 @@ interface MethodSelectorProps {
   onChange: (method: ImportMethod) => void;
 }
 
-const methods: { value: ImportMethod; label: string; description: string; icon: string }[] = [
+const methods: {
+  value: ImportMethod;
+  label: string;
+  description: string;
+  icon: string;
+}[] = [
   {
     value: "api",
     label: "Institution API",
-    description: "Import lecturers from your institution's LMS or HR portal API",
+    description:
+      "Import lecturers from your institution's LMS or HR portal API",
     icon: "🔌",
   },
   {
@@ -28,7 +34,10 @@ const methods: { value: ImportMethod; label: string; description: string; icon: 
   },
 ];
 
-export function LecturerMethodSelector({ method, onChange }: MethodSelectorProps) {
+export function LecturerMethodSelector({
+  method,
+  onChange,
+}: MethodSelectorProps) {
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
       {methods.map((m) => (

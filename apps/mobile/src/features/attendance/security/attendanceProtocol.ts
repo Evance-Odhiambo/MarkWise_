@@ -1,5 +1,7 @@
 export const ATTENDANCE_PROTOCOL_VERSION = 1 as const;
 export const QR_ROTATION_SECONDS = 3;
+export const BLE_ROTATION_SECONDS = 5;
+export const RELAY_ROTATION_SECONDS = 5;
 export const PIN_ROTATION_SECONDS = 30;
 export const SESSION_CLOCK_SKEW_SECONDS = 15;
 export const MAX_COUNTER_DRIFT = 3;

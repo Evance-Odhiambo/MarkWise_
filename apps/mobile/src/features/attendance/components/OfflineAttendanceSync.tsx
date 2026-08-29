@@ -2,6 +2,11 @@ import React, { useCallback, useEffect, useRef } from 'react';
 import { AppState, type AppStateStatus } from 'react-native';
 import { useAuth } from '../../auth/context/AuthContext';
 import { useAttendanceSync } from '../hooks/useAttendanceSync';
+import { submitPinByUnit, ApiRequestError } from '../api/inPersonAttendanceApi';
+import {
+  getPendingPins,
+  removePendingPin,
+} from '../../../shared/storage/pendingPinQueue';
 
 const SYNC_INTERVAL_MS = 30_000;
 
@@ -28,19 +33,49 @@ export default function OfflineAttendanceSync() {
     }
   }, [isAuthenticated, syncPending, token]);
 
+  const flushPins = useCallback(async () => {
+    if (!isAuthenticated || !token) return;
+    const pending = await getPendingPins();
+    for (const pin of pending) {
+      try {
+        const result = await submitPinByUnit(pin, token);
+        if (
+          result.data.status === 'verified' ||
+          result.data.status === 'duplicate'
+        ) {
+          await removePendingPin(pin.id);
+        }
+      } catch (error) {
+        if (
+          error instanceof ApiRequestError &&
+          error.status >= 400 &&
+          error.status < 500
+        )
+          await removePendingPin(pin.id);
+      }
+    }
+  }, [isAuthenticated, token]);
+
   useEffect(() => {
     if (!isAuthenticated) return;
     void flush();
-    const timer = setInterval(() => void flush(), SYNC_INTERVAL_MS);
+    void flushPins();
+    const timer = setInterval(() => {
+      void flush();
+      void flushPins();
+    }, SYNC_INTERVAL_MS);
     const onAppStateChange = (state: AppStateStatus) => {
-      if (state === 'active') void flush();
+      if (state === 'active') {
+        void flush();
+        void flushPins();
+      }
     };
     const subscription = AppState.addEventListener('change', onAppStateChange);
     return () => {
       clearInterval(timer);
       subscription.remove();
     };
-  }, [flush, isAuthenticated]);
+  }, [flush, flushPins, isAuthenticated]);
 
   return null;
 }

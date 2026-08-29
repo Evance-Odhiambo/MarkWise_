@@ -9,12 +9,12 @@ interface LogoIconProps extends SVGProps<SVGSVGElement> {
   isHovered?: boolean;
 }
 
-export function LogoIcon({ 
-  size = 32, 
+export function LogoIcon({
+  size = 32,
   variant = "default",
   animated = false,
   isHovered = false,
-  ...props 
+  ...props
 }: LogoIconProps) {
   const colors = {
     default: {
@@ -75,13 +75,7 @@ export function LogoIcon({
           <stop offset="100%" stopColor={color.gradientEnd} />
         </linearGradient>
 
-        <linearGradient
-          id="markwiseAccent"
-          x1="100%"
-          y1="0%"
-          x2="0%"
-          y2="100%"
-        >
+        <linearGradient id="markwiseAccent" x1="100%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor={color.accent} />
           <stop offset="100%" stopColor={color.primary} />
         </linearGradient>
@@ -166,7 +160,15 @@ export function LogoIcon({
             />
           </circle>
 
-          <circle cx="48" cy="16" r="6" fill="none" stroke={color.accent} strokeWidth="1" opacity="0.3">
+          <circle
+            cx="48"
+            cy="16"
+            r="6"
+            fill="none"
+            stroke={color.accent}
+            strokeWidth="1"
+            opacity="0.3"
+          >
             <animate
               attributeName="r"
               values="6;8;6"
@@ -181,7 +183,13 @@ export function LogoIcon({
             />
           </circle>
 
-          <circle cx="12" cy="48" r="2.5" fill="url(#markwiseAccent)" opacity="0.7" />
+          <circle
+            cx="12"
+            cy="48"
+            r="2.5"
+            fill="url(#markwiseAccent)"
+            opacity="0.7"
+          />
           <circle cx="52" cy="48" r="2" fill="white" opacity="0.15" />
           <circle cx="52" cy="12" r="2" fill="white" opacity="0.15" />
         </>

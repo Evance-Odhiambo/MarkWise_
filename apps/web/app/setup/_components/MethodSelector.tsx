@@ -9,11 +9,17 @@ interface MethodSelectorProps {
   onChange: (method: ImportMethod) => void;
 }
 
-const methods: { value: ImportMethod; label: string; description: string; icon: string }[] = [
+const methods: {
+  value: ImportMethod;
+  label: string;
+  description: string;
+  icon: string;
+}[] = [
   {
     value: "api",
     label: "Institution API",
-    description: "Import data from your institution's LMS or student portal API",
+    description:
+      "Import data from your institution's LMS or student portal API",
     icon: "🔌",
   },
   {
@@ -30,7 +36,10 @@ const methods: { value: ImportMethod; label: string; description: string; icon: 
   },
 ];
 
-export function AcademicMethodSelector({ method, onChange }: MethodSelectorProps) {
+export function AcademicMethodSelector({
+  method,
+  onChange,
+}: MethodSelectorProps) {
   return (
     <div className="grid gap-4 md:grid-cols-3">
       {methods.map((m) => {
@@ -43,7 +52,7 @@ export function AcademicMethodSelector({ method, onChange }: MethodSelectorProps
               "cursor-pointer border transition-all duration-200 hover:-translate-y-0.5 hover:shadow-md",
               active
                 ? "border-blue-500 bg-blue-50/80 shadow-sm ring-2 ring-blue-100"
-                : "border-slate-200 bg-white/80 hover:border-slate-300"
+                : "border-slate-200 bg-white/80 hover:border-slate-300",
             )}
             onClick={() => onChange(m.value)}
           >
@@ -51,14 +60,20 @@ export function AcademicMethodSelector({ method, onChange }: MethodSelectorProps
               <div
                 className={cn(
                   "mb-3 flex h-11 w-11 items-center justify-center rounded-xl text-xl shadow-sm",
-                  active ? "bg-blue-600 text-white" : "bg-slate-100 text-slate-700"
+                  active
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-700",
                 )}
               >
                 {m.icon}
               </div>
 
-              <h3 className="text-base font-semibold text-slate-900">{m.label}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{m.description}</p>
+              <h3 className="text-base font-semibold text-slate-900">
+                {m.label}
+              </h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">
+                {m.description}
+              </p>
             </div>
           </Card>
         );

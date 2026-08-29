@@ -6,7 +6,10 @@ interface ParseResult {
 }
 
 export function parseLecturerCsv(csvText: string): ParseResult {
-  const lines = csvText.split("\n").map((line) => line.trim()).filter(Boolean);
+  const lines = csvText
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 
   if (lines.length === 0) {
     throw new Error("CSV file is empty");
@@ -19,7 +22,7 @@ export function parseLecturerCsv(csvText: string): ParseResult {
   const missing = requiredColumns.filter((col) => !headers.includes(col));
   if (missing.length > 0) {
     throw new Error(
-      `Missing required columns: ${missing.join(", ")}. Required columns: ${requiredColumns.join(", ")}`
+      `Missing required columns: ${missing.join(", ")}. Required columns: ${requiredColumns.join(", ")}`,
     );
   }
 

@@ -43,9 +43,17 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
     setSuccessMessage(null);
 
     try {
-      const response = await fetch("/api/academic/import", {
+      const storedUser = JSON.parse(localStorage.getItem("user") ?? "{}") as {
+        token?: string;
+      };
+      const response = await fetch("/api/v1/academic/import", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          ...(storedUser.token
+            ? { Authorization: `Bearer ${storedUser.token}` }
+            : {}),
+        },
         body: JSON.stringify({
           apiUrl,
           apiFormat,
@@ -54,17 +62,21 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
       });
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({ error: "Import failed" }));
+        const err = await response
+          .json()
+          .catch(() => ({ error: "Import failed" }));
         throw new Error(err.error || "Import failed");
       }
 
       const result = await response.json();
       setSuccessMessage(
-        `Successfully imported ${result.importedCourses} courses with ${result.importedUnits} units`
+        `Successfully imported ${result.importedCourses} courses with ${result.importedUnits} units`,
       );
       onDataImported(result.data);
     } catch (err: unknown) {
-      setError(err instanceof Error ? err.message : "An unexpected error occurred");
+      setError(
+        err instanceof Error ? err.message : "An unexpected error occurred",
+      );
     } finally {
       setIsLoading(false);
     }
@@ -73,7 +85,9 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700">API Endpoint URL</label>
+        <label className="block text-sm font-medium text-slate-700">
+          API Endpoint URL
+        </label>
         <Input
           type="url"
           value={apiUrl}
@@ -85,7 +99,9 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700">System / Format</label>
+        <label className="block text-sm font-medium text-slate-700">
+          System / Format
+        </label>
         <select
           value={apiFormat}
           onChange={(e) => setApiFormat(e.target.value)}
@@ -101,7 +117,9 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
       </div>
 
       <div className="space-y-2">
-        <label className="block text-sm font-medium text-slate-700">API Key (optional)</label>
+        <label className="block text-sm font-medium text-slate-700">
+          API Key (optional)
+        </label>
         <Input
           type="password"
           value={apiKey}
@@ -112,9 +130,16 @@ export function ApiImportForm({ onDataImported }: ApiImportFormProps) {
       </div>
 
       {error && <p className="text-sm text-red-600">{error}</p>}
-      {successMessage && <p className="text-sm text-emerald-600">{successMessage}</p>}
+      {successMessage && (
+        <p className="text-sm text-emerald-600">{successMessage}</p>
+      )}
 
-      <Button type="submit" disabled={isLoading} className="w-full justify-center" size="lg">
+      <Button
+        type="submit"
+        disabled={isLoading}
+        className="w-full justify-center"
+        size="lg"
+      >
         {isLoading ? "Importing..." : "Import Academic Data"}
       </Button>
     </form>
