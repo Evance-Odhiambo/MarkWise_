@@ -16,7 +16,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     studentId: string,
     success: boolean,
     sessionId: string,
-    reason?: string,
+    reason?: string
   ) => {
     const notification = await app.prisma.notification
       .create({
@@ -49,6 +49,67 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
   };
 
   app.post(
+    "/pin-submit",
+    { preHandler: requireAttendanceRole("student") },
+    async (request, reply) => {
+      const body = (request.body || {}) as {
+        unitCode?: string;
+        pin?: string;
+        scannedAt?: string | number;
+        deviceId?: string;
+      };
+      const unitCode = String(body.unitCode || "")
+        .trim()
+        .toUpperCase()
+        .replace(/\s+/g, "");
+      const pin = String(body.pin || "").trim();
+      const scannedAt = Number(body.scannedAt);
+      if (!unitCode || !/^\d{6}$/.test(pin) || !Number.isFinite(scannedAt))
+        return reply
+          .code(400)
+          .send({
+            error: "Unit code, six-digit PIN, and scan time are required",
+          });
+
+      const session = await service.getActiveSessionByUnit(
+        unitCode,
+        request.user.id
+      );
+      if (!session)
+        return reply
+          .code(404)
+          .send({ error: "No active attendance session for this unit" });
+      const startCounter = Math.floor(session.sessionStart / 1000 / 30);
+      const currentCounter = Math.floor(Date.now() / 1000 / 30) - startCounter;
+      const rawPayload = `MWPIN1:${session.id}:${pin}:${currentCounter}`;
+      try {
+        const result = await service.submitPin(request.user.id, {
+          sessionId: session.id,
+          unitCode,
+          sessionStart: session.sessionStart,
+          scannedAt,
+          method: "pin",
+          rawPayload,
+          deviceId: body.deviceId,
+        });
+        await notifyPin(
+          request.user.id,
+          result.status === "verified" || result.status === "duplicate",
+          session.id
+        );
+        return reply.send({ success: true, data: result });
+      } catch (error) {
+        const reason =
+          error instanceof Error ? error.message : "VERIFICATION_FAILED";
+        await notifyPin(request.user.id, false, session.id, reason);
+        return reply
+          .code(403)
+          .send({ error: "Attendance verification failed", reason });
+      }
+    }
+  );
+
+  app.post(
     "/sessions",
     { preHandler: requireAttendanceRole("lecturer") },
     async (request, reply) => {
@@ -58,23 +119,26 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           .code(400)
           .send({ error: "Invalid in-person session", errors });
       try {
-        return reply
-          .code(201)
-          .send({
-            success: true,
-            data: await service.createSession(
-              request.user.id,
-              request.body as any,
-            ),
-          });
+        return reply.code(201).send({
+          success: true,
+          data: await service.createSession(
+            request.user.id,
+            request.body as any
+          ),
+        });
       } catch (error) {
-        if (error instanceof Error && error.message === "UNIT_NOT_ASSIGNED")
+        if (
+          error instanceof Error &&
+          error.message === "UNIT_NOT_IN_INSTITUTION"
+        )
           return reply
             .code(403)
-            .send({ error: "Unit is not assigned to lecturer" });
+            .send({
+              error: "The selected unit is not available at your institution",
+            });
         throw error;
       }
-    },
+    }
   );
 
   app.post<{ Params: { sessionId: string } }>(
@@ -83,14 +147,14 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const result = await service.endSession(
         request.params.sessionId,
-        request.user.id,
+        request.user.id
       );
       if (!result.count)
         return reply
           .code(404)
           .send({ error: "Session not found or not owned by lecturer" });
       return reply.send({ success: true });
-    },
+    }
   );
 
   app.get<{ Params: { sessionId: string } }>(
@@ -101,7 +165,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       if (!session)
         return reply.code(404).send({ error: "Attendance session not found" });
       return reply.send({ success: true, data: session });
-    },
+    }
   );
 
   app.get<{ Params: { nonce: string } }>(
@@ -115,7 +179,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       if (!session)
         return reply.code(404).send({ error: "BLE session not found" });
       return reply.send({ success: true, data: session });
-    },
+    }
   );
 
   app.get<{ Params: { unitCode: string } }>(
@@ -124,12 +188,14 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const session = await service.getActiveSessionByUnit(
         request.params.unitCode,
-        request.user.id,
+        request.user.id
       );
       if (!session)
-        return reply.code(404).send({ error: "No active attendance session for this unit" });
+        return reply
+          .code(404)
+          .send({ error: "No active attendance session for this unit" });
       return reply.send({ success: true, data: session });
-    },
+    }
   );
 
   app.post(
@@ -147,17 +213,17 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           body.method === "pin"
             ? await service.submitPin(request.user.id, body)
             : typeof body.rawPayload === "string" &&
-                (body.rawPayload.startsWith("MWIR1:") ||
-                  body.rawPayload.startsWith("MWIR2:"))
-              ? body.rawPayload.startsWith("MWIR2:")
-                ? await service.submitOpaqueRelay(request.user.id, body)
-                : await service.submitRelay(request.user.id, body)
-              : await service.submit(request.user.id, body);
+              (body.rawPayload.startsWith("MWIR1:") ||
+                body.rawPayload.startsWith("MWIR2:"))
+            ? body.rawPayload.startsWith("MWIR2:")
+              ? await service.submitOpaqueRelay(request.user.id, body)
+              : await service.submitRelay(request.user.id, body)
+            : await service.submit(request.user.id, body);
         if (body.method === "pin")
           await notifyPin(
             request.user.id,
             result.status === "verified" || result.status === "duplicate",
-            body.sessionId,
+            body.sessionId
           );
         return reply.send({ success: true, data: result });
       } catch (error) {
@@ -169,7 +235,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           .code(reason === "SESSION_NOT_FOUND" ? 404 : 403)
           .send({ error: "Attendance verification failed", reason });
       }
-    },
+    }
   );
 
   app.post(
@@ -187,7 +253,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         create: { userId: request.user.id, deviceKey, role: "student" },
       });
       return reply.code(201).send({ success: true });
-    },
+    }
   );
 
   // Server-issued opaque relay proofs are compact enough for BLE. They can
@@ -208,13 +274,11 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         orderBy: { createdAt: "desc" },
       });
       if (!parent)
-        return reply
-          .code(403)
-          .send({
-            error:
-              "Attendance must be server verified before relay can be enabled",
-            reason: "RELAY_PARENT_NOT_VERIFIED",
-          });
+        return reply.code(403).send({
+          error:
+            "Attendance must be server verified before relay can be enabled",
+          reason: "RELAY_PARENT_NOT_VERIFIED",
+        });
       const relayToken = crypto.randomBytes(4).toString("hex");
       await app.prisma.inPersonAttendanceRecord.update({
         where: { id: parent.id },
@@ -225,13 +289,11 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         Buffer.from(relayToken, "hex"),
         Buffer.from([1]),
       ]);
-      return reply
-        .code(201)
-        .send({
-          success: true,
-          data: { payload: `MWIR2:${bytes.toString("base64")}` },
-        });
-    },
+      return reply.code(201).send({
+        success: true,
+        data: { payload: `MWIR2:${bytes.toString("base64")}` },
+      });
+    }
   );
 
   app.get<{ Params: { token: string } }>(
@@ -250,7 +312,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       if (!session)
         return reply.code(404).send({ error: "Relay session not found" });
       return reply.send({ success: true, data: session });
-    },
+    }
   );
 
   app.post(
@@ -271,7 +333,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           .code(reason === "SESSION_NOT_FOUND_OR_NOT_OWNED" ? 404 : 403)
           .send({ error: "Assisted attendance verification failed", reason });
       }
-    },
+    }
   );
 
   app.post(
@@ -299,7 +361,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
                 error instanceof Error ? error.message : "VERIFICATION_FAILED",
             };
           }
-        }),
+        })
       );
       return reply.send({
         success: true,
@@ -312,6 +374,6 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
             .length,
         },
       });
-    },
+    }
   );
 };

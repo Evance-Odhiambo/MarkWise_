@@ -117,7 +117,6 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         where: {
           code: unitCode,
           semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
-          lecturerUnits: { some: { lecturerId: request.user.id } },
         },
         select: {
           enrollments: {
@@ -128,7 +127,10 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
           },
         },
       });
-      if (!unit) return reply.code(404).send({ error: "Unit is not selected by lecturer" });
+      if (!unit)
+        return reply
+          .code(404)
+          .send({ error: "Unit is not available at your institution" });
       return reply.send({
         unitCode,
         students: unit.enrollments.map(({ student }) => ({

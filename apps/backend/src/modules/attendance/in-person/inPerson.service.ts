@@ -15,20 +15,31 @@ export class InPersonService {
 
   async createSession(lecturerId: string, input: CreateInPersonSessionBody) {
     const unitCode = normalizeUnitCode(input.unitCode);
-    const assignment = await this.prisma.lecturerUnit.findFirst({
-      where: { lecturerId, unit: { code: unitCode } },
+    const lecturer = await this.prisma.lecturer.findUnique({
+      where: { id: lecturerId },
+      select: { institutionId: true },
     });
-    if (!assignment) throw new Error("UNIT_NOT_ASSIGNED");
+    if (!lecturer) throw new Error("LECTURER_NOT_FOUND");
+
+    // Lecturers choose any unit belonging to their institution when starting
+    // attendance; they are not required to have a pre-assigned unit record.
+    const unit = await this.prisma.unit.findFirst({
+      where: {
+        code: unitCode,
+        semester: {
+          courseYear: { course: { institutionId: lecturer.institutionId } },
+        },
+      },
+      select: { bleId: true },
+    });
+    if (!unit) throw new Error("UNIT_NOT_IN_INSTITUTION");
+
     const expiresAt = new Date(input.expiresAt).getTime();
     const durationMs = Math.min(
       Math.max(expiresAt - Date.now(), 60_000),
       MAX_IN_PERSON_SESSION_MINUTES * 60_000,
     );
     const sessionStart = new Date(Math.floor(Date.now() / 1000) * 1000);
-    const unit = await this.prisma.unit.findFirst({
-      where: { code: unitCode },
-      select: { bleId: true },
-    });
     const session = await this.prisma.conductedSession.create({
       data: {
         lecturerId,

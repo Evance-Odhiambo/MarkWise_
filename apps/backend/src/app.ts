@@ -3,6 +3,7 @@ import {
   attendanceRoutes,
   inPersonRoutes,
 } from "./modules/attendance/index.js";
+import { delegationRoutes } from "./modules/attendance/delegation.route.js";
 import { academicsModule } from "./modules/academics/index.js";
 
 import { adminModule } from "./modules/admin/index.js";
@@ -38,6 +39,7 @@ export function buildApp() {
   app.get(`${apiPrefix}/health`, async () => ({ status: "ok" }));
   app.register(attendanceRoutes, { prefix: `${apiPrefix}/attendance` });
   app.register(inPersonRoutes, { prefix: `${apiPrefix}/attendance/in-person` });
+  app.register(delegationRoutes, { prefix: `${apiPrefix}/attendance/delegations` });
   app.register(academicsModule, { prefix: apiPrefix });
 
   app.register(bleModule, { prefix: `${apiPrefix}/ble` });
