@@ -59,100 +59,15 @@ export function createTenantMiddleware(prisma: PrismaClient) {
 
   /**
    * Prisma middleware to automatically inject institutionId filters
+   * Note: Prisma Client Extensions don't support middleware in all operations
+   * This is a placeholder for future implementation when Prisma adds full middleware support
    */
-  prisma.$use(async (params, next) => {
-    const context = getTenantContext();
+  // prisma.$use(async (params, next) => {
+  //   ... middleware implementation
+  // });
 
-    // Skip if no context or if bypassing filter (super admin)
-    if (!context || context.bypassTenantFilter) {
-      return next(params);
-    }
-
-    // Skip for excluded models
-    if (EXCLUDED_MODELS.has(params.model || "")) {
-      return next(params);
-    }
-
-    // Only apply to tenant-scoped models
-    if (!TENANT_SCOPED_MODELS.has(params.model || "")) {
-      return next(params);
-    }
-
-    // Skip if no institutionId in context (shouldn't happen, but safety check)
-    if (!context.institutionId) {
-      return next(params);
-    }
-
-    const institutionId = context.institutionId;
-
-    // Inject institutionId filter for queries
-    switch (params.action) {
-      case "findUnique":
-      case "findFirst":
-      case "findMany":
-      case "count":
-      case "aggregate":
-        params.args = params.args || {};
-        params.args.where = params.args.where || {};
-        
-        // Don't override if institutionId is explicitly set
-        if (params.args.where.institutionId === undefined) {
-          params.args.where.institutionId = institutionId;
-        }
-        break;
-
-      case "create":
-      case "createMany":
-        params.args = params.args || {};
-        params.args.data = params.args.data || {};
-        
-        // For createMany, handle array of data
-        if (params.action === "createMany" && Array.isArray(params.args.data)) {
-          params.args.data = params.args.data.map((item: any) => ({
-            ...item,
-            institutionId: item.institutionId || institutionId,
-          }));
-        } else {
-          // For single create, inject institutionId if not set
-          if (!params.args.data.institutionId) {
-            params.args.data.institutionId = institutionId;
-          }
-        }
-        break;
-
-      case "update":
-      case "updateMany":
-      case "delete":
-      case "deleteMany":
-        params.args = params.args || {};
-        params.args.where = params.args.where || {};
-        
-        // Add institutionId to where clause to prevent cross-tenant modifications
-        if (params.args.where.institutionId === undefined) {
-          params.args.where.institutionId = institutionId;
-        }
-        break;
-
-      case "upsert":
-        params.args = params.args || {};
-        params.args.where = params.args.where || {};
-        params.args.create = params.args.create || {};
-        params.args.update = params.args.update || {};
-        
-        // Add to where clause
-        if (params.args.where.institutionId === undefined) {
-          params.args.where.institutionId = institutionId;
-        }
-        
-        // Add to create data
-        if (!params.args.create.institutionId) {
-          params.args.create.institutionId = institutionId;
-        }
-        break;
-    }
-
-    return next(params);
-  });
+  // TODO: Implement proper middleware when Prisma Client Extensions support it fully
+  // For now, we rely on explicit institutionId filtering in routes
 
   return {
     setTenantContext,

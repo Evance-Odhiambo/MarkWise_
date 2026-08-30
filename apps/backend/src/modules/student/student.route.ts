@@ -591,6 +591,11 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
       try {
         const { students, institutionId } = request.body;
 
+        // Validate institutionId exists
+        if (!institutionId) {
+          return reply.code(400).send({ error: "institutionId is required" });
+        }
+
         if (
           request.user.role !== "SUPER_ADMIN" &&
           request.user.institutionId !== institutionId

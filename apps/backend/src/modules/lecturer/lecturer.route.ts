@@ -429,18 +429,26 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         // Prevent cross-institution staff number hijacking: if a lecturer
         // record already exists for this staffNumber but belongs to a
         // different institution, reject the entire request.
-        const existing = await app.prisma.lecturer.findUnique({
-          where: { staffNumber },
+        const existing = await app.prisma.lecturer.findFirst({
+          where: { 
+            staffNumber,
+            institutionId: { not: institutionId }
+          },
           select: { institutionId: true },
         });
-        if (existing && existing.institutionId !== institutionId) {
+        if (existing) {
           return reply.code(409).send({
             error: `Staff number "${staffNumber}" is already registered to another institution`,
           });
         }
 
         const lecturer = await app.prisma.lecturer.upsert({
-          where: { staffNumber },
+          where: { 
+            institutionId_staffNumber: {
+              institutionId,
+              staffNumber
+            }
+          },
           update: { fullName: name },       // never change institutionId on update
           create: { fullName: name, staffNumber, institutionId },
           select: { id: true, fullName: true, staffNumber: true },

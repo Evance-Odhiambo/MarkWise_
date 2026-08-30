@@ -86,7 +86,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
             unitCode,
             // Scope to the student's own institution so a student from
             // institution A can never match a session run at institution B.
-            lecturer: { institutionId: request.user.institutionId ?? undefined },
+            institutionId: request.user.institutionId ?? undefined,
             sessionStart: {
               gte: new Date(scannedAt - 60 * 60 * 1000),
               lte: new Date(scannedAt + 15_000),

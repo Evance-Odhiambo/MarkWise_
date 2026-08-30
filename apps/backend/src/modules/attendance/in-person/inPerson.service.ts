@@ -146,7 +146,7 @@ export class InPersonService {
       where: {
         unitCode: normalizedCode,
         sessionEnd: null,
-        lecturer: { institutionId: student.institutionId },
+        institutionId: student.institutionId,
       },
       orderBy: { sessionStart: "desc" },
     });
