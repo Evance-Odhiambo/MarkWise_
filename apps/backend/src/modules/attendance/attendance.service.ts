@@ -13,15 +13,28 @@ export class AttendanceService {
 
   private async findUnitByCode(
     code: string,
+    institutionId: string,
     select: { id: true; name: true; code: true },
   ) {
-    const exact = await this.prisma.unit.findFirst({ where: { code }, select });
-    if (exact) return exact;
+    // Always filter to the given institution so identical unit codes at
+    // different institutions never collide.
+    const unit = await this.prisma.unit.findFirst({
+      where: {
+        code,
+        semester: { courseYear: { course: { institutionId } } },
+      },
+      select,
+    });
+    if (unit) return unit;
 
-    const units = await this.prisma.unit.findMany({ select });
+    // Fallback: try normalized comparison within the same institution.
+    const units = await this.prisma.unit.findMany({
+      where: { semester: { courseYear: { course: { institutionId } } } },
+      select,
+    });
     return (
       units.find(
-        (unit) => normalizeUnitCode(unit.code) === normalizeUnitCode(code),
+        (u) => normalizeUnitCode(u.code) === normalizeUnitCode(code),
       ) ?? null
     );
   }
@@ -57,6 +70,13 @@ export class AttendanceService {
     const unitCode = normalizeUnitCode(input.unitCode);
     if (!unitCode) throw new Error("Unit code is required");
 
+    // Resolve the lecturer's institution so we scope everything correctly.
+    const lecturer = await this.prisma.lecturer.findUnique({
+      where: { id: input.lecturerId },
+      select: { institutionId: true },
+    });
+    if (!lecturer) throw new Error("Lecturer not found");
+
     const assignment = await this.prisma.lecturerUnit.findMany({
       where: { lecturerId: input.lecturerId },
       select: { unit: { select: { code: true } } },
@@ -85,6 +105,7 @@ export class AttendanceService {
     const session = await this.prisma.onlineAttendanceSession.create({
       data: {
         lecturerId: input.lecturerId,
+        institutionId: lecturer.institutionId,
         unitCode: assignedUnit.unit.code,
         expiresAt,
       },
@@ -125,7 +146,7 @@ export class AttendanceService {
     });
 
     if (!session) return null;
-    const unit = await this.findUnitByCode(session.unitCode, {
+    const unit = await this.findUnitByCode(session.unitCode, session.institutionId, {
       id: true,
       name: true,
       code: true,
@@ -164,7 +185,7 @@ export class AttendanceService {
   }) {
     const student = await this.prisma.student.findUnique({
       where: { id: input.studentId },
-      select: { admissionNumber: true },
+      select: { admissionNumber: true, institutionId: true },
     });
     if (!student) {
       await this.audit({
@@ -182,7 +203,7 @@ export class AttendanceService {
 
     const session = await this.prisma.onlineAttendanceSession.findUnique({
       where: { id: input.sessionId },
-      select: { unitCode: true, expiresAt: true, endedAt: true },
+      select: { unitCode: true, expiresAt: true, endedAt: true, institutionId: true },
     });
     if (!session || session.endedAt || session.expiresAt <= new Date()) {
       await this.audit({
@@ -194,6 +215,22 @@ export class AttendanceService {
         ipAddress: input.ipAddress,
         success: false,
         reason: "SESSION_CLOSED",
+      });
+      return { success: false, blocked: true as const };
+    }
+
+    // Strict institution boundary: a student from institution A cannot mark
+    // attendance for a session run at institution B.
+    if (session.institutionId !== student.institutionId) {
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "INSTITUTION_MISMATCH",
       });
       return { success: false, blocked: true as const };
     }
@@ -291,7 +328,7 @@ export class AttendanceService {
       });
     }
 
-    const unit = await this.findUnitByCode(session.unitCode, {
+    const unit = await this.findUnitByCode(session.unitCode, session.institutionId, {
       id: true,
       name: true,
       code: true,

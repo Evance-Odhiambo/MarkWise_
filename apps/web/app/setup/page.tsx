@@ -2,17 +2,14 @@
 
 import { useState, useEffect } from "react";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
-import type { AcademicCourse, ImportMethod } from "./types/academic";
-import type { Institution } from "@/app/types/auth";
-import { AcademicMethodSelector } from "./_components/MethodSelector";
-import { ApiImportForm } from "./_components/ApiImportForm";
-import { CsvImportForm } from "./_components/CsvImportForm";
-import { ManualEntryForm } from "./_components/ManualEntryForm";
-import { AdminWorkspaceShell } from "@/components/admin/AdminWorkspaceShell";
+import { Card, CardContent } from "@/components/ui/card";
+import { Building2, School } from "lucide-react";
+import type { AcademicCourse } from "../../types/setup-academic";
+import type { Institution } from "@/types/auth";
+import { AcademicWorkspace } from "@/components/features/setup/academic-workspace";
+import { AdminWorkspaceShell } from "@/components/features/admin/admin-workspace-shell";
 
 export default function SetupPage() {
-  const [method, setMethod] = useState<ImportMethod>("manual");
   const [data, setData] = useState<AcademicCourse[]>([]);
   const [institutionId, setInstitutionId] = useState<string>("");
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -33,22 +30,6 @@ export default function SetupPage() {
     }
     return token ? { Authorization: `Bearer ${token}` } : {};
   };
-
-  const totalUnits = data.reduce(
-    (sum, course) =>
-      sum +
-      (course.years || []).reduce(
-        (courseSum, year) =>
-          courseSum +
-          (year.semesters || []).reduce(
-            (semesterSum, semester) =>
-              semesterSum + (semester.units || []).length,
-            0,
-          ),
-        0,
-      ),
-    0,
-  );
 
   useEffect(() => {
     const fetchInstitutions = async () => {
@@ -101,10 +82,17 @@ export default function SetupPage() {
       }
     };
 
-    const storedInstitution = localStorage.getItem("institutionId");
-    if (storedInstitution) {
-      setInstitutionId(storedInstitution);
-    }
+    // Seed institutionId from the logged-in user's token first, then fall
+    // back to the previously-selected value stored under its own key.
+    const storedUser = localStorage.getItem("user");
+    let seedId = localStorage.getItem("institutionId") ?? "";
+    try {
+      const parsed = storedUser
+        ? (JSON.parse(storedUser) as { institutionId?: string })
+        : null;
+      if (parsed?.institutionId) seedId = parsed.institutionId;
+    } catch { /* ignore */ }
+    if (seedId) setInstitutionId(seedId);
 
     if (institutions.length === 0) fetchInstitutions();
     fetchCourses();
@@ -116,7 +104,7 @@ export default function SetupPage() {
     }
   }, [institutionId]);
 
-  const handleDataChange = async (updatedData: AcademicCourse[]) => {
+  const handleDataChange = (updatedData: AcademicCourse[]) => {
     setData(updatedData);
     setSaveMessage(null);
   };
@@ -137,6 +125,9 @@ export default function SetupPage() {
       const result = await response.json().catch(() => ({}));
       if (!response.ok)
         throw new Error(result.error || "Unable to save academic setup");
+      if (Array.isArray(result.courses)) {
+        setData(result.courses);
+      }
       setSaveMessage("Academic setup saved successfully.");
     } catch (error) {
       setSaveMessage(
@@ -154,104 +145,40 @@ export default function SetupPage() {
   );
 
   return (
-    <AdminWorkspaceShell eyebrow="Setup operations" title="Academics">
-      <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.13),transparent_35%),linear-gradient(to_bottom,#f8fafc,#eef4ff)] py-10 text-slate-900">
-        <div className="mx-auto max-w-6xl px-4 sm:px-6 lg:px-8">
-          <div className="mb-8 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-            <div>
-              <Badge
-                variant="secondary"
-                className="mb-3 rounded-full border border-blue-200 bg-blue-50 text-blue-700"
-              >
-                Academic configuration
-              </Badge>
-              <h1 className="text-3xl font-semibold tracking-tight text-slate-900 sm:text-4xl">
-                Academic Data Setup
-              </h1>
-              <p className="mt-2 max-w-2xl text-sm text-slate-600 sm:text-base">
-                Configure your institution’s academic structure with a faster,
-                cleaner data-entry flow for courses, years, semesters, and
-                units.
-              </p>
+    <AdminWorkspaceShell eyebrow="Academic Management" title="Academic Setup">
+      <main className="min-h-screen bg-[radial-gradient(circle_at_top,rgba(59,130,246,0.05),transparent_35%),linear-gradient(to_bottom,#f8fafc,#f1f5f9)] py-2 px-2 sm:px-3 text-slate-900 text-[11px]">
+        <div className="mx-auto max-w-[1800px] space-y-1.5">
+          {/* Compact Header & Institution Switcher */}
+          <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-2xs backdrop-blur-sm">
+            <div className="flex items-center gap-1.5">
+              <span className="text-xs font-bold tracking-tight text-slate-900">
+                Academic Curriculum Setup
+              </span>
+              {selectedInstitution && (
+                <Badge
+                  variant="outline"
+                  className="border-emerald-200 bg-emerald-50 text-emerald-700 text-[10px] py-0 px-1.5"
+                >
+                  <Building2 className="mr-1 h-2.5 w-2.5" />
+                  {selectedInstitution.name}
+                </Badge>
+              )}
             </div>
 
-            {institutionId && (
-              <div className="flex flex-wrap gap-3">
-                <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                    Courses
-                  </p>
-                  <p className="text-lg font-semibold text-slate-900">
-                    {data.length}
-                  </p>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-white/80 px-3 py-2 shadow-sm">
-                  <p className="text-[11px] uppercase tracking-[0.22em] text-slate-500">
-                    Units
-                  </p>
-                  <p className="text-lg font-semibold text-slate-900">
-                    {totalUnits}
-                  </p>
-                </div>
-              </div>
-            )}
-          </div>
-
-          <Card className="border-slate-200 bg-white/80 shadow-[0_12px_30px_-18px_rgba(15,23,42,0.35)] backdrop-blur-sm">
-            <CardHeader className="pb-4">
-              <div className="flex items-center justify-between gap-4">
-                <div>
-                  <CardTitle className="text-lg text-slate-900">
-                    Institution
-                  </CardTitle>
-                </div>
-                {selectedInstitution && (
-                  <Badge
-                    variant="outline"
-                    className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                  >
-                    {selectedInstitution.name}
-                  </Badge>
-                )}
-              </div>
-            </CardHeader>
-            <CardContent>
+            <div className="flex items-center gap-1.5">
               {loadingInstitutions ? (
-                <p className="text-sm text-slate-500">
-                  Loading institutions...
-                </p>
-              ) : institutions.length === 0 ? (
-                <div className="space-y-2 text-sm">
-                  <p
-                    className={
-                      institutionError ? "text-red-600" : "text-amber-700"
-                    }
-                  >
-                    {institutionError ??
-                      "No institutions found. Please approve an onboarding request first."}
-                  </p>
-                  {institutionError && (
-                    <button
-                      type="button"
-                      onClick={() => window.location.reload()}
-                      className="font-medium text-blue-600 hover:text-blue-700"
-                    >
-                      Try again
-                    </button>
-                  )}
-                </div>
-              ) : (
-                <div className="max-w-xl">
-                  <label className="mb-2 block text-sm font-medium text-slate-700">
-                    Select Institution
-                  </label>
+                <span className="text-[10.5px] text-slate-500">Loading...</span>
+              ) : institutions.length > 0 ? (
+                <div className="flex items-center gap-1">
+                  <span className="text-[10px] font-medium text-slate-500">
+                    Institution:
+                  </span>
                   <select
                     value={institutionId}
                     onChange={(e) => setInstitutionId(e.target.value)}
-                    className="w-full rounded-xl border border-slate-200 bg-slate-50 px-3 py-2.5 text-sm text-slate-700 shadow-inner outline-none transition focus:border-blue-500 focus:ring-2 focus:ring-blue-100"
-                    required
+                    className="h-6 rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[10.5px] font-medium text-slate-800 shadow-inner outline-none transition focus:border-blue-500 focus:ring-1 focus:ring-blue-200 min-w-[160px]"
                   >
-                    <option value="">Choose an institution...</option>
+                    <option value="">Select institution...</option>
                     {institutions.map((inst) => (
                       <option key={inst.id} value={inst.id}>
                         {inst.name}
@@ -259,57 +186,39 @@ export default function SetupPage() {
                     ))}
                   </select>
                 </div>
+              ) : (
+                <span className="text-[10.5px] text-amber-700">
+                  {institutionError ?? "No institutions found."}
+                </span>
               )}
-            </CardContent>
-          </Card>
+            </div>
+          </div>
 
+          {/* Prompt to Select Institution */}
           {!institutionId && (
-            <Card className="mt-6 border-dashed border-slate-300 bg-white/60">
-              <CardContent className="py-10 text-center">
-                <p className="text-base text-slate-500">
-                  Select an institution to unlock the academic setup workflow.
+            <Card className="border-dashed border-slate-300 bg-white/70">
+              <CardContent className="flex flex-col items-center justify-center py-8 text-center">
+                <School className="h-6 w-6 text-slate-400 mb-1" />
+                <h3 className="text-xs font-bold text-slate-800">
+                  Select an Institution to Begin
+                </h3>
+                <p className="mt-0.5 max-w-sm text-[10px] text-slate-500">
+                  Choose a registered institution from the dropdown above to load and configure its academic structure.
                 </p>
               </CardContent>
             </Card>
           )}
 
+          {/* Academic Workspace */}
           {institutionId && (
-            <div className="mt-6 space-y-6">
-              <AcademicMethodSelector method={method} onChange={setMethod} />
-
-              <Card className="border-slate-200 bg-white/85 shadow-[0_12px_30px_-18px_rgba(15,23,42,0.35)]">
-                <CardContent className="p-5 sm:p-6">
-                  {method === "api" && (
-                    <ApiImportForm onDataImported={handleDataChange} />
-                  )}
-                  {method === "csv" && (
-                    <CsvImportForm onDataImported={handleDataChange} />
-                  )}
-                  {method === "manual" && (
-                    <ManualEntryForm
-                      data={data}
-                      onDataChange={handleDataChange}
-                    />
-                  )}
-                  <div className="mt-6 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row sm:items-center sm:justify-between">
-                    <p
-                      className={`text-sm ${saveMessage?.includes("successfully") ? "text-emerald-600" : "text-slate-500"}`}
-                    >
-                      {saveMessage ??
-                        "Changes are kept in this form until you save them."}
-                    </p>
-                    <button
-                      type="button"
-                      onClick={saveSetup}
-                      disabled={isSaving}
-                      className="rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-semibold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
-                    >
-                      {isSaving ? "Saving..." : "Save academic setup"}
-                    </button>
-                  </div>
-                </CardContent>
-              </Card>
-            </div>
+            <AcademicWorkspace
+              courses={data}
+              onCoursesChange={handleDataChange}
+              onSave={saveSetup}
+              isSaving={isSaving}
+              saveMessage={saveMessage}
+              institutionName={selectedInstitution?.name}
+            />
           )}
         </div>
       </main>

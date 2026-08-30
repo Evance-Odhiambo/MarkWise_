@@ -194,10 +194,20 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
 
       const sessionStart = new Date(Math.floor(Date.now() / 1000) * 1000);
       const sessionDuration = 10 * 60;
+
+      // Resolve the delegation creator's institution for the session record.
+      const delegationLecturer = await app.prisma.lecturer.findUnique({
+        where: { id: delegation.createdBy },
+        select: { institutionId: true },
+      });
+      if (!delegationLecturer)
+        return reply.code(404).send({ error: "Delegation lecturer not found" });
+
       const session = await app.prisma.$transaction(async (tx) => {
         const created = await tx.conductedSession.create({
           data: {
             lecturerId: delegation.createdBy,
+            institutionId: delegationLecturer.institutionId,
             unitCode: delegation.unitCode,
             sessionStart,
             sessionDuration,

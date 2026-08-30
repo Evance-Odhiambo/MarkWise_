@@ -43,6 +43,7 @@ export class InPersonService {
     const session = await this.prisma.conductedSession.create({
       data: {
         lecturerId,
+        institutionId: lecturer.institutionId,
         unitCode,
         sessionStart,
         sessionDuration: Math.floor(durationMs / 1000),
@@ -92,9 +93,21 @@ export class InPersonService {
     };
   }
 
-  async getPublicSessionByBleNonce(nonce: number) {
+  async getPublicSessionByBleNonce(nonce: number, institutionId?: string) {
+    const where: {
+      sessionNonce: bigint;
+      sessionEnd: null;
+      institutionId?: string;
+    } = {
+      sessionNonce: BigInt(nonce),
+      sessionEnd: null,
+    };
+    // If the caller's institution is known, scope the lookup so a nonce
+    // collision between two institutions always resolves to the right one.
+    if (institutionId) where.institutionId = institutionId;
+
     const session = await this.prisma.conductedSession.findFirst({
-      where: { sessionNonce: BigInt(nonce), sessionEnd: null },
+      where,
       orderBy: { sessionStart: "desc" },
     });
     return session ? this.getPublicSession(session.id) : null;
@@ -102,16 +115,38 @@ export class InPersonService {
 
   async getActiveSessionByUnit(unitCode: string, studentId: string) {
     const normalizedCode = normalizeUnitCode(unitCode);
+
+    // Resolve the student's institutionId from the DB so we never rely on
+    // caller-supplied data for the institution boundary check.
+    const student = await this.prisma.student.findUnique({
+      where: { id: studentId },
+      select: { institutionId: true },
+    });
+    if (!student) return null;
+
     const enrollment = await this.prisma.enrollment.findFirst({
-      where: { studentId, unit: { code: normalizedCode } },
+      where: {
+        studentId,
+        unit: {
+          code: normalizedCode,
+          semester: {
+            courseYear: {
+              course: { institutionId: student.institutionId },
+            },
+          },
+        },
+      },
       select: { unitId: true },
     });
     if (!enrollment) return null;
 
+    // Scope the session lookup to the student's institution via the lecturer
+    // relation so unit code collisions across institutions are harmless.
     const session = await this.prisma.conductedSession.findFirst({
       where: {
         unitCode: normalizedCode,
         sessionEnd: null,
+        lecturer: { institutionId: student.institutionId },
       },
       orderBy: { sessionStart: "desc" },
     });

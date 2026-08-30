@@ -1,7 +1,9 @@
 import type { FastifyPluginAsync } from "fastify";
+import type { PrismaClient } from "../../generated/prisma/client.js";
 import { requireAttendanceRole } from "../../plugins/index.js";
 import { AttendanceService } from "./attendance.service.js";
 import { WebAuthnService } from "./webauthn.service.js";
+import { sendPushNotification } from "../notification/notification.service.js";
 import type {
   AuthenticationResponseJSON,
   RegistrationResponseJSON,
@@ -14,6 +16,248 @@ import {
   type WebAuthnResponseBody,
 } from "./attendance.schema.js";
 
+const ATTENDANCE_GOAL = 75;
+
+type LecturerAtRiskStudent = {
+  id: string;
+  name: string;
+  admissionNumber: string;
+  unitCode: string;
+  attendanceRate: number;
+  missedCount: number;
+};
+
+async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
+  const since = new Date();
+  since.setDate(since.getDate() - 29);
+  since.setHours(0, 0, 0, 0);
+
+  const selectedUnits = await prisma.lecturerUnit.findMany({
+    where: { lecturerId },
+    select: {
+      unit: {
+        select: {
+          code: true,
+          name: true,
+          semester: { select: { name: true } },
+          enrollments: {
+            select: {
+              student: {
+                select: { id: true, name: true, admissionNumber: true },
+              },
+            },
+          },
+        },
+      },
+    },
+  });
+  const selectedCodes = new Set(
+    selectedUnits.map(({ unit }) => unit.code.toUpperCase()),
+  );
+  const unitCodes = selectedUnits.map(({ unit }) => unit.code);
+  const studentIds = [
+    ...new Set(
+      selectedUnits.flatMap(({ unit }) =>
+        unit.enrollments.map(({ student }) => student.id),
+      ),
+    ),
+  ];
+
+  // Resolve the lecturer's institutionId once, used to scope attendance record
+  // queries so unit-code collisions across institutions don't pollute counts.
+  const lecturerRow = await prisma.lecturer.findUnique({
+    where: { id: lecturerId },
+    select: { institutionId: true },
+  });
+  const institutionId = lecturerRow?.institutionId;
+
+  const [inPersonSessions, onlineSessions, inPersonRecords, onlineRecords] =
+    await Promise.all([
+      prisma.conductedSession.findMany({
+        where: { lecturerId },
+        select: {
+          unitCode: true,
+          sessionStart: true,
+          attendanceRecords: { select: { id: true } },
+        },
+      }),
+      prisma.onlineAttendanceSession.findMany({
+        where: { lecturerId },
+        select: {
+          unitCode: true,
+          createdAt: true,
+          records: { select: { id: true } },
+        },
+      }),
+      studentIds.length === 0
+        ? Promise.resolve([])
+        : prisma.inPersonAttendanceRecord.findMany({
+            where: {
+              studentId: { in: studentIds },
+              unitCode: { in: unitCodes },
+              // Scope to sessions belonging to this institution so unit code
+              // collisions with other institutions don't pollute the counts.
+              ...(institutionId
+                ? { conductedSession: { institutionId } }
+                : {}),
+            },
+            select: { studentId: true, unitCode: true },
+          }),
+      studentIds.length === 0
+        ? Promise.resolve([])
+        : prisma.onlineAttendanceRecord.findMany({
+            where: {
+              studentId: { in: studentIds },
+              unitCode: { in: unitCodes },
+              // Same institution scoping for online records.
+              ...(institutionId
+                ? { session: { institutionId } }
+                : {}),
+            },
+            select: { studentId: true, unitCode: true },
+          }),
+    ]);
+
+  const sessions = [
+    ...inPersonSessions.map((session) => ({
+      unitCode: session.unitCode,
+      date: session.sessionStart,
+      checkIns: session.attendanceRecords.length,
+      method: "inPerson",
+    })),
+    ...onlineSessions.map((session) => ({
+      unitCode: session.unitCode,
+      date: session.createdAt,
+      checkIns: session.records.length,
+      method: "online",
+    })),
+  ].filter((session) => selectedCodes.has(session.unitCode.toUpperCase()));
+
+  const trend = Array.from({ length: 30 }, (_, index) => {
+    const day = new Date(since);
+    day.setDate(since.getDate() + index);
+    const nextDay = new Date(day);
+    nextDay.setDate(day.getDate() + 1);
+    const daySessions = sessions.filter(
+      (session) => session.date >= day && session.date < nextDay,
+    );
+    return {
+      date: day.toISOString().slice(0, 10),
+      sessions: daySessions.length,
+      checkIns: daySessions.reduce((sum, session) => sum + session.checkIns, 0),
+    };
+  });
+
+  const attendedByStudentUnit = new Map<string, number>();
+  [...inPersonRecords, ...onlineRecords].forEach(({ studentId, unitCode }) => {
+    const key = `${studentId}:${unitCode.toUpperCase()}`;
+    attendedByStudentUnit.set(key, (attendedByStudentUnit.get(key) ?? 0) + 1);
+  });
+
+  const atRiskStudents: LecturerAtRiskStudent[] = [];
+  const unitStats = selectedUnits.map(({ unit }) => {
+    const unitSessions = sessions.filter(
+      (session) => session.unitCode.toUpperCase() === unit.code.toUpperCase(),
+    );
+    const checkIns = unitSessions.reduce((sum, session) => sum + session.checkIns, 0);
+    const conducted = unitSessions.length;
+    const enrolled = unit.enrollments.length;
+    const studentRates = unit.enrollments.map(({ student }) => {
+      const attended =
+        attendedByStudentUnit.get(`${student.id}:${unit.code.toUpperCase()}`) ??
+        0;
+      const missed = Math.max(conducted - attended, 0);
+      const attendanceRate =
+        conducted > 0 ? Math.round((attended / conducted) * 100) : 0;
+      if (conducted > 0 && attendanceRate < ATTENDANCE_GOAL) {
+        atRiskStudents.push({
+          id: student.id,
+          name: student.name,
+          admissionNumber: student.admissionNumber,
+          unitCode: unit.code,
+          attendanceRate,
+          missedCount: missed,
+        });
+      }
+      return attendanceRate;
+    });
+    const attendanceRate =
+      conducted > 0 && enrolled > 0
+        ? Math.round(
+            studentRates.reduce((sum, rate) => sum + rate, 0) / enrolled,
+          )
+        : 0;
+    const atRiskCount = unit.enrollments.filter(({ student }) => {
+      const attended =
+        attendedByStudentUnit.get(`${student.id}:${unit.code.toUpperCase()}`) ??
+        0;
+      const rate = conducted > 0 ? Math.round((attended / conducted) * 100) : 0;
+      return conducted > 0 && rate < ATTENDANCE_GOAL;
+    }).length;
+    const status =
+      conducted === 0
+        ? "No data"
+        : attendanceRate >= 90
+          ? "Optimal"
+          : attendanceRate >= ATTENDANCE_GOAL
+            ? "Compliant"
+            : "Watchlist";
+
+    return {
+      unitCode: unit.code,
+      unitName: unit.name,
+      semesterName: unit.semester.name,
+      enrolled,
+      sessions: conducted,
+      checkIns,
+      averageAttendance: conducted ? Math.round(checkIns / conducted) : 0,
+      attendanceRate,
+      atRiskCount,
+      status,
+    };
+  });
+
+  const methodStats = ["inPerson", "online"].map((method) => ({
+    method,
+    sessions: sessions.filter((session) => session.method === method).length,
+    checkIns: sessions
+      .filter((session) => session.method === method)
+      .reduce((sum, session) => sum + session.checkIns, 0),
+  }));
+  const usedUnits = unitStats.filter((unit) => unit.sessions > 0).length;
+  const rankedUnits = [...unitStats]
+    .filter((unit) => unit.sessions > 0)
+    .sort((a, b) => b.attendanceRate - a.attendanceRate);
+  const totalCheckIns = sessions.reduce((sum, session) => sum + session.checkIns, 0);
+  const scoredUnits = unitStats.filter((unit) => unit.sessions > 0);
+  const overallComplianceRate =
+    scoredUnits.length > 0
+      ? Math.round(
+          scoredUnits.reduce((sum, unit) => sum + unit.attendanceRate, 0) /
+            scoredUnits.length,
+        )
+      : 0;
+  const termName =
+    selectedUnits[0]?.unit.semester.name ?? "Current teaching term";
+
+  atRiskStudents.sort((a, b) => a.attendanceRate - b.attendanceRate);
+
+  return {
+    trend,
+    units: unitStats,
+    methods: methodStats,
+    totals: { sessions: sessions.length, checkIns: totalCheckIns },
+    coverage: { selected: selectedUnits.length, used: usedUnits },
+    insights: {
+      highestUnit: rankedUnits[0]?.unitCode ?? null,
+      lowestUnit: rankedUnits.at(-1)?.unitCode ?? null,
+    },
+    overallComplianceRate,
+    atRiskStudents,
+    currentTerm: termName,
+  };
+}
+
 export const attendanceRoutes: FastifyPluginAsync = async (app) => {
   const attendance = new AttendanceService(app.prisma, app.redis);
   const webauthn = new WebAuthnService(app.prisma);
@@ -22,57 +266,62 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
     "/lecturer/summary",
     { preHandler: requireAttendanceRole("lecturer") },
     async (request, reply) => {
-      const lecturerId = request.user.id;
-      const since = new Date();
-      since.setDate(since.getDate() - 29);
-      since.setHours(0, 0, 0, 0);
+      return reply.send(await getLecturerSummary(app.prisma, request.user.id));
+    },
+  );
 
-      const selectedUnits = await app.prisma.lecturerUnit.findMany({
-        where: { lecturerId },
-        select: { unit: { select: { code: true, name: true } } },
-      });
-      const selectedCodes = new Set(selectedUnits.map(({ unit }) => unit.code.toUpperCase()));
-      const [inPersonSessions, onlineSessions] = await Promise.all([
-        app.prisma.conductedSession.findMany({
-          where: { lecturerId },
-          select: { unitCode: true, sessionStart: true, attendanceRecords: { select: { id: true } } },
-        }),
-        app.prisma.onlineAttendanceSession.findMany({
-          where: { lecturerId },
-          select: { unitCode: true, createdAt: true, records: { select: { id: true } } },
-        }),
-      ]);
+  app.post<{ Body: { studentIds?: string[] } }>(
+    "/lecturer/warnings",
+    { preHandler: requireAttendanceRole("lecturer") },
+    async (request, reply) => {
+      const summary = await getLecturerSummary(app.prisma, request.user.id);
+      const requestedIds = Array.isArray(request.body?.studentIds)
+        ? new Set(
+            request.body.studentIds.filter(
+              (id): id is string => typeof id === "string",
+            ),
+          )
+        : null;
+      const targets = summary.atRiskStudents.filter((student) =>
+        requestedIds ? requestedIds.has(student.id) : true,
+      );
+      if (targets.length === 0)
+        return reply
+          .code(400)
+          .send({ error: "No at-risk students matched the request" });
 
-      const sessions = [
-        ...inPersonSessions.map((session) => ({ unitCode: session.unitCode, date: session.sessionStart, checkIns: session.attendanceRecords.length, method: "inPerson" })),
-        ...onlineSessions.map((session) => ({ unitCode: session.unitCode, date: session.createdAt, checkIns: session.records.length, method: "online" })),
-      ].filter((session) => selectedCodes.has(session.unitCode.toUpperCase()));
-      const trend = Array.from({ length: 30 }, (_, index) => {
-        const day = new Date(since);
-        day.setDate(since.getDate() + index);
-        const nextDay = new Date(day);
-        nextDay.setDate(day.getDate() + 1);
-        const daySessions = sessions.filter((session) => session.date >= day && session.date < nextDay);
-        return { date: day.toISOString().slice(0, 10), sessions: daySessions.length, checkIns: daySessions.reduce((sum, session) => sum + session.checkIns, 0) };
-      });
-      const unitStats = selectedUnits.map(({ unit }) => {
-        const unitSessions = sessions.filter((session) => session.unitCode.toUpperCase() === unit.code.toUpperCase());
-        const checkIns = unitSessions.reduce((sum, session) => sum + session.checkIns, 0);
-        return { unitCode: unit.code, unitName: unit.name, sessions: unitSessions.length, checkIns, averageAttendance: unitSessions.length ? Math.round(checkIns / unitSessions.length) : 0 };
-      });
-      const methodStats = ["inPerson", "online"].map((method) => ({ method, sessions: sessions.filter((session) => session.method === method).length, checkIns: sessions.filter((session) => session.method === method).reduce((sum, session) => sum + session.checkIns, 0) }));
-      const usedUnits = unitStats.filter((unit) => unit.sessions > 0).length;
-      const rankedUnits = [...unitStats].filter((unit) => unit.sessions > 0).sort((a, b) => b.averageAttendance - a.averageAttendance);
-      const totalCheckIns = sessions.reduce((sum, session) => sum + session.checkIns, 0);
+      const uniqueKeys = new Set<string>();
+      let notified = 0;
+      for (const student of targets) {
+        const key = `${student.id}:${student.unitCode}`;
+        if (uniqueKeys.has(key)) continue;
+        uniqueKeys.add(key);
+        const title = "Attendance advisory";
+        const message = `Your attendance in ${student.unitCode} is currently ${student.attendanceRate}%. The exam threshold is ${ATTENDANCE_GOAL}%. Please attend remaining sessions.`;
+        const notification = await app.prisma.notification.create({
+          data: {
+            userId: student.id,
+            userType: "student",
+            type: "ATTENDANCE",
+            title,
+            message,
+            data: {
+              unitCode: student.unitCode,
+              attendanceRate: student.attendanceRate,
+            },
+          },
+        });
+        await sendPushNotification(app.prisma, {
+          userId: student.id,
+          userType: "student",
+          title: notification.title,
+          body: notification.message,
+          data: notification.data as Record<string, unknown> | undefined,
+        });
+        notified += 1;
+      }
 
-      return reply.send({
-        trend,
-        units: unitStats,
-        methods: methodStats,
-        totals: { sessions: sessions.length, checkIns: totalCheckIns },
-        coverage: { selected: selectedUnits.length, used: usedUnits },
-        insights: { highestUnit: rankedUnits[0]?.unitCode ?? null, lowestUnit: rankedUnits.at(-1)?.unitCode ?? null },
-      });
+      return reply.send({ success: true, notified });
     },
   );
 
@@ -125,8 +374,22 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
         app.prisma.onlineAttendanceRecord.findMany({ where: { studentId, markedAt: { gte: since } }, select: { markedAt: true } }),
         app.prisma.inPersonAttendanceRecord.findMany({ where: { studentId }, select: { unitCode: true } }),
         app.prisma.onlineAttendanceRecord.findMany({ where: { studentId }, select: { unitCode: true } }),
-        app.prisma.conductedSession.findMany({ where: { unitCode: { in: enrolledUnitCodes } }, select: { unitCode: true } }),
-        app.prisma.onlineAttendanceSession.findMany({ where: { unitCode: { in: enrolledUnitCodes } }, select: { unitCode: true } }),
+        // Scope conducted-session counts to this student's institution so unit
+        // code collisions with other institutions don't inflate the denominator.
+        app.prisma.conductedSession.findMany({
+          where: {
+            unitCode: { in: enrolledUnitCodes },
+            institutionId: request.user.institutionId ?? undefined,
+          },
+          select: { unitCode: true },
+        }),
+        app.prisma.onlineAttendanceSession.findMany({
+          where: {
+            unitCode: { in: enrolledUnitCodes },
+            institutionId: request.user.institutionId ?? undefined,
+          },
+          select: { unitCode: true },
+        }),
       ]);
 
       const recent = [
@@ -244,20 +507,22 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
-      const options = await webauthn.attendanceOptions(
-        request.user.id,
-        request.params.sessionId,
-      );
-      if (!options)
-        return reply.code(404).send({ error: "Session not found or closed" });
-      if ("noCredential" in options)
-        return reply
-          .code(409)
-          .send({
-            error: "Register a passkey before marking attendance",
-            code: "PASSKEY_REQUIRED",
-          });
-      return reply.send({ success: true, data: options });
+      try {
+        const options = await webauthn.attendanceOptions(
+          request.user.id,
+          request.params.sessionId,
+        );
+        if (!options)
+          return reply.code(404).send({ error: "Session not found or closed" });
+        if ("noCredential" in options) return reply.send({ noCredential: true });
+        return reply.send({ success: true, data: options });
+      } catch (error) {
+        request.log.error({ error, userId: request.user.id, sessionId: request.params.sessionId }, "Error generating passkey options");
+        return reply.code(400).send({ 
+          error: "Failed to generate passkey options",
+          detail: error instanceof Error ? error.message : "Unknown error"
+        });
+      }
     },
   );
 
@@ -268,8 +533,24 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
       config: { rateLimit: { max: 5, timeWindow: "1 minute" } },
     },
     async (request, reply) => {
+      // Debug logging
+      request.log.info({ 
+        body: request.body, 
+        hasResponse: !!request.body?.response,
+        responseType: typeof request.body?.response,
+        bodyKeys: request.body ? Object.keys(request.body) : []
+      }, "Passkey verify request received");
+      
       if (!request.body.response || typeof request.body.response !== "object")
-        return reply.code(400).send({ error: "Passkey response is required" });
+        return reply.code(400).send({ 
+          error: "Passkey response is required",
+          debug: {
+            hasBody: !!request.body,
+            hasResponse: !!request.body?.response,
+            responseType: typeof request.body?.response,
+            bodyKeys: request.body ? Object.keys(request.body) : []
+          }
+        });
       let proof;
       try {
         proof = await webauthn.verifyAttendance(

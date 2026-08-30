@@ -355,7 +355,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
         setBleStartError('BLE unit mapping is unavailable for this unit.');
         Alert.alert(
           'BLE mapping unavailable',
-          'This teaching unit does not have a BLE mapping yet. Sync the unit list and try again.',
+          'This unit does not have a BLE mapping yet. Sync the unit list and try again.',
         );
         return;
       }
@@ -453,12 +453,17 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
       />
       <ScrollView
         className="flex-1"
-        contentContainerStyle={{ paddingBottom: 32 }}
+        contentContainerStyle={{
+          paddingHorizontal: isTablet ? 32 : 20,
+          paddingTop: 24,
+          paddingBottom: 32,
+          flexGrow: 1,
+        }}
       >
-        <View className={`px-${isTablet ? '8' : '5'} py-6`}>
+        <View>
           <View className="mb-6 items-center">
             <Text className={`mt-2 text-center text-sm ${bodyClasses}`}>
-              Share secure QR, PIN, and Bluetooth attendance with your class.
+              Select unit to start attendance session. Enable Bluetooth for faster checkins. Students can also check in using the QR code or PIN.
             </Text>
           </View>
           {!session && (

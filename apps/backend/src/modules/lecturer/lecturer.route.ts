@@ -38,6 +38,36 @@ interface TeachingUnitSelectionBody {
 }
 
 export const lecturerRoutes: FastifyPluginAsync = async (app) => {
+  app.get(
+    "/me",
+    { preHandler: requireAttendanceRole("lecturer") },
+    async (request, reply) => {
+      const lecturer = await app.prisma.lecturer.findUnique({
+        where: { id: request.user.id },
+        select: {
+          id: true,
+          fullName: true,
+          email: true,
+          staffNumber: true,
+          institutionId: true,
+          institution: { select: { name: true } },
+          auth: { select: { email: true } },
+        },
+      });
+      if (!lecturer)
+        return reply.code(404).send({ error: "Lecturer record not found" });
+
+      return reply.send({
+        userId: lecturer.id,
+        name: lecturer.fullName,
+        email: lecturer.email ?? lecturer.auth?.email ?? null,
+        staffNumber: lecturer.staffNumber,
+        institutionId: lecturer.institutionId,
+        institutionName: lecturer.institution.name,
+      });
+    },
+  );
+
   app.delete(
     "/me",
     { preHandler: requireAttendanceRole("lecturer") },
@@ -396,14 +426,23 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         const staffNumber = cleanIdentifier(lecturerInput.staffNumber);
         if (!name || !staffNumber) continue;
 
+        // Prevent cross-institution staff number hijacking: if a lecturer
+        // record already exists for this staffNumber but belongs to a
+        // different institution, reject the entire request.
+        const existing = await app.prisma.lecturer.findUnique({
+          where: { staffNumber },
+          select: { institutionId: true },
+        });
+        if (existing && existing.institutionId !== institutionId) {
+          return reply.code(409).send({
+            error: `Staff number "${staffNumber}" is already registered to another institution`,
+          });
+        }
+
         const lecturer = await app.prisma.lecturer.upsert({
           where: { staffNumber },
-          update: { fullName: name, institutionId },
-          create: {
-            fullName: name,
-            staffNumber,
-            institutionId,
-          },
+          update: { fullName: name },       // never change institutionId on update
+          create: { fullName: name, staffNumber, institutionId },
           select: { id: true, fullName: true, staffNumber: true },
         });
         createdLecturers.push(lecturer);

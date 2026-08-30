@@ -100,7 +100,11 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const student = await prisma.student.findUnique({
         where: { id: request.user.id },
-        include: { course: { select: { name: true } } },
+        include: {
+          course: { select: { name: true } },
+          institution: { select: { name: true } },
+          auth: { select: { email: true } },
+        },
       });
       if (!student)
         return reply.code(404).send({ error: "Student record not found" });
@@ -108,7 +112,9 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
       return reply.send({
         userId: student.id,
         name: student.name,
+        email: student.email ?? student.auth?.email ?? null,
         institutionId: student.institutionId,
+        institutionName: student.institution.name,
         admissionNumber: student.admissionNumber,
         course: student.course.name,
       });
@@ -498,12 +504,32 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
               return reply
                 .code(400)
                 .send({ error: `Course "${studentInput.course}" not found` });
-            const student = await prisma.student.upsert({
+
+            // Guard: if an admission number already exists under a different
+            // institution (global unique constraint), reject the import rather
+            // than silently re-assigning the student record.
+            const existing = await prisma.student.findUnique({
               where: { admissionNumber: studentInput.admissionNumber },
+              select: { institutionId: true },
+            });
+            if (existing && existing.institutionId !== body.institutionId) {
+              return reply.code(409).send({
+                error: `Admission number "${studentInput.admissionNumber}" is already registered to another institution`,
+              });
+            }
+
+            // Use the compound unique index so we never touch another
+            // institution's student record.
+            const student = await prisma.student.upsert({
+              where: {
+                institutionId_admissionNumber: {
+                  institutionId: body.institutionId,
+                  admissionNumber: studentInput.admissionNumber,
+                },
+              },
               update: {
                 name: studentInput.name,
                 courseId: course.id,
-                institutionId: body.institutionId,
                 year: 1,
               },
               create: {
@@ -593,8 +619,32 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
             throw new Error(`Course "${student.course}" not found`);
           }
 
-          const savedStudent = await prisma.student.create({
-            data: {
+          // Guard: reject if the admission number is already owned by a
+          // different institution rather than silently failing or overwriting.
+          const existing = await prisma.student.findUnique({
+            where: { admissionNumber: student.admissionNumber },
+            select: { institutionId: true },
+          });
+          if (existing && existing.institutionId !== institutionId) {
+            return reply.code(409).send({
+              error: `Admission number "${student.admissionNumber}" is already registered to another institution`,
+            });
+          }
+
+          // Upsert using the compound key so records from other institutions
+          // are never touched.
+          const savedStudent = await prisma.student.upsert({
+            where: {
+              institutionId_admissionNumber: {
+                institutionId,
+                admissionNumber: student.admissionNumber,
+              },
+            },
+            update: {
+              name: student.name,
+              courseId: course.id,
+            },
+            create: {
               name: student.name,
               admissionNumber: student.admissionNumber,
               course: { connect: { id: course.id } },

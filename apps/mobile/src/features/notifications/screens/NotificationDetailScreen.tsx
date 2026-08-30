@@ -62,8 +62,16 @@ const NotificationDetailScreen = ({ route, navigation }: Props) => {
         <Text className={`text-xl font-bold ${titleClasses}`}>Details</Text>
       </View>
 
-      <ScrollView className="flex-1">
-        <View className={`px-${isTablet ? '8' : '5'} py-6`}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: isTablet ? 32 : 20,
+          paddingTop: 24,
+          paddingBottom: 20,
+          flexGrow: 1,
+        }}
+      >
+        <View>
           <View className="flex-row items-start gap-4 mb-6">
             <View
               className="w-12 h-12 rounded-xl items-center justify-center flex-none"

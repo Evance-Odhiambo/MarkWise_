@@ -28,16 +28,7 @@ export default function StudentHomeScreen() {
         </Text>
         <Text className={`mt-1 text-sm ${secondary}`}>
           {session?.course || 'Your student workspace'}
-        </Text>
-        <View className={`mt-8 rounded-3xl border p-5 ${surface}`}>
-          <Text className={`text-lg font-bold ${title}`}>
-            Your attendance progress
-          </Text>
-          <Text className={`mt-2 text-sm leading-5 ${secondary}`}>
-            Open the Attendance tab to view your health, unit analysis, history,
-            and marking options.
-          </Text>
-        </View>
+        </Text>        
       </View>
     </SafeAreaView>
   );

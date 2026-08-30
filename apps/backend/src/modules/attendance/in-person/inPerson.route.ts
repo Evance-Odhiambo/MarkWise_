@@ -84,6 +84,9 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         const candidates = await app.prisma.conductedSession.findMany({
           where: {
             unitCode,
+            // Scope to the student's own institution so a student from
+            // institution A can never match a session run at institution B.
+            lecturer: { institutionId: request.user.institutionId ?? undefined },
             sessionStart: {
               gte: new Date(scannedAt - 60 * 60 * 1000),
               lte: new Date(scannedAt + 15_000),
@@ -101,7 +104,14 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           const enrolled = await app.prisma.enrollment.findFirst({
             where: {
               studentId: request.user.id,
-              unit: { code: unitCode },
+              unit: {
+                code: unitCode,
+                semester: {
+                  courseYear: {
+                    course: { institutionId: request.user.institutionId ?? undefined },
+                  },
+                },
+              },
             },
           });
           if (enrolled)
@@ -223,7 +233,12 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       const nonce = Number(request.params.nonce);
       if (!Number.isSafeInteger(nonce) || nonce < 0)
         return reply.code(400).send({ error: "Invalid BLE nonce" });
-      const session = await service.getPublicSessionByBleNonce(nonce);
+      // Pass the caller's institutionId so a nonce shared across institutions
+      // always resolves to the correct institution's session.
+      const session = await service.getPublicSessionByBleNonce(
+        nonce,
+        request.user.institutionId ?? undefined
+      );
       if (!session)
         return reply.code(404).send({ error: "BLE session not found" });
       return reply.send({ success: true, data: session });

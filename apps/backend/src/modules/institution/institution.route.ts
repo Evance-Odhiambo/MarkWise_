@@ -9,21 +9,25 @@ interface InstitutionQueryParams {
   id?: string;
 }
 interface SetupUnitInput {
+  id?: string;
   name: string;
   code: string;
 }
 interface SetupSemesterInput {
+  id?: string;
   name: string;
   semesterNum: number;
   units?: SetupUnitInput[];
 }
 interface SetupYearInput {
+  id?: string;
   yearNumber: number;
   semesters?: SetupSemesterInput[];
 }
 interface SetupCourseInput {
+  id?: string;
   name: string;
-  duration: number;
+  duration?: number;
   years?: SetupYearInput[];
 }
 interface SetupBody {
@@ -70,6 +74,60 @@ export function buildInstitutionListWhere(user: {
 
 function clean(value: string | undefined) {
   return value?.trim() ?? "";
+}
+
+const UUID_REGEX =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+function isValidUUID(id: string | undefined): boolean {
+  return typeof id === "string" && UUID_REGEX.test(id);
+}
+
+function formatAcademicCourses(
+  courses: Array<{
+    id: string;
+    name: string;
+    years: Array<{
+      id: string;
+      yearNumber: number;
+      courseId: string;
+      semester: Array<{
+        id: string;
+        name: string;
+        semesterNumber: number;
+        courseYearId: string;
+        units: Array<{
+          id: string;
+          name: string;
+          code: string;
+          semesterId: string;
+        }>;
+      }>;
+    }>;
+  }>,
+) {
+  return courses.map((course) => ({
+    id: course.id,
+    name: course.name,
+    duration: course.years.length || 1,
+    years: course.years.map((year) => ({
+      id: year.id,
+      yearNumber: year.yearNumber,
+      courseId: course.id,
+      semesters: year.semester.map((semester) => ({
+        id: semester.id,
+        name: semester.name,
+        semesterNum: semester.semesterNumber,
+        yearId: year.id,
+        units: semester.units.map((unit) => ({
+          id: unit.id,
+          name: unit.name,
+          code: unit.code,
+          semesterId: semester.id,
+        })),
+      })),
+    })),
+  }));
 }
 
 export const institutionRoutes: FastifyPluginAsync = async (app) => {
@@ -157,12 +215,10 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
     institutionSetupAccess,
     async (request, reply) => {
       if (!canAccessInstitution(request, request.params.institutionId))
-        return reply
-          .code(403)
-          .send({
-            error:
-              "Only a super admin or the owning institution admin can access institution setup",
-          });
+        return reply.code(403).send({
+          error:
+            "Only a super admin or the owning institution admin can access institution setup",
+        });
 
       const courses = await app.prisma.course.findMany({
         where: { institutionId: request.params.institutionId },
@@ -181,28 +237,7 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
       });
 
       return reply.send({
-        courses: courses.map((course) => ({
-          id: course.id,
-          name: course.name,
-          duration: course.years.length || 1,
-          years: course.years.map((year) => ({
-            id: year.id,
-            yearNumber: year.yearNumber,
-            courseId: course.id,
-            semesters: year.semester.map((semester) => ({
-              id: semester.id,
-              name: semester.name,
-              semesterNum: semester.semesterNumber,
-              yearId: year.id,
-              units: semester.units.map((unit) => ({
-                id: unit.id,
-                name: unit.name,
-                code: unit.code,
-                semesterId: semester.id,
-              })),
-            })),
-          })),
-        })),
+        courses: formatAcademicCourses(courses),
       });
     },
   );
@@ -213,147 +248,221 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
     async (request, reply) => {
       const institutionId = request.params.institutionId;
       if (!canAccessInstitution(request, institutionId))
-        return reply
-          .code(403)
-          .send({
-            error:
-              "Only a super admin or the owning institution admin can update institution setup",
-          });
+        return reply.code(403).send({
+          error:
+            "Only a super admin or the owning institution admin can update institution setup",
+        });
       if (!Array.isArray(request.body.courses))
         return reply.code(400).send({ error: "Courses must be an array" });
 
       try {
         await app.prisma.$transaction(async (transaction) => {
-          // Fetch only BLE IDs used within this institution
-          const institutionUnits = await transaction.unit.findMany({
-            where: {
-              bleId: { not: null },
-              semester: {
-                courseYear: { course: { institutionId } },
-              },
-            },
-            select: { bleId: true },
-          });
           const allUsedBleIds = new Set(
-            institutionUnits.flatMap((unit) => (unit.bleId ? [unit.bleId] : [])),
+            (
+              await transaction.unit.findMany({
+                where: { bleId: { not: null } },
+                select: { bleId: true },
+              })
+            ).flatMap((unit) => (unit.bleId ? [unit.bleId] : [])),
           );
 
-        for (const courseInput of request.body.courses) {
-          const courseName = clean(courseInput.name);
-          if (!courseName) continue;
-          let course = await transaction.course.findFirst({
-            where: { institutionId, name: courseName },
-          });
-          if (!course)
-            course = await transaction.course.create({
-              data: { name: courseName, institutionId },
-            });
+          const keptCourseIds = new Set<string>();
+          const keptYearIds = new Set<string>();
+          const keptSemesterIds = new Set<string>();
+          const keptUnitIds = new Set<string>();
 
-          for (const yearInput of courseInput.years ?? []) {
-            if (
-              !Number.isInteger(yearInput.yearNumber) ||
-              yearInput.yearNumber < 1
-            )
-              continue;
-            const year = await transaction.courseYear.upsert({
-              where: {
-                courseId_yearNumber: {
+          for (const courseInput of request.body.courses) {
+            const courseName = clean(courseInput.name);
+            if (!courseName) continue;
+
+            let course = null;
+            if (isValidUUID(courseInput.id)) {
+              course = await transaction.course.findFirst({
+                where: { id: courseInput.id, institutionId },
+              });
+            }
+
+            if (!course) {
+              course = await transaction.course.findFirst({
+                where: { institutionId, name: courseName },
+              });
+            }
+
+            if (!course) {
+              course = await transaction.course.create({
+                data: { name: courseName, institutionId },
+              });
+            } else if (course.name !== courseName) {
+              course = await transaction.course.update({
+                where: { id: course.id },
+                data: { name: courseName },
+              });
+            }
+
+            keptCourseIds.add(course.id);
+
+            for (const yearInput of courseInput.years ?? []) {
+              if (
+                !Number.isInteger(yearInput.yearNumber) ||
+                yearInput.yearNumber < 1
+              )
+                continue;
+
+              const year = await transaction.courseYear.upsert({
+                where: {
+                  courseId_yearNumber: {
+                    courseId: course.id,
+                    yearNumber: yearInput.yearNumber,
+                  },
+                },
+                update: {},
+                create: {
                   courseId: course.id,
                   yearNumber: yearInput.yearNumber,
                 },
-              },
-              update: {},
-              create: { courseId: course.id, yearNumber: yearInput.yearNumber },
-            });
-            for (const semesterInput of yearInput.semesters ?? []) {
-              const semesterNumber =
-                Number.isInteger(semesterInput.semesterNum) &&
-                semesterInput.semesterNum > 0
-                  ? semesterInput.semesterNum
-                  : 1;
-              const semester = await transaction.semester.upsert({
-                where: {
-                  courseYearId_semesterNumber: {
-                    courseYearId: year.id,
-                    semesterNumber,
-                  },
-                },
-                update: {
-                  name:
-                    clean(semesterInput.name) || `Semester ${semesterNumber}`,
-                },
-                create: {
-                  courseYearId: year.id,
-                  semesterNumber,
-                  name:
-                    clean(semesterInput.name) || `Semester ${semesterNumber}`,
-                },
               });
 
-              for (const unitInput of semesterInput.units ?? []) {
-                const code = clean(unitInput.code).toUpperCase();
-                const name = clean(unitInput.name);
-                if (!code || !name) continue;
+              keptYearIds.add(year.id);
 
-                try {
-                  const existingUnit = await transaction.unit.findFirst({
-                    where: { semesterId: semester.id, code },
-                  });
-                  if (existingUnit) {
-                    if (!existingUnit.bleId) {
+              for (const semesterInput of yearInput.semesters ?? []) {
+                const semesterNumber =
+                  Number.isInteger(semesterInput.semesterNum) &&
+                  semesterInput.semesterNum > 0
+                    ? semesterInput.semesterNum
+                    : 1;
+
+                const semesterName =
+                  clean(semesterInput.name) || `Semester ${semesterNumber}`;
+
+                const semester = await transaction.semester.upsert({
+                  where: {
+                    courseYearId_semesterNumber: {
+                      courseYearId: year.id,
+                      semesterNumber,
+                    },
+                  },
+                  update: {
+                    name: semesterName,
+                  },
+                  create: {
+                    courseYearId: year.id,
+                    semesterNumber,
+                    name: semesterName,
+                  },
+                });
+
+                keptSemesterIds.add(semester.id);
+
+                for (const unitInput of semesterInput.units ?? []) {
+                  const code = clean(unitInput.code).toUpperCase();
+                  const name = clean(unitInput.name);
+                  if (!code || !name) continue;
+
+                  try {
+                    let existingUnit = null;
+                    if (isValidUUID(unitInput.id)) {
+                      existingUnit = await transaction.unit.findFirst({
+                        where: { id: unitInput.id, semesterId: semester.id },
+                      });
+                    }
+
+                    if (!existingUnit) {
+                      existingUnit = await transaction.unit.findFirst({
+                        where: { semesterId: semester.id, code },
+                      });
+                    }
+
+                    if (existingUnit) {
+                      if (!existingUnit.bleId) {
+                        const [nextBleId] = buildAvailableUnitBleIds(
+                          allUsedBleIds,
+                          1,
+                        );
+                        if (!nextBleId) {
+                          throw new Error(
+                            "Failed to generate BLE ID for existing unit",
+                          );
+                        }
+                        const updated = await transaction.unit.update({
+                          where: { id: existingUnit.id },
+                          data: {
+                            code,
+                            name,
+                            bleId: nextBleId,
+                          },
+                        });
+                        allUsedBleIds.add(nextBleId);
+                        keptUnitIds.add(updated.id);
+                      } else {
+                        const updated = await transaction.unit.update({
+                          where: { id: existingUnit.id },
+                          data: {
+                            code,
+                            name,
+                          },
+                        });
+                        keptUnitIds.add(updated.id);
+                      }
+                    } else {
                       const [nextBleId] = buildAvailableUnitBleIds(
                         allUsedBleIds,
                         1,
                       );
                       if (!nextBleId) {
-                        throw new Error("Failed to generate BLE ID for existing unit");
+                        throw new Error(
+                          "Failed to generate BLE ID for new unit",
+                        );
                       }
-                      await transaction.unit.update({
-                        where: { id: existingUnit.id },
+                      const created = await transaction.unit.create({
                         data: {
+                          semesterId: semester.id,
                           code,
                           name,
                           bleId: nextBleId,
                         },
                       });
                       allUsedBleIds.add(nextBleId);
-                    } else {
-                      await transaction.unit.update({
-                        where: { id: existingUnit.id },
-                        data: {
-                          code,
-                          name,
-                        },
-                      });
+                      keptUnitIds.add(created.id);
                     }
-                  } else {
-                    const [nextBleId] = buildAvailableUnitBleIds(
-                      allUsedBleIds,
-                      1,
+                  } catch (unitError) {
+                    throw new Error(
+                      `Error processing unit "${code}": ${unitError instanceof Error ? unitError.message : "Unknown error"}`,
                     );
-                    if (!nextBleId) {
-                      throw new Error("Failed to generate BLE ID for new unit");
-                    }
-                    await transaction.unit.create({
-                      data: {
-                        semesterId: semester.id,
-                        code,
-                        name,
-                        bleId: nextBleId,
-                      },
-                    });
-                    allUsedBleIds.add(nextBleId);
                   }
-                } catch (unitError) {
-                  throw new Error(
-                    `Error processing unit "${code}": ${unitError instanceof Error ? unitError.message : "Unknown error"}`,
-                  );
                 }
               }
             }
           }
-        }
-      });
+
+          // Prune removed units, semesters, years, and courses for this institution
+          await transaction.unit.deleteMany({
+            where: {
+              semester: { courseYear: { course: { institutionId } } },
+              id: { notIn: Array.from(keptUnitIds) },
+            },
+          });
+
+          await transaction.semester.deleteMany({
+            where: {
+              courseYear: { course: { institutionId } },
+              id: { notIn: Array.from(keptSemesterIds) },
+            },
+          });
+
+          await transaction.courseYear.deleteMany({
+            where: {
+              course: { institutionId },
+              id: { notIn: Array.from(keptYearIds) },
+            },
+          });
+
+          await transaction.course.deleteMany({
+            where: {
+              institutionId,
+              id: { notIn: Array.from(keptCourseIds) },
+            },
+          });
+        });
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error occurred";
@@ -368,7 +477,27 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
         });
       }
 
-      return reply.send({ success: true, message: "Academic setup saved" });
+      const refreshedCourses = await app.prisma.course.findMany({
+        where: { institutionId },
+        orderBy: { name: "asc" },
+        include: {
+          years: {
+            orderBy: { yearNumber: "asc" },
+            include: {
+              semester: {
+                orderBy: { semesterNumber: "asc" },
+                include: { units: { orderBy: { code: "asc" } } },
+              },
+            },
+          },
+        },
+      });
+
+      return reply.send({
+        success: true,
+        message: "Academic setup saved",
+        courses: formatAcademicCourses(refreshedCourses),
+      });
     },
   );
 };

@@ -155,8 +155,16 @@ const AttendanceModeScreen = ({ navigation }: Props) => {
 
   return (
     <SafeAreaView className={`flex-1 ${screenClasses}`}>
-      <ScrollView className="flex-1">
-        <View className={`px-${isTablet ? '8' : '5'} py-6`}>
+      <ScrollView
+        className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: isTablet ? 32 : 20,
+          paddingTop: 24,
+          paddingBottom: 20,
+          flexGrow: 1,
+        }}
+      >
+        <View>
           <Text className={`text-2xl font-bold ${titleClasses} mb-1`}>
             Attendance
           </Text>

@@ -83,11 +83,17 @@ const NotificationsScreen = ({ navigation, role }: Props) => {
 
       <ScrollView
         className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: isTablet ? 32 : 20,
+          paddingTop: 16,
+          paddingBottom: 20,
+          flexGrow: 1,
+        }}
         refreshControl={
           <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
         }
       >
-        <View className={`px-${isTablet ? '8' : '5'} pt-4`}>
+        <View>
           {error && (
             <Text className="mb-3 text-center text-sm text-red-600">
               {error}

@@ -58,8 +58,13 @@ const LecturerSettingsScreen = () => {
   return (
     <SafeAreaView className={`flex-1 ${screenClasses}`}>
       <ScrollView
-        className="flex-1 px-5 py-6"
-        contentContainerStyle={{ paddingBottom: 40 }}
+        className="flex-1"
+        contentContainerStyle={{
+          paddingHorizontal: 20,
+          paddingTop: 24,
+          paddingBottom: 40,
+          flexGrow: 1,
+        }}
       >
         <View className="mb-6">
           <Text className={`text-2xl font-bold ${textClasses}`}>Settings</Text>

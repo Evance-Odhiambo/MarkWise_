@@ -23,7 +23,9 @@ model Institution {
   students  Student[]
   courses   Course[]
   admins    Admin[]
-  onboardingRequests OnboardingRequest[]
+  onboardingRequests  OnboardingRequest[]
+  conductedSessions   ConductedSession[]
+  onlineSessions      OnlineAttendanceSession[]
   createdAt DateTime   @default(now())
   updatedAt DateTime   @updatedAt
 
@@ -81,6 +83,7 @@ model Course {
 
   institution Institution @relation(fields: [institutionId], references: [id])
 
+  @@unique([institutionId, name])
   @@index([institutionId])
   @@map("Course")
 }
@@ -253,8 +256,8 @@ model WebAuthnChallenge {
 model Lecturer {
   id            String         @id @default(uuid())
   fullName      String
-  staffNumber   String         @unique
-  email         String?        @unique
+  staffNumber   String
+  email         String?
   passwordHash  String?
   createdAt     DateTime       @default(now())
   institutionId String
@@ -263,6 +266,8 @@ model Lecturer {
   institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Cascade)
   auth          LecturerAuth?
 
+  @@unique([institutionId, staffNumber])
+  @@unique([institutionId, email])
   @@index([institutionId])
   @@index([staffNumber])
   @@map("Lecturer")
@@ -303,6 +308,7 @@ model BleMapping {
   unitBleId     String?
   syncedAt      DateTime @default(now())
 
+  @@unique([institutionId, unitCode])
   @@index([institutionId])
   @@index([unitCode])
   @@map("BleMapping")
@@ -333,17 +339,20 @@ model ConductedSession {
   sessionStart    DateTime
   sessionEnd      DateTime?
   lecturerId      String
+  institutionId   String
   sessionKey      String?
   sessionNonce    BigInt    @default(0)
   sessionDuration Int       @default(3600)
   bleUnitId       String?
   createdAt       DateTime  @default(now())
 
+  institution       Institution              @relation(fields: [institutionId], references: [id])
   attendanceRecords InPersonAttendanceRecord[]
 
-  @@unique([unitCode, sessionStart])
+  @@unique([institutionId, unitCode, sessionStart])
   @@index([unitCode])
   @@index([lecturerId])
+  @@index([institutionId])
   @@map("ConductedSession")
 }
 
@@ -387,18 +396,21 @@ model InPersonAttendanceRecord {
 }
 
 model OnlineAttendanceSession {
-  id         String    @id @default(uuid())
-  lecturerId String
-  unitCode   String
-  type       String    @default("online")
-  status     String    @default("active")
-  expiresAt  DateTime
-  endedAt    DateTime?
-  createdAt  DateTime  @default(now())
+  id            String    @id @default(uuid())
+  lecturerId    String
+  institutionId String
+  unitCode      String
+  type          String    @default("online")
+  status        String    @default("active")
+  expiresAt     DateTime
+  endedAt       DateTime?
+  createdAt     DateTime  @default(now())
 
-  records OnlineAttendanceRecord[]
+  institution Institution              @relation(fields: [institutionId], references: [id])
+  records     OnlineAttendanceRecord[]
 
   @@index([lecturerId])
+  @@index([institutionId])
   @@index([status])
   @@index([status, expiresAt])
   @@map("OnlineAttendanceSession")

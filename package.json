@@ -7,7 +7,7 @@
     "build": "turbo build",
     "lint": "turbo lint",
     "test": "turbo test",
-    "prisma:format:backend": "npm exec --workspace=@markwise/backend -- prisma format"   
+    "prisma:format:backend": "npm exec --workspace=@markwise/backend -- prisma format"
   },
   "devDependencies": {
     "turbo": "^2.0.0"
@@ -15,5 +15,8 @@
   "workspaces": [
     "apps/web",
     "apps/backend"
-  ]
+  ],
+  "dependencies": {
+    "react-is": "^19.2.8"
+  }
 }

@@ -162,7 +162,14 @@ export class InPersonVerificationService {
     if (input.method !== "qr") throw new Error("METHOD_MISMATCH");
 
     const unit = await this.prisma.unit.findFirst({
-      where: { code: session.unitCode },
+      where: {
+        code: session.unitCode,
+        semester: {
+          courseYear: {
+            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
+          },
+        },
+      },
       select: { id: true },
     });
     if (!unit) throw new Error("UNIT_NOT_FOUND");
@@ -229,7 +236,14 @@ export class InPersonVerificationService {
     if (Math.abs(beacon.counter - expectedCounter) > 3)
       throw new Error("COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({
-      where: { code: session.unitCode },
+      where: {
+        code: session.unitCode,
+        semester: {
+          courseYear: {
+            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
+          },
+        },
+      },
       select: { id: true },
     });
     if (!unit) throw new Error("UNIT_NOT_FOUND");
@@ -297,7 +311,14 @@ export class InPersonVerificationService {
     if (Math.abs(receivedCounter - expectedCounter) > MAX_PIN_DRIFT)
       throw new Error("PIN_COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({
-      where: { code: session.unitCode },
+      where: {
+        code: session.unitCode,
+        semester: {
+          courseYear: {
+            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
+          },
+        },
+      },
       select: { id: true },
     });
     if (!unit) throw new Error("UNIT_NOT_FOUND");
@@ -409,7 +430,14 @@ export class InPersonVerificationService {
     if (Math.abs(relay.counter - expectedCounter) > 3)
       throw new Error("RELAY_COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({
-      where: { code: session.unitCode },
+      where: {
+        code: session.unitCode,
+        semester: {
+          courseYear: {
+            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
+          },
+        },
+      },
       select: { id: true },
     });
     if (!unit) throw new Error("UNIT_NOT_FOUND");
@@ -480,7 +508,14 @@ export class InPersonVerificationService {
     )
       throw new Error("SCAN_TIME_INVALID");
     const unit = await this.prisma.unit.findFirst({
-      where: { code: session.unitCode },
+      where: {
+        code: session.unitCode,
+        semester: {
+          courseYear: {
+            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
+          },
+        },
+      },
       select: { id: true },
     });
     if (!unit) throw new Error("UNIT_NOT_FOUND");

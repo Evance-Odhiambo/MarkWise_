@@ -1,6 +1,6 @@
 "use client";
-import AppHeader from "../components/AppHeader";
-import AppFooter from "../components/AppFooter";
+import AppHeader from "../components/layout/app-header";
+import AppFooter from "../components/layout/app-footer";
 import Link from "next/link";
 import { useState, useEffect } from "react";
 
@@ -247,7 +247,7 @@ const HomePage: React.FC = () => {
 
             <div className="flex flex-col sm:flex-row items-center justify-center gap-4">
               <Link
-                href="/admin/institution/register"
+                href="/admin/school-admin/register"
                 className="group relative inline-flex items-center gap-2 bg-white text-emerald-700 hover:bg-emerald-50 px-8 py-4 rounded-xl font-semibold text-lg transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
               >
                 <span>Request institution onboarding</span>

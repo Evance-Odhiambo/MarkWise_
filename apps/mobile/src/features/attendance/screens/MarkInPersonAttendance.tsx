@@ -792,7 +792,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         animationType="slide"
         onRequestClose={() => setShowPin(false)}
       >
-        <SafeAreaView className="flex-1 bg-black/50">
+        <View className="flex-1 bg-black/50">
           <Pressable
             className="flex-1 justify-start px-4 pt-4"
             onPress={() => setShowPin(false)}
@@ -890,7 +890,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
               </TouchableOpacity>
             </Pressable>
           </Pressable>
-        </SafeAreaView>
+        </View>
       </Modal>
       <Modal
         visible={showHelp}
