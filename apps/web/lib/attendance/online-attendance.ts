@@ -132,6 +132,20 @@ export function enrollStudentUnits(unitIds: string[]) {
   });
 }
 
+export function unenrollStudentUnit(unitId: string) {
+  return fetch(`/api/v1/students/units/${encodeURIComponent(unitId)}`, {
+    method: "DELETE",
+    headers: {
+      Authorization: `Bearer ${token()}`,
+    },
+  }).then(async (response) => {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(body.error ?? "Unable to unenroll from unit");
+    return body as { success: true; unenrolledUnitId: string };
+  });
+}
+
 export function getLecturerUnitCatalog() {
   return fetch("/api/v1/lecturers/units/catalog", {
     headers: { Authorization: `Bearer ${token()}` },

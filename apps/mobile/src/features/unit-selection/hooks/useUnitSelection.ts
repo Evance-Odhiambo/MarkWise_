@@ -416,33 +416,73 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
       setSelectedCodes(normalized);
 
       if (role === 'student' && token && userId) {
-        const removedUnitIds = enrolledUnitIds.filter(id => {
-          const code = catalogue.find(unit => unit.id === id)?.code;
-          return code && !normalized.includes(code);
-        });
-        await Promise.all(
-          removedUnitIds.map(async unitId => {
-            try {
-              const response = await fetch(
-                `${API_BASE_URL}/students/units/${encodeURIComponent(unitId)}`,
-                {
-                  method: 'DELETE',
-                  headers: { Authorization: `Bearer ${token}` },
+        // Get unit IDs for selected codes
+        const selectedUnitIds = normalized
+          .map(code => catalogue.find(unit => unit.code === code)?.id)
+          .filter((id): id is string => Boolean(id));
+        
+        const selectedIdsSet = new Set(selectedUnitIds);
+        
+        // Find units to UNENROLL (in enrolledUnitIds but not in selectedUnitIds)
+        const unitsToRemove = enrolledUnitIds.filter(id => !selectedIdsSet.has(id));
+        
+        // Find units to ENROLL (in selectedUnitIds but not in enrolledUnitIds)
+        const unitsToAdd = selectedUnitIds.filter(id => !enrolledUnitIds.includes(id));
+        
+        // Remove unenrolled units
+        if (unitsToRemove.length > 0) {
+          await Promise.all(
+            unitsToRemove.map(async unitId => {
+              try {
+                const response = await fetch(
+                  `${API_BASE_URL}/students/units/${encodeURIComponent(unitId)}`,
+                  {
+                    method: 'DELETE',
+                    headers: { Authorization: `Bearer ${token}` },
+                  },
+                );
+                if (response.ok) {
+                  setEnrolledUnitIds(current =>
+                    current.filter(id => id !== unitId),
+                  );
+                } else {
+                  console.warn(
+                    `Failed to unenroll unit ${unitId} (${response.status})`,
+                  );
+                }
+              } catch (error) {
+                console.warn(`Unit removal will be retried when online:`, error);
+              }
+            }),
+          );
+        }
+        
+        // Enroll new units
+        if (unitsToAdd.length > 0) {
+          try {
+            const response = await fetch(
+              `${API_BASE_URL}/students/units/enroll`,
+              {
+                method: 'POST',
+                headers: {
+                  Accept: 'application/json',
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${token}`,
                 },
-              );
-              if (response.ok)
-                setEnrolledUnitIds(current =>
-                  current.filter(id => id !== unitId),
-                );
-              else
-                console.warn(
-                  `Failed to sync unit removal (${response.status})`,
-                );
-            } catch {
-              console.warn('Unit removal will be retried when online');
+                body: JSON.stringify({ unitIds: unitsToAdd }),
+              },
+            );
+            if (response.ok) {
+              setEnrolledUnitIds(current => [
+                ...new Set([...current, ...unitsToAdd]),
+              ]);
+            } else {
+              console.warn(`Failed to enroll units (${response.status})`);
             }
-          }),
-        );
+          } catch (error) {
+            console.warn(`Unit enrollment will be retried when online:`, error);
+          }
+        }
       }
 
       if (role === 'lecturer' && token && userId) {
@@ -462,32 +502,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
           console.warn(`Failed to sync teaching units (${response.status})`);
         await cacheLecturerRosters(token, normalized);
       }
-      if (role === 'student' && token && userId) {
-        const unitIds = normalized
-          .map(code => catalogue.find(unit => unit.code === code)?.id)
-          .filter((id): id is string => Boolean(id));
-        const newUnitIds = unitIds.filter(id => !enrolledUnitIds.includes(id));
-        if (newUnitIds.length) {
-          const response = await fetch(
-            `${API_BASE_URL}/students/units/enroll`,
-            {
-              method: 'POST',
-              headers: {
-                Accept: 'application/json',
-                'Content-Type': 'application/json',
-                Authorization: `Bearer ${token}`,
-              },
-              body: JSON.stringify({ unitIds: newUnitIds }),
-            },
-          );
-          if (response.ok)
-            setEnrolledUnitIds(current => [
-              ...new Set([...current, ...newUnitIds]),
-            ]);
-          else
-            console.warn(`Failed to sync enrolled units (${response.status})`);
-        }
-      }
+      
       await adaptiveConfig.setSelectedUnits(
         role,
         normalized,

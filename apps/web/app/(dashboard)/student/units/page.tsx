@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { RoleWorkspaceShell } from "@/components/layout/role-workspace-shell";
 import {
   enrollStudentUnits,
+  unenrollStudentUnit,
   getStudentUnitCatalog,
   type StudentUnitCatalog,
   type TeachingUnit,
@@ -47,6 +48,8 @@ export default function StudentUnitsPage() {
         const firstSemester = firstYear?.semester[0];
         setYearNumber(firstYear?.yearNumber ?? null);
         setSemesterNumber(firstSemester?.semesterNumber ?? null);
+        // Initialize selected with enrolled units
+        setSelected(result.enrolledUnitIds);
       })
       .catch((error: unknown) =>
         setMessage(
@@ -76,7 +79,7 @@ export default function StudentUnitsPage() {
   const enrolled = new Set(catalog?.enrolledUnitIds ?? []);
 
   const toggleUnit = (unit: TeachingUnit) => {
-    if (enrolled.has(unit.id)) return;
+    // Allow toggling both enrolled and non-enrolled units
     setSelected((current) =>
       current.includes(unit.id)
         ? current.filter((id) => id !== unit.id)
@@ -90,7 +93,7 @@ export default function StudentUnitsPage() {
       (item) => item.yearNumber === value,
     )?.semester[0];
     setSemesterNumber(nextSemester?.semesterNumber ?? null);
-    setSelected([]);
+    // Keep selected state when changing year/semester
     setSearch("");
   };
 
@@ -98,26 +101,53 @@ export default function StudentUnitsPage() {
     setSaving(true);
     setMessage("");
     try {
-      const result = await enrollStudentUnits(selected);
+      // Determine which units to enroll and unenroll
+      const selectedSet = new Set(selected);
+      const enrolledSet = new Set(catalog?.enrolledUnitIds ?? []);
+      
+      // Units to enroll: selected but not enrolled
+      const toEnroll = selected.filter(id => !enrolledSet.has(id));
+      
+      // Units to unenroll: enrolled but not selected
+      const toUnenroll = Array.from(enrolledSet).filter(id => !selectedSet.has(id));
+      
+      // Perform unenrollments first
+      if (toUnenroll.length > 0) {
+        await Promise.all(
+          toUnenroll.map(unitId => unenrollStudentUnit(unitId))
+        );
+      }
+      
+      // Then perform enrollments
+      if (toEnroll.length > 0) {
+        await enrollStudentUnits(toEnroll);
+      }
+      
+      // Update local state to reflect changes
       setCatalog((current) =>
         current
           ? {
               ...current,
-              enrolledUnitIds: [
-                ...new Set([
-                  ...current.enrolledUnitIds,
-                  ...result.enrolledUnitIds,
-                ]),
-              ],
+              enrolledUnitIds: selected,
             }
           : current,
       );
+      
       setSelected([]);
-      setMessage("Units enrolled successfully.");
+      
+      const changes = [];
+      if (toEnroll.length > 0) changes.push(`${toEnroll.length} enrolled`);
+      if (toUnenroll.length > 0) changes.push(`${toUnenroll.length} unenrolled`);
+      
+      setMessage(
+        changes.length > 0
+          ? `Units updated: ${changes.join(", ")}.`
+          : "No changes to save."
+      );
       setTimeout(() => setMessage(""), 3500);
     } catch (error: unknown) {
       setMessage(
-        error instanceof Error ? error.message : "Unable to enroll in units",
+        error instanceof Error ? error.message : "Unable to update units",
       );
     } finally {
       setSaving(false);
@@ -135,14 +165,12 @@ export default function StudentUnitsPage() {
         <Button
           size="sm"
           onClick={save}
-          disabled={saving || selected.length === 0}
+          disabled={saving}
           className="h-7 px-3 text-[10.5px] bg-emerald-600 hover:bg-emerald-700 text-white font-bold gap-1.5 shadow-xs"
         >
           <Check className="h-3 w-3" />
           <span>
-            {saving
-              ? "Enrolling..."
-              : `Enroll Selected (${selected.length})`}
+            {saving ? "Saving..." : "Save Changes"}
           </span>
         </Button>
       }
@@ -163,7 +191,7 @@ export default function StudentUnitsPage() {
               {catalog?.course || "Degree Curriculum"}
             </span>
             <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 text-[9.5px]">
-              {enrolled.size} Units Enrolled
+              {selected.length} Units Selected
             </Badge>
           </div>
 
@@ -192,7 +220,7 @@ export default function StudentUnitsPage() {
                     value={semesterNumber ?? ""}
                     onChange={(e) => {
                       setSemesterNumber(Number(e.target.value));
-                      setSelected([]);
+                      // Keep selected state when changing semester
                       setSearch("");
                     }}
                     className="h-6 rounded-md border border-slate-200 bg-slate-50 px-1.5 text-[10.5px] font-medium text-slate-800 outline-none"
@@ -243,26 +271,23 @@ export default function StudentUnitsPage() {
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {visibleUnits.map((unit) => {
-              const isEnrolled = enrolled.has(unit.id);
               const isSelected = selected.includes(unit.id);
+              const isEnrolled = enrolled.has(unit.id);
 
               return (
                 <button
                   key={unit.id}
                   type="button"
-                  disabled={isEnrolled}
                   onClick={() => toggleUnit(unit)}
                   className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition shadow-2xs ${
-                    isEnrolled
-                      ? "border-emerald-200 bg-emerald-50/40 opacity-90 cursor-default"
-                      : isSelected
-                        ? "border-emerald-500 bg-emerald-50/80"
-                        : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
+                    isSelected
+                      ? "border-emerald-500 bg-emerald-50/80"
+                      : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
                   }`}
                 >
                   <span
                     className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                      isEnrolled || isSelected
+                      isSelected
                         ? "border-emerald-600 bg-emerald-600 text-white"
                         : "border-slate-300 bg-white text-transparent"
                     }`}
@@ -274,15 +299,11 @@ export default function StudentUnitsPage() {
                       <span className="font-bold text-[11px] text-slate-900 font-mono">
                         {unit.code}
                       </span>
-                      <span
-                        className={`text-[8.5px] font-bold uppercase font-mono px-1 rounded ${
-                          isEnrolled
-                            ? "bg-emerald-100 text-emerald-800"
-                            : "bg-slate-100 text-slate-600"
-                        }`}
-                      >
-                        {isEnrolled ? "Enrolled" : "Available"}
-                      </span>
+                      {isEnrolled && (
+                        <span className="text-[8.5px] font-bold uppercase font-mono px-1 rounded bg-emerald-100 text-emerald-800">
+                          Currently Enrolled
+                        </span>
+                      )}
                     </div>
                     <p className="mt-0.5 text-[10px] text-slate-600 leading-snug line-clamp-2">
                       {unit.name}
