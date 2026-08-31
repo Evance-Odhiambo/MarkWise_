@@ -130,15 +130,19 @@ export class InPersonService {
       sessionKey: hasClientIdentity
         ? input.sessionSecret!
         : crypto.randomBytes(32).toString("hex"),
-      // A claiming client already committed to a bleUnitId (or the absence
-      // of one) when it started broadcasting/caching locally — honor it
-      // verbatim rather than re-resolving, so already-emitted BLE beacons
-      // and already-cached manifests on student devices stay consistent.
+      // A claiming client that already committed to a *real* bleUnitId (it's
+      // already broadcasting BLE beacons under that id) must have it honored
+      // verbatim — already-emitted beacons and already-cached manifests on
+      // student devices have to stay consistent with what the server signs.
+      // But a client-supplied `null` only means "my local unit-mapping cache
+      // didn't have this unit's BLE id yet" (e.g. never synced on this
+      // device) — it is not a commitment to omit BLE, and nothing has been
+      // broadcast under it. Falling back to the server's own Unit-table
+      // lookup here, instead of locking the session out of BLE forever,
+      // recovers BLE the moment the claim round-trip lands.
       bleUnitId:
-        hasClientIdentity && input.bleUnitId !== undefined
-          ? input.bleUnitId == null
-            ? null
-            : String(input.bleUnitId)
+        hasClientIdentity && input.bleUnitId != null
+          ? String(input.bleUnitId)
           : unit?.bleId ?? null,
     };
 
