@@ -419,12 +419,12 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
       // Start session regardless of BLE availability
       // Session will work with QR code and PIN even without BLE
       //
-      // Attempt an online session create first so the server can issue a
-      // signed manifest — that's the only thing a student device can verify
-      // fully offline. useInPersonSession.start already falls back to a
-      // local-only session (no manifest) on network/5xx failure, so this is
-      // safe to attempt even with unreliable connectivity; it only refuses
-      // to fall back on a genuine 4xx (bad request/auth) error.
+      // useInPersonSession.start() generates the full session identity
+      // locally and begins broadcasting instantly, online or not, then
+      // claims it server-side in the background (retrying until it
+      // succeeds) so a signed manifest becomes available as soon as
+      // connectivity allows — that's the only thing a student device can
+      // verify fully offline.
       await start({
         unitCode,
         durationMinutes: 10,

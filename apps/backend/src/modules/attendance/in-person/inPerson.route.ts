@@ -9,17 +9,32 @@ import {
   validateLecturerAssistedMark,
   validateSubmitInPersonAttendance,
 } from "./inPerson.schema.js";
+import type { InPersonMethod } from "./index.js";
+
+const METHOD_LABELS: Record<string, string> = {
+  qr: "QR code",
+  ble: "Bluetooth signal",
+  pin: "PIN",
+};
 
 export const inPersonRoutes: FastifyPluginAsync = async (app) => {
   const service = new InPersonService(app.prisma);
   const PIN_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
-  const notifyPin = async (
+  // Background sync (queued offline records synced later, or a session that
+  // hasn't been claimed by the server yet) means a student's device can show
+  // local "success" before the server has actually verified anything. This
+  // is the only thing that closes that loop for every method, not just PIN —
+  // without it, a background rejection is silent and the student has no way
+  // to know they aren't actually marked present.
+  const notifyAttendanceOutcome = async (
     studentId: string,
+    method: InPersonMethod | string,
     success: boolean,
     sessionId: string,
     reason?: string
   ) => {
+    const label = METHOD_LABELS[method] || "attendance";
     const notification = await app.prisma.notification
       .create({
         data: {
@@ -27,13 +42,14 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           userType: "student",
           type: "attendance",
           title: success
-            ? "Attendance PIN accepted"
-            : "Attendance PIN rejected",
+            ? `Attendance ${label} accepted`
+            : `Attendance ${label} rejected`,
           message: success
-            ? "Your attendance PIN was verified by the server."
-            : `Your attendance PIN was rejected${reason ? `: ${reason}` : "."}`,
+            ? `Your attendance ${label} was verified by the server.`
+            : `Your attendance ${label} was rejected${reason ? `: ${reason}` : "."}`,
           data: {
             sessionId,
+            method,
             outcome: success ? "verified" : "rejected",
             reason: reason ?? null,
           },
@@ -151,8 +167,9 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           rawPayload,
           deviceId: body.deviceId,
         });
-        await notifyPin(
+        await notifyAttendanceOutcome(
           request.user.id,
+          "pin",
           result.status === "verified" || result.status === "duplicate",
           session.id
         );
@@ -160,7 +177,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "VERIFICATION_FAILED";
-        await notifyPin(request.user.id, false, session.id, reason);
+        await notifyAttendanceOutcome(request.user.id, "pin", false, session.id, reason);
         return reply
           .code(403)
           .send({ error: "Attendance verification failed", reason });
@@ -186,6 +203,17 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           ),
         });
       } catch (error) {
+        const reason = error instanceof Error ? error.message : undefined;
+        if (reason === "SESSION_OWNERSHIP_CONFLICT")
+          return reply.code(409).send({
+            error: "This session id is already claimed by another lecturer",
+            reason,
+          });
+        if (reason === "SESSION_ALREADY_EXISTS")
+          return reply.code(409).send({
+            error: "A session already exists for this unit and start time",
+            reason,
+          });
         request.log.error({ err: error }, "Unable to create in-person session");
         throw error;
       }
@@ -275,9 +303,10 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
               ? await service.submitOpaqueRelay(request.user.id, body)
               : await service.submitRelay(request.user.id, body)
             : await service.submit(request.user.id, body);
-        if (body.method === "pin")
-          await notifyPin(
+        if (body.sessionId)
+          await notifyAttendanceOutcome(
             request.user.id,
+            body.method,
             result.status === "verified" || result.status === "duplicate",
             body.sessionId
           );
@@ -285,8 +314,12 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       } catch (error) {
         const reason =
           error instanceof Error ? error.message : "VERIFICATION_FAILED";
-        if (body.method === "pin" && body.sessionId)
-          await notifyPin(request.user.id, false, body.sessionId, reason);
+        // A session that hasn't been claimed by the server yet is expected
+        // and transient (see sessions.claim/offline-session identity) — the
+        // client will retry once it's claimed, so don't spam a notification
+        // for something that isn't a real rejection yet.
+        if (body.sessionId && reason !== "SESSION_NOT_FOUND")
+          await notifyAttendanceOutcome(request.user.id, body.method, false, body.sessionId, reason);
         return reply
           .code(reason === "SESSION_NOT_FOUND" ? 404 : 403)
           .send({ error: "Attendance verification failed", reason });
@@ -386,7 +419,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         const reason =
           error instanceof Error ? error.message : "VERIFICATION_FAILED";
         return reply
-          .code(reason === "SESSION_NOT_FOUND_OR_NOT_OWNED" ? 404 : 403)
+          .code(reason === "SESSION_NOT_FOUND" ? 404 : 403)
           .send({ error: "Assisted attendance verification failed", reason });
       }
     }
@@ -409,13 +442,27 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           if (Object.keys(errors).length)
             return { status: "rejected", reason: "INVALID_REQUEST" };
           try {
-            return await service.submit(request.user.id, record);
+            const result = await service.submit(request.user.id, record);
+            if (record.sessionId)
+              await notifyAttendanceOutcome(
+                request.user.id,
+                record.method,
+                result.status === "verified" || result.status === "duplicate",
+                record.sessionId
+              );
+            return result;
           } catch (error) {
-            return {
-              status: "rejected",
-              reason:
-                error instanceof Error ? error.message : "VERIFICATION_FAILED",
-            };
+            const reason =
+              error instanceof Error ? error.message : "VERIFICATION_FAILED";
+            if (record.sessionId && reason !== "SESSION_NOT_FOUND")
+              await notifyAttendanceOutcome(
+                request.user.id,
+                record.method,
+                false,
+                record.sessionId,
+                reason
+              );
+            return { status: "rejected", reason };
           }
         })
       );

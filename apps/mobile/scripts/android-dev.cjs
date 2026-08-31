@@ -1,5 +1,5 @@
 const { spawn, execFileSync } = require("node:child_process");
-const net = require("node:net");
+const http = require("node:http");
 const path = require("node:path");
 
 const metroPort = 8081;
@@ -11,23 +11,34 @@ const childEnv = {
   ANDROID_USER_HOME: process.env.ANDROID_USER_HOME || path.join(process.env.USERPROFILE || ".", ".android"),
 };
 
-function waitForPort(port, host = "127.0.0.1", timeoutMs = 120000) {
+// A raw TCP connect only proves *something* is listening on the port — a
+// stale/crashed Metro process (or an unrelated process) can leave the port
+// open without actually serving bundles, which makes this script think
+// Metro is ready and skip spawning it, so the app launches and is stuck at
+// "Loading from localhost..." forever. Metro's /status endpoint is the real
+// readiness signal: a healthy instance always responds
+// "packager-status:running".
+function waitForMetroHealthy(port, host = "127.0.0.1", timeoutMs = 120000) {
   return new Promise((resolve, reject) => {
     const startedAt = Date.now();
+    const retry = () => {
+      if (Date.now() - startedAt >= timeoutMs) {
+        reject(new Error(`Metro did not report healthy on port ${port} within ${timeoutMs / 1000} seconds.`));
+      } else {
+        setTimeout(check, 250);
+      }
+    };
     const check = () => {
-      const socket = net.createConnection({ port, host });
-      socket.once("connect", () => {
-        socket.destroy();
-        resolve();
+      const request = http.get({ host, port, path: "/status", timeout: 2000 }, (res) => {
+        let body = "";
+        res.on("data", (chunk) => { body += chunk; });
+        res.on("end", () => {
+          if (res.statusCode === 200 && body.trim() === "packager-status:running") resolve();
+          else retry();
+        });
       });
-      socket.once("error", () => {
-        socket.destroy();
-        if (Date.now() - startedAt >= timeoutMs) {
-          reject(new Error(`Metro did not start on port ${port} within ${timeoutMs / 1000} seconds.`));
-        } else {
-          setTimeout(check, 250);
-        }
-      });
+      request.on("timeout", () => request.destroy());
+      request.on("error", retry);
     };
     check();
   });
@@ -49,16 +60,28 @@ function stopMetro() {
 process.on("SIGINT", stopMetro);
 process.on("SIGTERM", stopMetro);
 
-waitForPort(metroPort, "127.0.0.1", 1000)
+waitForMetroHealthy(metroPort, "127.0.0.1", 1500)
+  .then(() => console.log(`A healthy Metro is already running on port ${metroPort}; reusing it.`))
   .catch(() => {
     ownsMetro = true;
     // Rebuilding Metro's cache on every Android launch makes startup much
     // slower. Use the normal cache and keep reset-cache as an explicit script.
     metro = spawn(process.execPath, [reactNativeCli, "start", "--port", String(metroPort)], spawnOptions);
-    metro.once("error", (error) => {
-      console.error(`Metro failed to start: ${error.message}`);
+    // Race the health check against Metro dying outright (e.g. the port is
+    // held by a process that won't yield it) so a doomed launch fails fast
+    // instead of polling for the full 120s timeout.
+    const failedEarly = new Promise((_resolve, reject) => {
+      metro.once("error", (error) => reject(new Error(`Metro failed to start: ${error.message}`)));
+      metro.once("exit", (code, signal) => {
+        if (!shuttingDown) reject(new Error(`Metro exited before becoming healthy${code === null ? ` (${signal})` : ` (code ${code})`}.`));
+      });
     });
-    return waitForPort(metroPort);
+    // If Metro starts fine and only crashes later (after this race is
+    // already won by the health check), that later rejection would
+    // otherwise be an unhandled rejection — swallow it here; the running
+    // Metro process's own stdio (inherited) already surfaces the crash.
+    failedEarly.catch(() => {});
+    return Promise.race([waitForMetroHealthy(metroPort), failedEarly]);
   })
   .then(() => {
     try {

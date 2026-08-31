@@ -54,6 +54,14 @@ const decodeOpaqueRelay = (raw: string) => {
   return { token: bytes.subarray(4).toString("hex") };
 };
 
+// The 9-byte compact BLE wire format has no room for an HMAC — it's a
+// deliberate size/power tradeoff for BLE advertising payloads. This means a
+// captured beacon could in principle be rebroadcast by anyone with BLE
+// hardware within its rotation window. Accepted residual risk, mitigated by:
+// the short rotation window (BLE_WINDOW_SECONDS), relay election (avoids
+// blindly trusting every relay), motion-verification on the mobile client,
+// and manifest-anchored trust for discovery. QR and PIN carry a real HMAC
+// signature and don't share this limitation.
 const decodeBle = (raw: string) => {
   if (!raw.startsWith("MWBLE1:")) throw new Error("BLE_FORMAT_INVALID");
   const bytes = Buffer.from(raw.slice(7), "base64");
@@ -109,6 +117,24 @@ const decodePayload = (raw: string): SignedPayload => {
 
 export class InPersonVerificationService {
   constructor(private readonly prisma: PrismaClient) {}
+
+  /**
+   * One device marking multiple different student accounts present is a
+   * strong fraud signal. Every verification path checks this — not just the
+   * original QR path — before a record is created.
+   */
+  private async assertNoDeviceConflict(
+    conductedSessionId: string,
+    deviceId: string | undefined,
+    studentId: string
+  ) {
+    if (!deviceId) return;
+    const deviceUse = await this.prisma.inPersonAttendanceRecord.findFirst({
+      where: { conductedSessionId, deviceId },
+    });
+    if (deviceUse && deviceUse.studentId !== studentId)
+      throw new Error("DEVICE_CONFLICT");
+  }
 
   async verify(
     input: SubmitInPersonAttendanceBody & { studentId: string },
@@ -203,13 +229,7 @@ export class InPersonVerificationService {
     if (duplicate)
       return { status: "duplicate" as const, recordId: duplicate.id };
 
-    if (input.deviceId) {
-      const deviceUse = await this.prisma.inPersonAttendanceRecord.findFirst({
-        where: { conductedSessionId: session.id, deviceId: input.deviceId },
-      });
-      if (deviceUse && deviceUse.studentId !== input.studentId)
-        throw new Error("DEVICE_CONFLICT");
-    }
+    await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
 
     const record = await this.prisma.inPersonAttendanceRecord.create({
       data: {
@@ -278,6 +298,7 @@ export class InPersonVerificationService {
     });
     if (duplicate)
       return { status: "duplicate" as const, recordId: duplicate.id };
+    await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
     const scannedAt = new Date(input.scannedAt);
     const record = await this.prisma.inPersonAttendanceRecord.create({
       data: {
@@ -368,6 +389,7 @@ export class InPersonVerificationService {
     ).padStart(6, "0");
     if (!session.sessionKey || expectedPin !== receivedPin)
       throw new Error("PIN_INVALID");
+    await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
     const record = await this.prisma.inPersonAttendanceRecord.create({
       data: {
         studentId: input.studentId,
@@ -475,6 +497,7 @@ export class InPersonVerificationService {
     });
     if (duplicate)
       return { status: "duplicate" as const, recordId: duplicate.id };
+    await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
     const record = await this.prisma.inPersonAttendanceRecord.create({
       data: {
         studentId: input.studentId,
@@ -553,6 +576,7 @@ export class InPersonVerificationService {
     });
     if (duplicate)
       return { status: "duplicate" as const, recordId: duplicate.id };
+    await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
     const record = await this.prisma.inPersonAttendanceRecord.create({
       data: {
         studentId: input.studentId,
@@ -574,10 +598,15 @@ export class InPersonVerificationService {
     lecturerId: string,
     input: LecturerAssistedMarkBody
   ) {
-    const session = await this.prisma.conductedSession.findFirst({
-      where: { id: input.sessionId, lecturerId },
+    // Split into two checks (rather than one findFirst filtering on both
+    // id and lecturerId) so the caller can tell "not claimed by the server
+    // yet" — transient while a locally-started session is still being
+    // claimed — from "exists but isn't yours" — a real, permanent error.
+    const session = await this.prisma.conductedSession.findUnique({
+      where: { id: input.sessionId },
     });
-    if (!session) throw new Error("SESSION_NOT_FOUND_OR_NOT_OWNED");
+    if (!session) throw new Error("SESSION_NOT_FOUND");
+    if (session.lecturerId !== lecturerId) throw new Error("SESSION_NOT_OWNED");
     const scannedAt = new Date(input.scannedAt).getTime();
     const expiry =
       session.sessionStart.getTime() + session.sessionDuration * 1000;

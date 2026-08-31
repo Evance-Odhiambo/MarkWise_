@@ -534,8 +534,8 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             deviceId: await getOrCreateSecureDeviceId(),
           });
           Alert.alert(
-            'PIN saved for validation',
-            'The lecturer session is not available yet. We will retry validation for 24 hours.',
+            'PIN saved, waiting for the session',
+            "We'll confirm this shortly if the lecturer's session appears in the next minute or so. This PIN rotates quickly, so if it's no longer current by then, you'll get a notification asking you to re-enter the new one.",
           );
           return;
         }
@@ -585,7 +585,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           setPinValue('');
           Alert.alert(
             'PIN saved offline',
-            `PIN ${pending.unitCode} will be sent for validation when connectivity returns.`,
+            `We'll try to confirm this for ${pending.unitCode} as soon as you're back online. This PIN rotates quickly, so if too much time passes you'll get a notification asking you to re-enter the current one.`,
           );
         } catch {
           Alert.alert(
@@ -830,13 +830,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
               sessionId: relay.sessionId,
               error: errorMsg,
             });
-            
-            if (relay.sessionId.startsWith('offline-')) {
-              throw new Error(
-                'This attendance relay was created from an offline session. The lecturer must be online.',
-              );
-            }
-            
             throw new Error(`Could not find the session. ${errorMsg}`);
           }
         }
@@ -944,14 +937,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             sessionId: payload.sessionId,
             error: errorMsg,
           });
-          
-          // Check if this is an offline session
-          if (payload.sessionId.startsWith('offline-')) {
-            throw new Error(
-              'This session was created offline and is not available on the server. The lecturer needs to be online to create valid sessions.',
-            );
-          }
-          
           throw new Error(`Could not find the session. ${errorMsg}`);
         }
       }

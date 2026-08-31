@@ -392,6 +392,10 @@ model InPersonAttendanceRecord {
   @@index([studentId, unitCode])
   @@index([conductedSessionId])
   @@index([deviceId, unitCode, sessionStart])
+  // Duplicate-mark check, run on every verification path.
+  @@index([studentId, conductedSessionId])
+  // Device-conflict check, run on every verification path.
+  @@index([conductedSessionId, deviceId])
   @@map("InPersonAttendanceRecord")
 }
 

@@ -3,7 +3,11 @@ import type { InPersonSession, LocalInPersonRecord } from '../types/inPerson';
 import { updateServerClock } from '../security/serverClock';
 
 export class ApiRequestError extends Error {
-  constructor(message: string, public readonly status: number) {
+  constructor(
+    message: string,
+    public readonly status: number,
+    public readonly reason?: string,
+  ) {
     super(message);
     this.name = 'ApiRequestError';
   }
@@ -37,6 +41,7 @@ const request = async <T>(
       throw new ApiRequestError(
         body.error || `InPerson request failed (${response.status})`,
         response.status,
+        typeof body.reason === 'string' ? body.reason : undefined,
       );
     return body as T;
   } finally {
@@ -45,7 +50,16 @@ const request = async <T>(
 };
 
 export const createInPersonSession = (
-  input: { unitCode: string; expiresAt: string },
+  input: {
+    unitCode: string;
+    expiresAt: string;
+    /** Client-generated identity, present when claiming a locally-started session. */
+    id?: string;
+    sessionNonce?: number;
+    sessionSecret?: string;
+    sessionStart?: number;
+    bleUnitId?: number | null;
+  },
   token: string,
 ) =>
   request<{ success: true; data: InPersonSession }>(

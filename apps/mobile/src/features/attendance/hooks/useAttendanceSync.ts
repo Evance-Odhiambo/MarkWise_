@@ -14,16 +14,28 @@ import {
 } from '../../../shared/storage/inPersonAttendanceQueue';
 import { registerRelayKey } from '../security/attendanceRelay';
 
+// A lecturer session that hasn't been claimed by the server yet (see
+// useInPersonSession's background claim retry) legitimately doesn't exist
+// there for a while when the lecturer started offline. Bound how long a
+// record keeps retrying on that specific reason before giving up, so a
+// genuinely bogus/garbage session id doesn't retry forever.
+const MAX_SESSION_NOT_FOUND_ATTEMPTS = 200;
+
 export const useAttendanceSync = (token: string | null) => {
   const { userId } = useAuth();
   const [syncing, setSyncing] = useState(false);
 
-  const isPermanentServerRejection = (error: unknown) =>
-    error instanceof ApiRequestError &&
-    error.status >= 400 &&
-    error.status < 500 &&
-    error.status !== 408 &&
-    error.status !== 429;
+  const isPermanentServerRejection = (error: unknown) => {
+    if (!(error instanceof ApiRequestError)) return false;
+    if (error.status < 400 || error.status >= 500) return false;
+    if (error.status === 408 || error.status === 429) return false;
+    // A session the server doesn't know about yet is expected and
+    // transient while a locally-started session is still being claimed —
+    // it isn't a permanent rejection on its own (see the attempt cap in
+    // syncPending, which does eventually give up).
+    if (error.reason === 'SESSION_NOT_FOUND') return false;
+    return true;
+  };
 
   const sync = useCallback(
     async (record: LocalInPersonRecord) => {
@@ -32,11 +44,7 @@ export const useAttendanceSync = (token: string | null) => {
       // Persist the attendance before attempting any network operation. This
       // is the source of truth for offline attendance and survives app restarts.
       const storageId = await enqueueInPersonAttendance(record);
-      // A lecturer who started offline has no ConductedSession row on the
-      // server yet. Never send that local-only ID immediately; doing so causes
-      // the student to receive misleading session-expiry/session-not-found
-      // errors. The record remains durable and pending for later handoff.
-      if (!token || record.method === 'qr' || record.sessionId.startsWith('offline-')) {
+      if (!token) {
         setSyncing(false);
         return { success: true, data: { status: 'queued' as const } };
       }
@@ -82,12 +90,25 @@ export const useAttendanceSync = (token: string | null) => {
             )
               results.verified += 1;
           } catch (error) {
-            if (isPermanentServerRejection(error))
+            if (isPermanentServerRejection(error)) {
               await markInPersonAttendanceRejected(record.id, error);
-            else {
-              results.failed += 1;
-              await markInPersonAttendanceRetry(record.id, error);
+              continue;
             }
+            const staleSessionNotFound =
+              error instanceof ApiRequestError &&
+              error.reason === 'SESSION_NOT_FOUND' &&
+              record.syncAttempts >= MAX_SESSION_NOT_FOUND_ATTEMPTS;
+            if (staleSessionNotFound) {
+              await markInPersonAttendanceRejected(
+                record.id,
+                new Error(
+                  'Lecturer session was never confirmed by the server',
+                ),
+              );
+              continue;
+            }
+            results.failed += 1;
+            await markInPersonAttendanceRetry(record.id, error);
           }
         }
         return results;

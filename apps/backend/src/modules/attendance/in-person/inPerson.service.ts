@@ -95,23 +95,83 @@ export class InPersonService {
     }
 
     const expiresAt = new Date(input.expiresAt).getTime();
+
+    // A client-supplied identity means the lecturer device already started
+    // broadcasting offline and is now "claiming" that exact session server
+    // side — reuse its id/nonce/secret/start verbatim (not regenerated) so
+    // every QR/PIN/BLE payload already emitted, and every attendance record
+    // already queued against that id, stays valid once the claim succeeds.
+    const hasClientIdentity = input.id !== undefined;
+    const sessionStart = hasClientIdentity
+      ? new Date(input.sessionStart!)
+      : new Date(Math.floor(Date.now() / 1000) * 1000);
+
+    // Duration must be the fixed interval the client already committed to
+    // (expiresAt - sessionStart), not (expiresAt - now). A claim can land
+    // any amount of time after sessionStart — network delay, or a lecturer
+    // reconnecting minutes after starting offline — and anchoring duration
+    // to "now" would silently shrink the session below what's already
+    // signed into every broadcast QR/PIN/BLE payload, desyncing the
+    // server's expiry from what students are scanning and causing every
+    // subsequent scan to fail with SESSION_TIME_MISMATCH.
     const durationMs = Math.min(
-      Math.max(expiresAt - Date.now(), 60_000),
+      Math.max(expiresAt - sessionStart.getTime(), 60_000),
       MAX_IN_PERSON_SESSION_MINUTES * 60_000,
     );
-    const sessionStart = new Date(Math.floor(Date.now() / 1000) * 1000);
-    const session = await this.prisma.conductedSession.create({
-      data: {
-        lecturerId,
-        institutionId: lecturer.institutionId,
-        unitCode,
-        sessionStart,
-        sessionDuration: Math.floor(durationMs / 1000),
-        sessionNonce: BigInt(`0x${crypto.randomBytes(4).toString("hex")}`),
-        sessionKey: crypto.randomBytes(32).toString("hex"),
-        bleUnitId: unit?.bleId ?? null,
-      },
-    });
+    const sessionData = {
+      lecturerId,
+      institutionId: lecturer.institutionId,
+      unitCode,
+      sessionStart,
+      sessionDuration: Math.floor(durationMs / 1000),
+      sessionNonce: hasClientIdentity
+        ? BigInt(input.sessionNonce!)
+        : BigInt(`0x${crypto.randomBytes(4).toString("hex")}`),
+      sessionKey: hasClientIdentity
+        ? input.sessionSecret!
+        : crypto.randomBytes(32).toString("hex"),
+      // A claiming client already committed to a bleUnitId (or the absence
+      // of one) when it started broadcasting/caching locally — honor it
+      // verbatim rather than re-resolving, so already-emitted BLE beacons
+      // and already-cached manifests on student devices stay consistent.
+      bleUnitId:
+        hasClientIdentity && input.bleUnitId !== undefined
+          ? input.bleUnitId == null
+            ? null
+            : String(input.bleUnitId)
+          : unit?.bleId ?? null,
+    };
+
+    let session;
+    if (hasClientIdentity) {
+      try {
+        session = await this.prisma.conductedSession.create({
+          data: { id: input.id, ...sessionData },
+        });
+      } catch (error) {
+        if (
+          typeof error === "object" &&
+          error !== null &&
+          "code" in error &&
+          error.code === "P2002"
+        ) {
+          // Idempotent retry: the claim may have already succeeded on a
+          // previous attempt (e.g. the response was lost to a flaky
+          // connection). Return the existing row rather than erroring.
+          const existing = await this.prisma.conductedSession.findUnique({
+            where: { id: input.id },
+          });
+          if (!existing) throw new Error("SESSION_ALREADY_EXISTS");
+          if (existing.lecturerId !== lecturerId)
+            throw new Error("SESSION_OWNERSHIP_CONFLICT");
+          session = existing;
+        } else {
+          throw error;
+        }
+      }
+    } else {
+      session = await this.prisma.conductedSession.create({ data: sessionData });
+    }
     const publicSession = await this.getPublicSession(session.id);
     return {
       id: session.id,

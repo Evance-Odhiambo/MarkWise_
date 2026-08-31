@@ -43,11 +43,16 @@ export default function LecturerManualMarkSync() {
         await removeLecturerMark(mark.id);
       } catch (error) {
         // Keep temporary network failures. Permanent validation/auth failures
-        // cannot become valid later and should not retry forever.
+        // cannot become valid later and should not retry forever. A session
+        // the server doesn't know about yet is neither — it may simply not
+        // have been claimed yet (see useInPersonSession's background claim
+        // retry) — so keep retrying that specific case instead of discarding
+        // a manual mark made just before/during the claim race.
         if (
           error instanceof ApiRequestError &&
           error.status >= 400 &&
-          error.status < 500
+          error.status < 500 &&
+          error.reason !== 'SESSION_NOT_FOUND'
         )
           await removeLecturerMark(mark.id);
       }
