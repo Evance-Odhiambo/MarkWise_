@@ -1,17 +1,16 @@
 import type { AttendanceSessionManifest } from '../types/sessionManifest';
 import { MANIFEST_PROTOCOL_VERSION } from '../types/sessionManifest';
 import { normalizeUnitCode } from '../../../shared/utils/unitCodes';
+import { MARKWISE_MANIFEST_PUBLIC_KEY } from '../../../shared/constants';
 import {
   BLE_ROTATION_SECONDS,
   PIN_ROTATION_SECONDS,
   QR_ROTATION_SECONDS,
 } from './attendanceProtocol';
 
-const runtime = globalThis as typeof globalThis & {
-  process?: { env?: Record<string, string | undefined> };
-};
-
-const publicKey = () => runtime.process?.env?.MARKWISE_MANIFEST_PUBLIC_KEY || '';
+// Single source of truth for the public key — see constants.ts for why it's
+// hardcoded there rather than read from process.env directly.
+const publicKey = () => MARKWISE_MANIFEST_PUBLIC_KEY;
 
 // Must mirror the backend's manifestValues() (sessionManifest.ts) exactly —
 // same fields, same order — or every signature verification fails.

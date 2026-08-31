@@ -524,7 +524,13 @@ export class InPersonVerificationService {
     input: SubmitInPersonAttendanceBody & { studentId: string }
   ) {
     const relay = decodeOpaqueRelay(input.rawPayload);
-    if (!["qr", "ble"].includes(input.method))
+    // Unlike the signed MWIR1 relay (verifyRelay, above), the opaque token
+    // is a short, server-minted, unguessable value — safe to redeem by any
+    // transport that can carry it, including a student typing it in by hand
+    // like a PIN. The token itself already carries the entire trust chain
+    // (bound to a verified attendance record), so no extra check is needed
+    // per transport.
+    if (!["qr", "ble", "pin"].includes(input.method))
       throw new Error("METHOD_MISMATCH");
     const parent = await this.prisma.inPersonAttendanceRecord.findFirst({
       where: { token: relay.token, verificationStatus: "verified" },

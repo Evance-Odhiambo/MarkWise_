@@ -24,7 +24,9 @@ export const useInPersonCapture = (session: InPersonSession | null) => {
       const activeSession = sessionOverride ?? session;
       if (!activeSession) throw new Error('No active attendance session');
       if (!userId) throw new Error('Student account is required');
-      // MWIR1 is a signed relay wrapper. The backend validates the wrapper,
+      // MWIR1 is a signed relay wrapper. MWR1 is the opaque relay token,
+      // redeemable by scan (qr/ble) or by typing it in like a PIN. The
+      // backend validates these fully — including, for MWIR1, the wrapper,
       // its parent proof, relayer device key, counter, and enrollment.
       if (
         !(
@@ -32,7 +34,8 @@ export const useInPersonCapture = (session: InPersonSession | null) => {
           (rawPayload.trim().startsWith('MWIR1:') ||
             rawPayload.trim().startsWith('MWR1:'))
         ) &&
-        !(method === 'ble' && rawPayload.trim().startsWith('MWR1:'))
+        !(method === 'ble' && rawPayload.trim().startsWith('MWR1:')) &&
+        !(method === 'pin' && rawPayload.trim().startsWith('MWR1:'))
       ) {
         const validation =
           method === 'pin'

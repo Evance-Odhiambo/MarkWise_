@@ -82,6 +82,20 @@ export const decodeRelayPayload = (
   return { sessionId: value.sessionId, parentPayload: value.parentPayload };
 };
 
+/** Inverse of decodeOpaqueRelayPayload — builds MWR1 from a typed-in token. */
+export const encodeOpaqueRelayPayload = (tokenHex: string) => {
+  const normalized = tokenHex.trim().toLowerCase();
+  if (!/^[0-9a-f]{8}$/.test(normalized))
+    throw new Error('Relay code must be 8 hex characters');
+  const bytes = new Uint8Array(9);
+  bytes.set([0x4d, 0x57, 0x49, 0x32], 0); // "MWI2"
+  const tokenBytes = normalized.match(/.{2}/g)!.map(byte => parseInt(byte, 16));
+  bytes.set(tokenBytes, 4);
+  bytes[8] = 1;
+  const binary = String.fromCharCode(...bytes);
+  return `MWR1:${(globalThis as any).btoa(binary)}`;
+};
+
 export const decodeOpaqueRelayPayload = (raw: string) => {
   // MWR1 is the compact MarkWise Relay v1 transport format. MWIR1 remains
   // reserved for the full signed JSON relay QR payload.
