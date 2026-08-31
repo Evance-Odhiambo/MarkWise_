@@ -15,6 +15,8 @@ const unsignedPayload = (payload: Omit<AttendancePayload, 'signature'>) =>
     payload.sessionId,
     payload.unitCode,
     payload.sessionNonce,
+    payload.sessionStart,
+    payload.expiresAt,
     payload.counter,
     payload.issuedAt,
   ].join('|');
@@ -29,6 +31,8 @@ export const createSignedPayload = async (
     sessionId: session.id,
     unitCode: normalizeUnitCode(session.unitCode),
     sessionNonce: session.sessionNonce,
+    sessionStart: session.sessionStart,
+    expiresAt: session.expiresAt,
     counter: deriveCounter(
       Math.floor(session.sessionStart / 1000),
       QR_ROTATION_SECONDS,
@@ -54,6 +58,8 @@ export const decodeAttendancePayload = (raw: string): AttendancePayload => {
     !payload.sessionId ||
     !payload.unitCode ||
     !Number.isSafeInteger(payload.sessionNonce) ||
+    !Number.isFinite(payload.sessionStart) ||
+    !Number.isFinite(payload.expiresAt) ||
     !Number.isSafeInteger(payload.counter) ||
     !Number.isFinite(payload.issuedAt) ||
     !/^[0-9a-f]{64}$/i.test(payload.signature || '')

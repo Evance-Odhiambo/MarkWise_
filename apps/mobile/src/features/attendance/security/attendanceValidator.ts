@@ -26,10 +26,13 @@ export const validateAttendancePayload = (
 ): LocalValidationResult => {
   try {
     const payload = decodeAttendancePayload(rawPayload);
+    // Validate the counter against the QR's own issuedAt timestamp. Comparing
+    // it with the scan-time window incorrectly rejects valid QR codes when a
+    // scan crosses a 3-second rotation boundary or is processed offline.
     const expectedCounter = deriveCounter(
       Math.floor(session.sessionStart / 1000),
       QR_ROTATION_SECONDS,
-      nowMs,
+      payload.issuedAt,
     );
     if (payload.sessionId !== session.id)
       return { valid: false, reason: 'SESSION_MISMATCH' };
@@ -40,6 +43,11 @@ export const validateAttendancePayload = (
       return { valid: false, reason: 'UNIT_MISMATCH' };
     if (payload.sessionNonce !== session.sessionNonce)
       return { valid: false, reason: 'NONCE_MISMATCH' };
+    if (
+      Math.abs(payload.sessionStart - session.sessionStart) > 15_000 ||
+      Math.abs(payload.expiresAt - session.expiresAt) > 15_000
+    )
+      return { valid: false, reason: 'SESSION_TIME_MISMATCH' };
     if (
       payload.issuedAt < session.sessionStart - 15_000 ||
       payload.issuedAt > session.expiresAt + 15_000

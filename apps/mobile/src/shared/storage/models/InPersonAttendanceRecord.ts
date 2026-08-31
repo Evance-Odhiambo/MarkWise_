@@ -15,4 +15,7 @@ export default class InPersonAttendanceRecord extends Model {
   @field('sync_attempts') syncAttempts!: number;
   @field('last_sync_error') lastSyncError!: string | null;
   @field('owner_user_id') ownerUserId!: string | null;
+  /** Whether this evidence may be rebroadcast to relay attendance to peers. */
+  @field('relay_eligible') relayEligible!: number | null;
+  @field('relay_method') relayMethod!: string | null;
 }

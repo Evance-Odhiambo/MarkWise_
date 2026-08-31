@@ -1,11 +1,19 @@
 import crypto from "node:crypto";
 import type { PrismaClient } from "../../../generated/prisma/client.js";
 import {
+  BLE_ROTATION_SECONDS,
   MAX_IN_PERSON_SESSION_MINUTES,
   normalizeUnitCode,
+  PIN_ROTATION_SECONDS,
+  QR_ROTATION_SECONDS,
 } from "./inPerson.schema.js";
-import type { CreateInPersonSessionBody } from "./inPerson.types.js";
+import type { CreateInPersonSessionBody } from "./index.js";
 import { InPersonVerificationService } from "./inPerson.verification.service.js";
+import {
+  MANIFEST_PROTOCOL_VERSION,
+  manifestValues,
+  signManifest,
+} from "./sessionManifest.js";
 
 export class InPersonService {
   private readonly verifier: InPersonVerificationService;
@@ -104,6 +112,7 @@ export class InPersonService {
         bleUnitId: unit?.bleId ?? null,
       },
     });
+    const publicSession = await this.getPublicSession(session.id);
     return {
       id: session.id,
       unitCode: session.unitCode,
@@ -113,6 +122,7 @@ export class InPersonService {
       sessionNonce: Number(session.sessionNonce),
       sessionSecret: session.sessionKey,
       status: "active" as const,
+      manifest: publicSession?.manifest,
     };
   }
 
@@ -130,18 +140,49 @@ export class InPersonService {
     if (!session) return null;
     const sessionStart = session.sessionStart.getTime();
     const expiresAt = sessionStart + session.sessionDuration * 1000;
+    const issuedAt = Date.now();
+    // A manifest is issued whenever the server can sign one, regardless of
+    // whether this unit has a BLE mapping — without it, QR/PIN can never be
+    // offline-trusted either, since the manifest is the only signed anchor
+    // a client can verify without a live server round-trip.
+    const bleUnitId = session.bleUnitId ? Number(session.bleUnitId) : null;
+    const manifestInput = {
+      sessionId: session.id,
+      unitCode: session.unitCode,
+      bleUnitId,
+      sessionNonce: Number(session.sessionNonce),
+      sessionStart,
+      expiresAt,
+      issuedAt,
+    };
     return {
       id: session.id,
       unitCode: session.unitCode,
       sessionStart,
       expiresAt,
       sessionNonce: Number(session.sessionNonce),
-      bleUnitId: session.bleUnitId ? Number(session.bleUnitId) : null,
+      bleUnitId,
       status: session.sessionEnd
         ? ("ended" as const)
-        : Date.now() > expiresAt
+          : Date.now() > expiresAt
           ? ("expired" as const)
           : ("active" as const),
+      manifest: process.env.ATTENDANCE_MANIFEST_PRIVATE_KEY ? {
+        protocolVersion: MANIFEST_PROTOCOL_VERSION,
+        sessionId: session.id,
+        unitCode: normalizeUnitCode(session.unitCode),
+        bleUnitId,
+        sessionNonce: Number(session.sessionNonce),
+        sessionStart,
+        expiresAt,
+        issuedAt,
+        bleRotationSeconds: BLE_ROTATION_SECONDS,
+        qrRotationSeconds: QR_ROTATION_SECONDS,
+        pinRotationSeconds: PIN_ROTATION_SECONDS,
+        issuerId: session.lecturerId,
+        keyId: `session:${session.id}`,
+        signature: signManifest(manifestValues(manifestInput)),
+      } : undefined,
     };
   }
 

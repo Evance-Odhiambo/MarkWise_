@@ -1,9 +1,9 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
+import database from './database';
+import Model from './models/PendingPinSubmission';
 import {
-  clearAttendanceSessionSecret,
-  getAttendanceSessionSecret,
-  storeAttendanceSessionSecret,
-} from '../security/secureKeyStorage';
+  encryptLocalValue,
+  decryptLocalValue,
+} from '../security/localStorageCrypto';
 
 export type PendingPin = {
   id: string;
@@ -13,52 +13,91 @@ export type PendingPin = {
   deviceId?: string;
 };
 
-const KEY = '@markwise/pending-pins/v1';
+const collection = () =>
+  database.collections.get<Model>('pending_pin_submissions');
 
-const read = async (): Promise<PendingPin[]> => {
+// AES-GCM associated data binds the ciphertext to its own (immutable)
+// unitCode/scannedAt pair, matching the pattern used for unit mappings in
+// shared/storage/unitMappings.ts.
+const aad = (unitCode: string, scannedAt: number) => `${unitCode}|${scannedAt}`;
+
+const toPendingPin = async (record: Model): Promise<PendingPin | null> => {
   try {
-    const raw = await AsyncStorage.getItem(KEY);
-    const parsed = raw ? JSON.parse(raw) : [];
-    if (!Array.isArray(parsed)) return [];
-    return (
-      await Promise.all(
-        parsed.map(async (item: Omit<PendingPin, 'pin'>) => {
-          const pin = await getAttendanceSessionSecret(
-            `pending-pin-${item.id}`,
-          );
-          return pin ? { ...item, pin } : null;
-        }),
-      )
-    ).filter((item): item is PendingPin => Boolean(item));
+    const pin = await decryptLocalValue(
+      record.pin,
+      aad(record.unitCode, record.scannedAt),
+    );
+    if (!pin) return null;
+    return {
+      id: record.id,
+      unitCode: record.unitCode,
+      pin,
+      scannedAt: record.scannedAt,
+      deviceId: record.deviceId ?? undefined,
+    };
   } catch {
-    return [];
+    return null;
   }
 };
 
-export const enqueuePendingPin = async (input: Omit<PendingPin, 'id'>) => {
-  const records = await read();
-  const record = {
-    ...input,
-    id: `${input.unitCode}:${input.scannedAt}`,
-  };
-  await AsyncStorage.setItem(
-    KEY,
-    JSON.stringify([
-      ...records.map(({ pin: _pin, ...metadata }) => metadata),
-      (({ pin: _pin, ...metadata }) => metadata)(record),
-    ]),
+/** WatermelonDB-backed pending PIN queue — the raw PIN is stored AES-GCM encrypted. */
+export const enqueuePendingPin = async (
+  input: Omit<PendingPin, 'id'>,
+): Promise<PendingPin> => {
+  const encryptedPin = await encryptLocalValue(
+    input.pin,
+    aad(input.unitCode, input.scannedAt),
   );
-  await storeAttendanceSessionSecret(`pending-pin-${record.id}`, record.pin);
-  return record;
+  if (!encryptedPin) throw new Error('Unable to encrypt PIN for local storage');
+  let created!: Model;
+  await database.write(async () => {
+    created = await collection().create(record => {
+      record.unitCode = input.unitCode;
+      record.sessionId = null;
+      record.pin = encryptedPin;
+      record.scannedAt = input.scannedAt;
+      record.deviceId = input.deviceId ?? null;
+      record.status = 'pending';
+      record.syncAttempts = 0;
+      record.lastError = null;
+      record.createdAt = Date.now();
+    });
+  });
+  return {
+    id: created.id,
+    unitCode: input.unitCode,
+    pin: input.pin,
+    scannedAt: input.scannedAt,
+    deviceId: input.deviceId,
+  };
 };
 
-export const getPendingPins = read;
+export const getPendingPins = async (): Promise<PendingPin[]> => {
+  const records = await collection().query().fetch();
+  const resolved = await Promise.all(records.map(toPendingPin));
+  return resolved.filter((item): item is PendingPin => Boolean(item));
+};
 
 export const removePendingPin = async (id: string) => {
-  const records = await read();
-  await AsyncStorage.setItem(
-    KEY,
-    JSON.stringify(records.filter(record => record.id !== id)),
-  );
-  await clearAttendanceSessionSecret(`pending-pin-${id}`);
+  const record = await collection()
+    .find(id)
+    .catch(() => null);
+  if (!record) return;
+  await database.write(async () => {
+    await record.destroyPermanently();
+  });
+};
+
+/** Records a failed sync attempt without discarding the queued submission. */
+export const markPendingPinAttempt = async (id: string, error?: string) => {
+  const record = await collection()
+    .find(id)
+    .catch(() => null);
+  if (!record) return;
+  await database.write(async () => {
+    await record.update(row => {
+      row.syncAttempts = (row.syncAttempts ?? 0) + 1;
+      row.lastError = error ?? null;
+    });
+  });
 };

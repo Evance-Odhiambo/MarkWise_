@@ -8,6 +8,9 @@ import InPersonSession from './models/InPersonSession';
 import PendingAttendanceSync from './models/PendingAttendanceSync';
 import SelectedUnit from './models/SelectedUnit';
 import CachedUnitStudent from './models/CachedUnitStudent';
+import AttendanceSessionManifest from './models/AttendanceSessionManifest';
+import PendingPinSubmission from './models/PendingPinSubmission';
+import ReceivedBleCounter from './models/ReceivedBleCounter';
 
 const adapter = new SQLiteAdapter({
   schema: appSchemaDef,
@@ -24,6 +27,9 @@ export const database = new Database({
     PendingAttendanceSync,
     SelectedUnit,
     CachedUnitStudent,
+    AttendanceSessionManifest,
+    PendingPinSubmission,
+    ReceivedBleCounter,
   ],
 });
 

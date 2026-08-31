@@ -2,6 +2,7 @@ import { Q } from '@nozbe/watermelondb';
 import type { InPersonSession as Session } from '../../features/attendance/types/inPerson';
 import database from './database';
 import InPersonSession from './models/InPersonSession';
+import { cacheSessionManifest } from './sessionManifestCache';
 
 const collection = () =>
   database.collections.get<InPersonSession>('in_person_sessions');
@@ -43,6 +44,7 @@ export const cacheInPersonSession = async (session: Session) => {
       record.status = session.status;
     });
   });
+  if (session.manifest) await cacheSessionManifest(session.manifest);
 };
 
 export const getCachedInPersonSession = async (

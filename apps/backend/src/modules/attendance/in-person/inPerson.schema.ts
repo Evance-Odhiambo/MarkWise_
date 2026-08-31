@@ -1,9 +1,16 @@
 import type {
   CreateInPersonSessionBody,
   SubmitInPersonAttendanceBody,
-} from "./inPerson.types.js";
+} from "./index.js";
 
 export const MAX_IN_PERSON_SESSION_MINUTES = 60;
+
+// Single source of truth for rotation windows. These are also embedded in the
+// signed session manifest (see sessionManifest.ts) so a client can verify the
+// server actually issued these rotation intervals for a given session.
+export const BLE_ROTATION_SECONDS = 5;
+export const QR_ROTATION_SECONDS = 3;
+export const PIN_ROTATION_SECONDS = 30;
 
 export function validateCreateInPersonSession(
   body: Partial<CreateInPersonSessionBody>,

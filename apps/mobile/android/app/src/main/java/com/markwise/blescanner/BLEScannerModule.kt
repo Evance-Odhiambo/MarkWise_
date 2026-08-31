@@ -54,6 +54,15 @@ class BLEScannerModule(reactContext: ReactApplicationContext) :
 
     override fun getName(): String = "BLEScanner"
 
+    // Required by React Native's NativeEventEmitter. The scanner events are
+    // emitted through RCTDeviceEventEmitter, while these methods let the JS
+    // bridge subscribe without dropping native callbacks.
+    @ReactMethod
+    fun addListener(eventName: String) { }
+
+    @ReactMethod
+    fun removeListeners(count: Int) { }
+
     private fun hasScanPermission(): Boolean {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             ActivityCompat.checkSelfPermission(
@@ -192,6 +201,15 @@ class BLEScannerModule(reactContext: ReactApplicationContext) :
             return
         }
 
+        // Bluetooth may have been disabled when this React module was created.
+        // Re-resolve the scanner after the adapter becomes ready instead of
+        // permanently retaining the initial null instance.
+        scanner = bluetoothAdapter?.bluetoothLeScanner
+        if (scanner == null) {
+            Log.w(TAG, "startScan: BLE scanner is not ready")
+            return
+        }
+
         if (isScanning) {
             Log.w(TAG, "startScan: already scanning, ignoring duplicate request")
             return
@@ -242,6 +260,14 @@ class BLEScannerModule(reactContext: ReactApplicationContext) :
             val params = Arguments.createMap()
             params.putString("message", "Bluetooth is not enabled")
             sendEvent(EVENT_SCAN_ERROR, params)
+            return
+        }
+
+        // Re-resolve on every start; bluetoothLeScanner can be null during
+        // adapter initialization and become available later.
+        scanner = bluetoothAdapter?.bluetoothLeScanner
+        if (scanner == null) {
+            Log.w(TAG, "startScanNoFilter: BLE scanner is not ready")
             return
         }
 

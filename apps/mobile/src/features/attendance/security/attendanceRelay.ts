@@ -3,6 +3,7 @@ import { API_BASE_URL } from '../../../shared/constants';
 import { base64ToUtf8, hmacSha256Hex, utf8ToBase64 } from './attendanceCrypto';
 import { deriveCounter, QR_ROTATION_SECONDS } from './attendanceProtocol';
 import type { InPersonSession } from '../types/inPerson';
+import { nowEpochMs } from './serverClock';
 
 const SERVICE = 'com.markwise.attendance.relay-key';
 
@@ -48,7 +49,7 @@ export const createRelayPayload = async (
   parentPayload: string,
   sessionId: string,
   relayerId: string,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ) => {
   const counter = Math.floor(nowMs / 1000 / 3);
   const key = await getOrCreateRelayKey();

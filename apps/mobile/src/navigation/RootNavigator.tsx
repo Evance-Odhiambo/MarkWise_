@@ -14,6 +14,7 @@ import StudentSelectionScreen from '../features/unit-selection/screens/StudentSe
 import LecturerSelectionScreen from '../features/unit-selection/screens/LecturerSelectionScreen';
 import { useAuth } from '../features/auth/context/AuthContext';
 import { RootStackParamList } from './types';
+import { useAttendancePermissions } from '../features/attendance/hooks/useAttendancePermissions';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
 
@@ -58,6 +59,7 @@ const BootSplash = () => {
 
 const RootNavigator = () => {
   const { isHydrated, session } = useAuth();
+  useAttendancePermissions();
 
   const hasSession = Boolean(session?.token);
 

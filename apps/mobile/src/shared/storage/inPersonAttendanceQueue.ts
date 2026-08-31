@@ -114,3 +114,33 @@ export async function markInPersonAttendanceRetry(id: string, error: unknown) {
     });
   });
 }
+
+/**
+ * Persists a record's relay eligibility so it survives app restarts instead
+ * of only living in an in-memory ref. Looked up by the same
+ * (sessionId, deviceId, ownerUserId) triple enqueueInPersonAttendance dedups
+ * on, since callers only have the app-level record, not the WatermelonDB row id.
+ */
+export async function setRecordRelayEligibility(
+  sessionId: string,
+  deviceId: string,
+  ownerUserId: string,
+  relayEligible: boolean,
+  relayMethod: 'qr' | 'ble' | 'pin',
+) {
+  const existing = await collection()
+    .query(
+      Q.where('session_id', sessionId),
+      Q.where('device_id', deviceId),
+      Q.where('owner_user_id', ownerUserId),
+    )
+    .fetch();
+  const record = existing[0];
+  if (!record) return;
+  await database.write(async () => {
+    await record.update(model => {
+      model.relayEligible = relayEligible ? 1 : 0;
+      model.relayMethod = relayMethod;
+    });
+  });
+}

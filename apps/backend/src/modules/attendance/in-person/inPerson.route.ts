@@ -4,6 +4,7 @@ import { requireAttendanceRole } from "../../../plugins/index.js";
 import { InPersonService } from "./inPerson.service.js";
 import { sendPushNotification } from "../../notification/notification.service.js";
 import {
+  PIN_ROTATION_SECONDS as PIN_WINDOW_SECONDS,
   validateCreateInPersonSession,
   validateLecturerAssistedMark,
   validateSubmitInPersonAttendance,
@@ -11,7 +12,6 @@ import {
 
 export const inPersonRoutes: FastifyPluginAsync = async (app) => {
   const service = new InPersonService(app.prisma);
-  const PIN_WINDOW_SECONDS = 30;
   const PIN_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
 
   const notifyPin = async (
@@ -127,6 +127,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
                 ? Number(candidate.bleUnitId)
                 : null,
               status: "active" as const,
+              manifest: undefined,
             };
         }
       }

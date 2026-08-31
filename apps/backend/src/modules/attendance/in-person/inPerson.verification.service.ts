@@ -4,12 +4,14 @@ import type {
   InPersonMethod,
   LecturerAssistedMarkBody,
   SubmitInPersonAttendanceBody,
-} from "./inPerson.types.js";
-import { normalizeUnitCode } from "./inPerson.schema.js";
+} from "./index.js";
+import {
+  BLE_ROTATION_SECONDS as BLE_WINDOW_SECONDS,
+  normalizeUnitCode,
+  PIN_ROTATION_SECONDS as PIN_WINDOW_SECONDS,
+  QR_ROTATION_SECONDS as QR_WINDOW_SECONDS,
+} from "./inPerson.schema.js";
 
-const PIN_WINDOW_SECONDS = 30;
-const QR_WINDOW_SECONDS = 3;
-const BLE_WINDOW_SECONDS = 5;
 const MAX_PIN_DRIFT = 1;
 
 const safeEqualHex = (expected: string, received: string) => {
@@ -69,6 +71,8 @@ interface SignedPayload {
   sessionId: string;
   unitCode: string;
   sessionNonce: number;
+  sessionStart: number;
+  expiresAt: number;
   counter: number;
   issuedAt: number;
   signature: string;
@@ -80,6 +84,8 @@ const canonical = (payload: Omit<SignedPayload, "signature">) =>
     payload.sessionId,
     payload.unitCode,
     payload.sessionNonce,
+    payload.sessionStart,
+    payload.expiresAt,
     payload.counter,
     payload.issuedAt,
   ].join("|");
@@ -90,7 +96,13 @@ const decodePayload = (raw: string): SignedPayload => {
   const payload = JSON.parse(
     Buffer.from(raw.slice(6), "base64").toString("utf8")
   ) as SignedPayload;
-  if (payload.version !== 1 || !payload.sessionId || !payload.signature)
+  if (
+    payload.version !== 1 ||
+    !payload.sessionId ||
+    !Number.isFinite(payload.sessionStart) ||
+    !Number.isFinite(payload.expiresAt) ||
+    !payload.signature
+  )
     throw new Error("Malformed attendance payload");
   return payload;
 };
@@ -144,6 +156,11 @@ export class InPersonVerificationService {
       payload.issuedAt > expiry + 15_000
     )
       throw new Error("ISSUED_AT_INVALID");
+    if (
+      Math.abs(payload.sessionStart - sessionStart) > 15_000 ||
+      Math.abs(payload.expiresAt - expiry) > 15_000
+    )
+      throw new Error("SESSION_TIME_MISMATCH");
 
     const expected = crypto
       .createHmac("sha256", session.sessionKey || "")

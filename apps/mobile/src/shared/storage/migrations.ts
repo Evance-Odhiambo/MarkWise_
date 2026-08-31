@@ -123,5 +123,70 @@ export const appMigrations = schemaMigrations({
         ),
       ],
     },
+    {
+      toVersion: 9,
+      steps: [
+        createTable({
+          name: 'attendance_session_manifests',
+          columns: [
+            { name: 'session_id', type: 'string' },
+            { name: 'unit_code', type: 'string' },
+            { name: 'ble_unit_id', type: 'number' },
+            { name: 'session_nonce', type: 'number' },
+            { name: 'session_start', type: 'number' },
+            { name: 'expires_at', type: 'number' },
+            { name: 'issued_at', type: 'number' },
+            { name: 'issuer_id', type: 'string' },
+            { name: 'key_id', type: 'string' },
+            { name: 'signature', type: 'string' },
+            { name: 'trusted_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
+    {
+      toVersion: 10,
+      steps: [
+        unsafeExecuteSql(
+          'ALTER TABLE in_person_attendance_records ADD COLUMN relay_eligible INTEGER;',
+        ),
+        unsafeExecuteSql(
+          'ALTER TABLE in_person_attendance_records ADD COLUMN relay_method TEXT;',
+        ),
+        unsafeExecuteSql(
+          'ALTER TABLE attendance_session_manifests ADD COLUMN ble_rotation_seconds INTEGER;',
+        ),
+        unsafeExecuteSql(
+          'ALTER TABLE attendance_session_manifests ADD COLUMN qr_rotation_seconds INTEGER;',
+        ),
+        unsafeExecuteSql(
+          'ALTER TABLE attendance_session_manifests ADD COLUMN pin_rotation_seconds INTEGER;',
+        ),
+        createTable({
+          name: 'pending_pin_submissions',
+          columns: [
+            { name: 'unit_code', type: 'string' },
+            { name: 'session_id', type: 'string', isOptional: true },
+            { name: 'pin', type: 'string' },
+            { name: 'scanned_at', type: 'number' },
+            { name: 'device_id', type: 'string', isOptional: true },
+            { name: 'status', type: 'string' },
+            { name: 'sync_attempts', type: 'number' },
+            { name: 'last_error', type: 'string', isOptional: true },
+            { name: 'created_at', type: 'number' },
+          ],
+        }),
+        createTable({
+          name: 'received_ble_counters',
+          columns: [
+            { name: 'session_id', type: 'string' },
+            { name: 'nonce', type: 'number' },
+            { name: 'ble_unit_id', type: 'number' },
+            { name: 'last_counter', type: 'number' },
+            { name: 'last_seen_at', type: 'number' },
+          ],
+        }),
+      ],
+    },
   ],
 });

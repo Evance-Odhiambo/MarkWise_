@@ -375,7 +375,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     if (!session) return;
     const updateRemaining = () => {
       setRemainingSeconds(
-        Math.max(0, Math.ceil((session.expiresAt - Date.now()) / 1_000)),
+        Math.max(0, Math.ceil((session.expiresAt - nowEpochMs()) / 1_000)),
       );
     };
     updateRemaining();
@@ -387,7 +387,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     if (!session || session.status !== 'active') return;
     const timeout = setTimeout(
       () => void end(),
-      Math.max(0, session.expiresAt - Date.now()) + 100,
+      Math.max(0, session.expiresAt - nowEpochMs()) + 100,
     );
     return () => clearTimeout(timeout);
   }, [end, session]);
@@ -418,14 +418,17 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
 
       // Start session regardless of BLE availability
       // Session will work with QR code and PIN even without BLE
+      //
+      // Attempt an online session create first so the server can issue a
+      // signed manifest — that's the only thing a student device can verify
+      // fully offline. useInPersonSession.start already falls back to a
+      // local-only session (no manifest) on network/5xx failure, so this is
+      // safe to attempt even with unreliable connectivity; it only refuses
+      // to fall back on a genuine 4xx (bad request/auth) error.
       await start({
         unitCode,
         durationMinutes: 10,
         bleUnitId,
-        // In-person attendance must start from the locally cached lecturer
-        // unit list. Server synchronization happens after attendance records
-        // are collected, not during session startup.
-        offlineOnly: true,
       });
       
       // Show warning if BLE is not available (but don't block)

@@ -5,6 +5,7 @@ import { useAttendanceSync } from '../hooks/useAttendanceSync';
 import { submitPinByUnit, ApiRequestError } from '../api/inPersonAttendanceApi';
 import {
   getPendingPins,
+  markPendingPinAttempt,
   removePendingPin,
 } from '../../../shared/storage/pendingPinQueue';
 
@@ -50,8 +51,14 @@ export default function OfflineAttendanceSync() {
           error instanceof ApiRequestError &&
           error.status >= 400 &&
           error.status < 500
-        )
+        ) {
           await removePendingPin(pin.id);
+        } else {
+          await markPendingPinAttempt(
+            pin.id,
+            error instanceof Error ? error.message : 'SYNC_FAILED',
+          );
+        }
       }
     }
   }, [isAuthenticated, token]);

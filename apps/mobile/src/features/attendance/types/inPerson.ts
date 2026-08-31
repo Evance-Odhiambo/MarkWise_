@@ -14,6 +14,7 @@ export interface InPersonSession {
   bleUnitId?: number | null;
   status: 'active' | 'ended' | 'expired';
   sessionSecret?: string;
+  manifest?: import('./sessionManifest').AttendanceSessionManifest;
 }
 
 export interface AttendancePayload {
@@ -21,6 +22,8 @@ export interface AttendancePayload {
   sessionId: string;
   unitCode: string;
   sessionNonce: number;
+  sessionStart: number;
+  expiresAt: number;
   counter: number;
   issuedAt: number;
   signature?: string;

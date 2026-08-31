@@ -95,6 +95,32 @@ export const LecturerSessionOverview = ({
         </Text>
       </View>
 
+      {!session.manifest && (
+        <View
+          className={`rounded-2xl border p-4 ${
+            isDark
+              ? 'border-amber-400/30 bg-amber-400/10'
+              : 'border-amber-500/30 bg-amber-500/10'
+          }`}
+        >
+          <Text
+            className={`text-sm font-semibold ${
+              isDark ? 'text-amber-200' : 'text-amber-800'
+            }`}
+          >
+            Offline session — no signed manifest yet
+          </Text>
+          <Text
+            className={`mt-1 text-xs ${
+              isDark ? 'text-amber-200/80' : 'text-amber-700'
+            }`}
+          >
+            QR/PIN/BLE will still broadcast, but students without connectivity
+            can't fully verify this session until it syncs with the server.
+          </Text>
+        </View>
+      )}
+
       <View
         className={card(
           isDark,

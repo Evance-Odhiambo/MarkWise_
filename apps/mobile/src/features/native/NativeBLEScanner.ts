@@ -1,4 +1,4 @@
-import { NativeModules, NativeEventEmitter } from 'react-native';
+import { NativeEventEmitter, NativeModules } from 'react-native';
 
 const { BLEScanner } = NativeModules;
 
@@ -18,7 +18,7 @@ export type BLEScanError = {
 };
 
 class BLEScannerAPI {
-  private emitter: NativeEventEmitter | null = null;
+  private readonly emitter = new NativeEventEmitter(BLEScanner);
 
   startScan(
     serviceUUID = '00001101-0000-1000-8000-00805F9B34FB',
@@ -41,22 +41,18 @@ class BLEScannerAPI {
   addDeviceListener(callback: (device: BLEDevice) => void): {
     remove: () => void;
   } {
-    if (!this.emitter) {
-      this.emitter = new NativeEventEmitter(BLEScanner);
-    }
     const handler = callback as (data: any) => void;
-    const subscription = this.emitter.addListener('BLEDeviceFound', handler);
+    // Must match BLEScannerModule.EVENT_DEVICE_FOUND.
+    const subscription = this.emitter.addListener('onDeviceFound', handler);
     return { remove: () => subscription.remove() };
   }
 
   addErrorListener(callback: (error: BLEScanError) => void): {
     remove: () => void;
   } {
-    if (!this.emitter) {
-      this.emitter = new NativeEventEmitter(BLEScanner);
-    }
     const handler = callback as (data: any) => void;
-    const subscription = this.emitter.addListener('BLEScanError', handler);
+    // Must match BLEScannerModule.EVENT_SCAN_ERROR.
+    const subscription = this.emitter.addListener('onScanError', handler);
     return { remove: () => subscription.remove() };
   }
 }

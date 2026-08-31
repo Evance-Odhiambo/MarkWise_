@@ -63,6 +63,13 @@ import {
   getCachedActiveInPersonSessionByUnit,
 } from '../../../shared/storage/inPersonSessionCache';
 import {
+  getCachedManifestByBeacon,
+  getCachedManifestBySessionNonce,
+  manifestToSession,
+} from '../../../shared/storage/sessionManifestCache';
+import { recordBleCounter } from '../../../shared/storage/receivedBleCounters';
+import { setRecordRelayEligibility } from '../../../shared/storage/inPersonAttendanceQueue';
+import {
   FadeSlideIn,
   PulseView,
   SpinView,
@@ -73,6 +80,7 @@ import {
   QrCode,
   KeyRound,
   PersonStanding,
+  CheckCircle2,
 } from 'lucide-react-native';
 
 type Props = NativeStackScreenProps<AttendanceStackParamList, 'MarkInPerson'>;
@@ -291,6 +299,18 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       }
       relayParentRef.current = { session: attendanceSession, evidence };
       setRelayError(null);
+      if (userId) {
+        // Persist relay eligibility so it survives app restarts/backgrounding
+        // instead of only living in relayParentRef.
+        const deviceId = await getOrCreateSecureDeviceId();
+        void setRecordRelayEligibility(
+          attendanceSession.id,
+          deviceId,
+          userId,
+          true,
+          attendanceMethod,
+        );
+      }
       try {
         setRelayBlePayload(
           // BLE is a compact discovery signal. The signed relay QR carries
@@ -363,6 +383,23 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         return;
       }
       try {
+        // Dev-only regression guard: a relay must rebroadcast the exact
+        // session identity it was verified against — same id/nonce/unit/
+        // expiry, only the counter advances. If `session` state ever drifts
+        // from the verified relay parent (relayParentRef), this fires loudly
+        // instead of silently relaying under the wrong session identity.
+        if (__DEV__ && relayParentRef.current) {
+          const parent = relayParentRef.current.session;
+          const identityMatches =
+            session.id === parent.id &&
+            session.sessionNonce === parent.sessionNonce &&
+            session.unitCode === parent.unitCode &&
+            session.expiresAt === parent.expiresAt;
+          if (!identityMatches)
+            console.warn(
+              'BLE relay session identity diverged from the verified relay parent',
+            );
+        }
         const nextPayload = await createCompactBlePayload(session, '');
         const base64Payload = nextPayload.slice(7);
         if (Platform.OS === 'android')
@@ -415,11 +452,18 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           attendanceSession,
         );
         const result = await sync(record);
+        // QR and BLE are cryptographically validated locally before being
+        // queued. They may relay immediately while offline. PIN is different:
+        // it can relay only after the backend returns verified/duplicate.
+        const relayStatus =
+          result.data.status === 'queued' && attendanceMethod !== 'pin'
+            ? 'verified'
+            : result.data.status;
         await scheduleRelay(
           attendanceSession,
           evidence,
           attendanceMethod,
-          result.data.status,
+          relayStatus,
           override?.rssi,
         );
         setSuccess(
@@ -690,17 +734,44 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           nonce: beacon.nonce,
           seenAt: Date.now(),
         });
-        const cached = await getCachedInPersonSession(beacon.nonce);
+        // Trusted manifest is the primary discovery path — it lets this
+        // beacon be fully verified and marked with no live server call. Fall
+        // back to the plain session cache (no manifest yet, e.g. an
+        // offline-started lecturer session) as a lesser trust tier, and only
+        // hit the backend when neither is cached — first-ever contact with
+        // this session.
+        const manifest = await getCachedManifestByBeacon(
+          beacon.nonce,
+          beacon.unitId,
+        );
+        const cached = manifest
+          ? manifestToSession(manifest)
+          : await getCachedInPersonSession(beacon.nonce);
         if (cached) {
-          setRawPayload(value);
-          setSession(cached);
-          setMethod('ble');
-          autoMarkBle(cached, value, device.rssi);
+          const { accepted } = await recordBleCounter(
+            cached.id,
+            beacon.nonce,
+            beacon.unitId,
+            beacon.counter,
+          );
+          if (accepted) {
+            setRawPayload(value);
+            setSession(cached);
+            setMethod('ble');
+            autoMarkBle(cached, value, device.rssi);
+          }
+          return;
         }
         if (!token) return;
         getInPersonSessionByBleNonce(beacon.nonce, token)
           .then(async response => {
             await cacheInPersonSession(response.data);
+            await recordBleCounter(
+              response.data.id,
+              beacon.nonce,
+              beacon.unitId,
+              beacon.counter,
+            );
             setRawPayload(value);
             setSession(response.data);
             setMethod('ble');
@@ -785,9 +856,17 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         return;
       }
       const payload = decodeAttendancePayload(value.trim());
-      const cached = await getCachedInPersonSession(payload.sessionNonce);
+      // Trusted manifest first (signed, authoritative), then the plain
+      // session cache (no manifest yet), before falling back to
+      // reconstructing an unsigned session from the payload alone.
+      const manifest = await getCachedManifestBySessionNonce(
+        payload.sessionNonce,
+      );
+      const cached = manifest
+        ? manifestToSession(manifest)
+        : await getCachedInPersonSession(payload.sessionNonce);
       let resolvedSession = cached;
-      
+
       // If not in cache, try to reconstruct from payload + cached unit data
       if (!resolvedSession && payload.unitCode) {
         // Try to get unit information from local cache
@@ -1098,12 +1177,15 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             ) : success ? (
               <View className="gap-4">
                 <PulseView>
-                  <View className="rounded-2xl border border-emerald-500/30 bg-emerald-500/10 p-6">
-                    <Text className="text-center text-2xl font-bold text-emerald-700">
-                      Attendance verified
+                  <View className="items-center rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-6">
+                    <View className="mb-3 rounded-full bg-emerald-600 p-2">
+                      <CheckCircle2 size={42} color="#ffffff" strokeWidth={2.5} />
+                    </View>
+                    <Text className="text-center text-2xl font-extrabold text-emerald-800">
+                      Attendance Marked
                     </Text>
-                    <Text className={`mt-2 text-center ${bodyClasses}`}>
-                      Your attendance was accepted by the server. You can now
+                    <Text className="mt-2 text-center text-base font-medium text-emerald-700">
+                      Your attendance was recorded successfully. You can now
                       help nearby classmates.
                     </Text>
                   </View>
@@ -1189,7 +1271,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                   </View>
                   <Text className={`mt-3 text-xs ${bodyClasses}`}>
                     {method === 'ble'
-                      ? 'Waiting for a nearby lecturer beacon.'
+                      ? 'Waiting for a nearby BLE signals.'
                       : scanCount
                       ? 'Session detected. Attendance will be submitted automatically.'
                       : 'Scan the lecturer QR code to submit automatically.'}

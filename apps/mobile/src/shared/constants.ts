@@ -9,3 +9,5 @@ export const WEB_APP_URL =
   runtime.process?.env?.MARKWISE_WEB_URL || 'http://localhost:3000';
 
 export const ATTENDANCE_SESSION_MAX_MINUTES = 60;
+export const MARKWISE_MANIFEST_PUBLIC_KEY =
+  runtime.process?.env?.MARKWISE_MANIFEST_PUBLIC_KEY || '';
