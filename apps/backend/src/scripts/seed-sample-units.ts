@@ -4,8 +4,19 @@
  */
 
 import { PrismaClient } from "../generated/prisma/client.js";
+import { PrismaPg } from "@prisma/adapter-pg";
 
-const prisma = new PrismaClient();
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL environment variable is required");
+}
+
+const adapter = new PrismaPg({
+  connectionString: databaseUrl,
+  max: 10,
+});
+
+const prisma = new PrismaClient({ adapter });
 
 async function main() {
   console.log("Starting sample units seeding...");
@@ -105,14 +116,12 @@ async function main() {
           },
         },
         update: {
-          unitName: unitData.name,
-          bleId: unitData.bleId,
+          unitBleId: unitData.bleId,
         },
         create: {
           institutionId: institution.id,
           unitCode: unitData.code,
-          unitName: unitData.name,
-          bleId: unitData.bleId,
+          unitBleId: unitData.bleId,
         },
       });
     }
