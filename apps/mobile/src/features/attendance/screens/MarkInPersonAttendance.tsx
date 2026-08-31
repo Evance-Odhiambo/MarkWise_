@@ -733,9 +733,25 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         const cached = await getCachedInPersonSession(parentNonce);
         let resolvedSession = cached;
         if (!resolvedSession) {
-          const response = await getInPersonSession(relay.sessionId, token);
-          await cacheInPersonSession(response.data);
-          resolvedSession = response.data;
+          try {
+            const response = await getInPersonSession(relay.sessionId, token);
+            await cacheInPersonSession(response.data);
+            resolvedSession = response.data;
+          } catch (error) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            console.error('Failed to fetch relay session:', {
+              sessionId: relay.sessionId,
+              error: errorMsg,
+            });
+            
+            if (relay.sessionId.startsWith('offline-')) {
+              throw new Error(
+                'This attendance relay was created from an offline session. The lecturer must be online.',
+              );
+            }
+            
+            throw new Error(`Could not find the session. ${errorMsg}`);
+          }
         }
         if (!resolvedSession)
           throw new Error('Unable to identify this session');
@@ -758,9 +774,27 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       if (!resolvedSession) {
         if (!token) return;
         setLoading(true);
-        const response = await getInPersonSession(payload.sessionId, token);
-        await cacheInPersonSession(response.data);
-        resolvedSession = response.data;
+        try {
+          const response = await getInPersonSession(payload.sessionId, token);
+          await cacheInPersonSession(response.data);
+          resolvedSession = response.data;
+        } catch (error) {
+          // Provide more specific error for debugging
+          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+          console.error('Failed to fetch session:', {
+            sessionId: payload.sessionId,
+            error: errorMsg,
+          });
+          
+          // Check if this is an offline session
+          if (payload.sessionId.startsWith('offline-')) {
+            throw new Error(
+              'This session was created offline and is not available on the server. The lecturer needs to be online to create valid sessions.',
+            );
+          }
+          
+          throw new Error(`Could not find the session. ${errorMsg}`);
+        }
       }
       setSession(resolvedSession);
       setMethod('qr');

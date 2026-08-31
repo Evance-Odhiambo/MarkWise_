@@ -81,6 +81,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
   const sessionStartingRef = useRef(false);
   const advertisedPayloadRef = useRef<string | null>(null);
   const displayedQrCounterRef = useRef<number | null>(null);
+  const blePermissionsGrantedRef = useRef<boolean | null>(null);
   const [unitPickerOpen, setUnitPickerOpen] = useState(false);
   const [unitQuery, setUnitQuery] = useState('');
   const [debouncedUnitQuery, setDebouncedUnitQuery] = useState('');
@@ -138,24 +139,66 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     }
   };
 
-  const ensureBlePermissions = async () => {
-    if (Platform.OS !== 'android' || Number(Platform.Version) < 31) return;
-    const permissions = await PermissionsAndroid.requestMultiple([
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
-      PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
-    ]);
-    const granted = Object.values(permissions).every(
-      value => value === PermissionsAndroid.RESULTS.GRANTED,
-    );
-    if (!granted)
-      throw new Error('Bluetooth advertising permission is required.');
+  const checkBlePermissions = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android' || Number(Platform.Version) < 31) return true;
+    
+    // Check cached result first
+    if (blePermissionsGrantedRef.current !== null) {
+      return blePermissionsGrantedRef.current;
+    }
+    
+    try {
+      // Check current permission status without requesting
+      const [connectStatus, advertiseStatus] = await Promise.all([
+        PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT),
+        PermissionsAndroid.check(PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE),
+      ]);
+      const granted = connectStatus && advertiseStatus;
+      blePermissionsGrantedRef.current = granted;
+      return granted;
+    } catch (error) {
+      console.warn('Failed to check Bluetooth permissions:', error);
+      return false;
+    }
+  };
+
+  const ensureBlePermissions = async (): Promise<boolean> => {
+    if (Platform.OS !== 'android' || Number(Platform.Version) < 31) return true;
+    
+    try {
+      // Request permissions (shows dialog if not granted)
+      const permissions = await PermissionsAndroid.requestMultiple([
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_CONNECT,
+        PermissionsAndroid.PERMISSIONS.BLUETOOTH_ADVERTISE,
+      ]);
+      const granted = Object.values(permissions).every(
+        value => value === PermissionsAndroid.RESULTS.GRANTED,
+      );
+      blePermissionsGrantedRef.current = granted;
+      return granted;
+    } catch (error) {
+      console.warn('Failed to request Bluetooth permissions:', error);
+      blePermissionsGrantedRef.current = false;
+      return false;
+    }
   };
 
   const enableBluetooth = async () => {
     try {
-      await ensureBlePermissions();
+      // First, ensure Bluetooth hardware is enabled
       await NativeBLEAdvertiser.requestEnableBluetooth();
       await refreshBluetooth();
+      
+      // Then request app permissions (only on Android 12+)
+      if (Platform.OS === 'android' && Number(Platform.Version) >= 31) {
+        const permissionsGranted = await ensureBlePermissions();
+        if (!permissionsGranted) {
+          Alert.alert(
+            'Bluetooth Permissions Required',
+            'Please grant Bluetooth permissions in Settings to use BLE attendance.',
+          );
+        }
+      }
     } catch (error) {
       Alert.alert(
         'Bluetooth unavailable',
@@ -173,6 +216,27 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     }, 2_000);
     return () => clearInterval(interval);
   }, []);
+
+  // Proactively check permissions when Bluetooth is ready and session starts
+  useEffect(() => {
+    if (!session || !bluetoothEnabled || !bleAdvertisingSupported) return;
+    if (Platform.OS !== 'android' || Number(Platform.Version) < 31) return;
+    
+    let mounted = true;
+    const checkPermissions = async () => {
+      // Only check, don't request yet - let the user see the state first
+      const hasPermissions = await checkBlePermissions();
+      if (!mounted) return;
+      
+      if (!hasPermissions) {
+        // Show error message prompting user to tap to grant
+        setBleStartError('Bluetooth permissions required. Tap to grant permissions.');
+      }
+    };
+    
+    void checkPermissions();
+    return () => { mounted = false; };
+  }, [session, bluetoothEnabled, bleAdvertisingSupported]);
 
   useEffect(() => {
     if (!session) return;
@@ -200,7 +264,17 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
         if (needsAdvertiserStart) {
           try {
             setBleStartError(null);
-            await ensureBlePermissions();
+            // Check permissions without requesting (non-intrusive)
+            const permissionsGranted = await checkBlePermissions();
+            if (!permissionsGranted) {
+              advertisedPayloadRef.current = null;
+              setBleActive(false);
+              setBleStartError(
+                'Bluetooth permissions required. Tap to grant permissions.',
+              );
+              return;
+            }
+            
             if (Platform.OS === 'android')
               await NativeBLEAdvertiser.stopBackgroundAdvertising().catch(
                 () => undefined,
@@ -212,12 +286,32 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
             await NativeBLEAdvertiser.startAdvertising(ble.slice(7));
             advertisedPayloadRef.current = ble;
             setBleActive(true);
-          } catch {
+            setBleStartError(null); // Clear any previous errors on success
+          } catch (error) {
             advertisedPayloadRef.current = null;
             setBleActive(false);
-            setBleStartError(
-              'Unable to start BLE advertising. Check Bluetooth permission.',
-            );
+            const errorMessage = error instanceof Error ? error.message : String(error);
+            if (errorMessage.includes('permission')) {
+              // Permission was revoked, clear cache
+              blePermissionsGrantedRef.current = false;
+              setBleStartError(
+                'Bluetooth permissions denied. Grant permissions in Settings.',
+              );
+            } else if (errorMessage.includes('timeout') || errorMessage.includes('not respond')) {
+              setBleStartError(
+                'BLE advertising timed out. Restart Bluetooth and try again.',
+              );
+            } else {
+              setBleStartError(
+                'Unable to start BLE advertising. Check Bluetooth is enabled.',
+              );
+            }
+          }
+        } else {
+          // Already advertising the correct payload, keep status active
+          if (!bleActive) {
+            setBleActive(true);
+            setBleStartError(null);
           }
         }
       } else if (bluetoothEnabled && bleAdvertisingSupported && !ble) {
@@ -522,6 +616,18 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
                 bleStartError={bleStartError}
                 bleSupportChecked={bleSupportChecked}
                 onEnableBluetooth={enableBluetooth}
+                onRequestBlePermissions={async () => {
+                  const granted = await ensureBlePermissions();
+                  if (granted) {
+                    setBleStartError(null);
+                    await refreshBluetooth();
+                  } else {
+                    Alert.alert(
+                      'Permissions Required',
+                      'Bluetooth permissions are required for BLE attendance. Please grant them in Settings.',
+                    );
+                  }
+                }}
                 remainingSeconds={remainingSeconds}
                 qrPayload={qrPayload}
                 qrRemainingSeconds={qrRemainingSeconds}

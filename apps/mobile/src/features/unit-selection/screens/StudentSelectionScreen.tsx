@@ -10,24 +10,27 @@ import {
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Search, X } from 'lucide-react-native';
+import { NativeStackScreenProps } from '@react-navigation/native-stack';
+import { AttendanceStackParamList } from '../../../navigation/types';
 import { AttendanceBackHeader } from '../../attendance/components/AttendanceBackHeader';
 import { useTheme } from '../../theme/context/ThemeContext';
 import { StudentUnitPicker } from '../components/StudentUnitPicker';
 import { useUnitSelection } from '../hooks/useUnitSelection';
 
-type Props = {
-  navigation: {
-    goBack: () => void;
-  };
-};
+type Props = NativeStackScreenProps<
+  AttendanceStackParamList,
+  'StudentUnitSelection'
+>;
 
-export default function StudentSelectionScreen({ navigation }: Props) {
+export default function StudentSelectionScreen({ navigation, route }: Props) {
+  const next = route.params?.next;
   const { isDark } = useTheme();
   const { availableUnits, years, selectedCodes, loading, toggleUnit } =
     useUnitSelection('student');
   const [selectedYear, setSelectedYear] = useState<number | null>(null);
   const [selectedSemester, setSelectedSemester] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  const [saving, setSaving] = useState(false);
 
   const text = isDark ? 'text-white' : 'text-slate-900';
   const secondary = isDark ? 'text-slate-300' : 'text-slate-600';
@@ -60,6 +63,41 @@ export default function StudentSelectionScreen({ navigation }: Props) {
       current => current ?? firstYear.semester[0]?.semesterNumber ?? null,
     );
   }, [years]);
+
+  // Remove auto-navigation - let user explicitly save
+  // The save button will handle navigation
+
+  const handleSave = () => {
+    setSaving(true);
+    
+    // Simulate save (the toggleUnit already persists, so just navigate)
+    setTimeout(() => {
+      setSaving(false);
+      
+      if (next && selectedCodes.length > 0) {
+        // Navigate to attendance screen
+        const selectedUnit = availableUnits.find(unit => 
+          selectedCodes.includes(unit.code)
+        );
+        
+        if (selectedUnit) {
+          const unitParams = {
+            unitCode: selectedUnit.code,
+            unitName: selectedUnit.name,
+          };
+          
+          if (next === 'MarkInPerson') {
+            navigation.navigate('MarkInPerson', { sessionId: '', ...unitParams });
+          } else if (next === 'MarkOnline') {
+            navigation.navigate('MarkOnline', { sessionId: '', ...unitParams });
+          }
+        }
+      } else {
+        // Just go back to previous screen
+        navigation.goBack();
+      }
+    }, 300);
+  };
 
   return (
     <SafeAreaView
@@ -248,6 +286,44 @@ export default function StudentSelectionScreen({ navigation }: Props) {
             </View>
           )}
         </ScrollView>
+
+        {/* Floating Save Button */}
+        {!loading && (
+          <View
+            className={`border-t px-5 py-4 ${
+              isDark ? 'border-slate-800 bg-slate-900' : 'border-slate-200 bg-white'
+            }`}
+          >
+            <TouchableOpacity
+              onPress={handleSave}
+              disabled={saving || selectedCodes.length === 0}
+              className={`rounded-xl py-4 ${
+                selectedCodes.length === 0
+                  ? 'bg-slate-400'
+                  : saving
+                  ? 'bg-emerald-400'
+                  : 'bg-emerald-600'
+              }`}
+            >
+              {saving ? (
+                <View className="flex-row items-center justify-center">
+                  <ActivityIndicator color="#fff" size="small" />
+                  <Text className="ml-2 text-center text-base font-bold text-white">
+                    Saving...
+                  </Text>
+                </View>
+              ) : (
+                <Text className="text-center text-base font-bold text-white">
+                  {selectedCodes.length === 0
+                    ? 'Select at least one unit'
+                    : next
+                    ? `Save & Continue (${selectedCodes.length} unit${selectedCodes.length === 1 ? '' : 's'})`
+                    : `Save Selection (${selectedCodes.length} unit${selectedCodes.length === 1 ? '' : 's'})`}
+                </Text>
+              )}
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     </SafeAreaView>
   );

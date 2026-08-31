@@ -23,7 +23,7 @@ export class InPersonService {
 
     // Lecturers choose any unit belonging to their institution when starting
     // attendance; they are not required to have a pre-assigned unit record.
-    const unit = await this.prisma.unit.findFirst({
+    let unit = await this.prisma.unit.findFirst({
       where: {
         code: unitCode,
         semester: {
@@ -32,7 +32,25 @@ export class InPersonService {
       },
       select: { bleId: true },
     });
-    if (!unit) throw new Error("UNIT_NOT_IN_INSTITUTION");
+    
+    // If unit not found in Unit table, try BleMapping as fallback
+    if (!unit) {
+      const bleMapping = await this.prisma.bleMapping.findFirst({
+        where: {
+          unitCode,
+          institutionId: lecturer.institutionId,
+        },
+        select: { unitBleId: true },
+      });
+      
+      if (bleMapping) {
+        // Use BLE mapping - session can still be created
+        unit = { bleId: bleMapping.unitBleId };
+      } else {
+        // Unit not found in either table
+        throw new Error("UNIT_NOT_IN_INSTITUTION");
+      }
+    }
 
     const expiresAt = new Date(input.expiresAt).getTime();
     const durationMs = Math.min(

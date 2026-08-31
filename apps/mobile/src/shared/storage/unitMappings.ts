@@ -186,35 +186,42 @@ export async function saveUnitMappings(
     .filter(({ code }) => !normalized.has(code))
     .map(({ record }) => record.prepareDestroyPermanently());
 
+  // Pre-encrypt all values BEFORE creating operations (WatermelonDB batching requirement)
+  const encryptedData = new Map<string, { name: string; bleId: string }>();
+  for (const unit of normalized.values()) {
+    const encryptedName = await encryptLocalValue(
+      unit.unitName,
+      aad('unit_name'),
+    );
+    const encryptedBleId = await encryptLocalValue(unit.bleId, aad('ble_id'));
+    encryptedData.set(unit.unitCode, {
+      name: encryptedName,
+      bleId: encryptedBleId || '',
+    });
+  }
+
+  // Now build operations synchronously with pre-encrypted values
   for (const unit of normalized.values()) {
     const record = existingByCode.get(unit.unitCode);
+    const encrypted = encryptedData.get(unit.unitCode)!;
+    
     if (record) {
-      const encryptedName = await encryptLocalValue(
-        unit.unitName,
-        aad('unit_name'),
-      );
-      const encryptedBleId = await encryptLocalValue(unit.bleId, aad('ble_id'));
       operations.push(
         record.prepareUpdate(model => {
-          model.unitName = encryptedName;
-          model.bleId = encryptedBleId || '';
+          model.unitName = encrypted.name;
+          model.bleId = encrypted.bleId;
           model.syncedAt = Date.now();
         }),
       );
     } else {
-      const encryptedName = await encryptLocalValue(
-        unit.unitName,
-        aad('unit_name'),
-      );
-      const encryptedBleId = await encryptLocalValue(unit.bleId, aad('ble_id'));
       operations.push(
         collection.prepareCreate(model => {
           model.userId = owner.userId;
           model.role = owner.role;
           model.institutionId = owner.institutionId || '';
           model.unitCode = unit.unitCode;
-          model.unitName = encryptedName;
-          model.bleId = encryptedBleId || '';
+          model.unitName = encrypted.name;
+          model.bleId = encrypted.bleId;
           model.syncedAt = Date.now();
         }),
       );

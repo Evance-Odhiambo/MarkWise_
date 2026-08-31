@@ -41,14 +41,29 @@ export const useInPersonSession = (token: string | null) => {
             await cacheInPersonSession(safeSession);
             setSession(safeSession);
             return result.data;
-          } catch {
+          } catch (error) {
+            // Log the error for debugging
+            console.warn('Failed to create session on server:', error);
+            
+            // Check if this is a validation/auth error (4xx) vs network error
+            const isClientError = error && typeof error === 'object' && 'status' in error &&
+              typeof (error as any).status === 'number' &&
+              (error as any).status >= 400 && (error as any).status < 500;
+            
+            if (isClientError) {
+              // For client errors (bad request, auth issues, etc), don't fall back to offline
+              throw error;
+            }
+            
+            // For network errors or server errors, fall back to offline mode
             // A lecturer can still conduct attendance when the API is down.
             // The locally generated secret is stored in the device keychain;
-            // queued attendance data can be synchronized when connectivity
-            // returns.
+            // queued attendance data can be synchronized when connectivity returns.
+            console.log('Falling back to offline session creation');
           }
         }
 
+        // Create offline session (when no token OR when API fails with network error)
         const sessionStart = Math.floor(Date.now() / 1_000) * 1_000;
         const offlineSession = {
           id: `offline-${sessionStart}-${randomNonce()}`,

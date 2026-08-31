@@ -36,6 +36,7 @@ type Props = {
   bleAdvertisingSupported: boolean;
   bleSupportChecked: boolean;
   onEnableBluetooth: () => Promise<void>;
+  onRequestBlePermissions?: () => Promise<void>;
   onManualMark: (studentId: string) => Promise<void>;
   token: string | null;
   isDark?: boolean;
@@ -60,189 +61,211 @@ export const LecturerSessionOverview = ({
   bleAdvertisingSupported,
   bleSupportChecked,
   onEnableBluetooth,
+  onRequestBlePermissions,
   onManualMark,
   token,
   isDark = false,
-}: Props) => (
-  <View className="gap-4">
-    <View
-      className={`rounded-3xl border p-5 shadow-sm ${
-        isDark
-          ? 'border-emerald-400/30 bg-emerald-400/10'
-          : 'border-emerald-500/30 bg-emerald-500/10'
-      }`}
-    >
-      <Text
-        className={`text-lg font-extrabold ${
-          isDark ? 'text-white' : 'text-slate-900'
+}: Props) => {
+  const isPermissionError = bleStartError?.toLowerCase().includes('permission');
+  
+  return (
+    <View className="gap-4">
+      <View
+        className={`rounded-3xl border p-5 shadow-sm ${
+          isDark
+            ? 'border-emerald-400/30 bg-emerald-400/10'
+            : 'border-emerald-500/30 bg-emerald-500/10'
         }`}
       >
-        Session live for {session.unitCode}
-        {unitName ? ` - ${unitName}` : ''}.
-      </Text>
-      <Text
-        className={`mt-2 text-sm font-bold ${
-          isDark ? 'text-emerald-200' : 'text-emerald-700'
-        }`}
-      >
-        Time remaining: {Math.floor(remainingSeconds / 60)}:
-        {String(remainingSeconds % 60).padStart(2, '0')}
-      </Text>
-    </View>
-
-    <View
-      className={card(
-        isDark,
-        bleActive
-          ? 'border-emerald-500/40'
-          : bluetoothEnabled && !bleAdvertisingSupported
-          ? 'border-amber-500/40'
-          : 'border-sky-500/30',
-      )}
-    >
-      <View className="mb-3 flex-row items-center">
-        <Bluetooth
-          size={20}
-          color={
-            bleActive
-              ? '#059669'
-              : bluetoothEnabled && !bleAdvertisingSupported
-              ? '#d97706'
-              : '#0284c7'
-          }
-        />
         <Text
-          className={`ml-2 text-lg font-extrabold ${
+          className={`text-lg font-extrabold ${
             isDark ? 'text-white' : 'text-slate-900'
           }`}
         >
-          Bluetooth
+          Session live for {session.unitCode}
+          {unitName ? ` - ${unitName}` : ''}.
+        </Text>
+        <Text
+          className={`mt-2 text-sm font-bold ${
+            isDark ? 'text-emerald-200' : 'text-emerald-700'
+          }`}
+        >
+          Time remaining: {Math.floor(remainingSeconds / 60)}:
+          {String(remainingSeconds % 60).padStart(2, '0')}
         </Text>
       </View>
-      <Text
-        className={`text-sm font-semibold ${
+
+      <View
+        className={card(
+          isDark,
           bleActive
-            ? 'text-emerald-600'
+            ? 'border-emerald-500/40'
+            : isPermissionError
+            ? 'border-amber-500/40'
             : bluetoothEnabled && !bleAdvertisingSupported
-            ? 'text-amber-600'
-            : isDark
-            ? 'text-slate-300'
-            : 'text-slate-600'
-        }`}
+            ? 'border-amber-500/40'
+            : 'border-sky-500/30',
+        )}
       >
-        {!bleSupportChecked
-          ? 'Checking BLE advertising support...'
-          : bluetoothEnabled && !bleAdvertisingSupported
-          ? 'BLE advertising not supported on this device'
-          : !bluetoothEnabled
-          ? 'Enable Bluetooth for faster attendance'
-          : bleStartError
-          ? bleStartError
-          : bleActive
-          ? `Broadcasting attendance signals for ${session.unitCode}`
-          : 'Starting Bluetooth attendance...'}
-      </Text>
-      {bleSupportChecked && !bluetoothEnabled && (
-        <View className="mt-3 flex-row items-center justify-between">
-          <Text className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-            Enable Bluetooth
-          </Text>
-          <Switch
-            value={bluetoothEnabled}
-            onValueChange={value => {
-              if (value) void onEnableBluetooth();
-            }}
-            trackColor={{ false: '#cbd5e1', true: '#6ee7b7' }}
-            thumbColor={bluetoothEnabled ? '#059669' : '#94a3b8'}
+        <View className="mb-3 flex-row items-center">
+          <Bluetooth
+            size={20}
+            color={
+              bleActive
+                ? '#059669'
+                : isPermissionError
+                ? '#d97706'
+                : bluetoothEnabled && !bleAdvertisingSupported
+                ? '#d97706'
+                : '#0284c7'
+            }
           />
+          <Text
+            className={`ml-2 text-lg font-extrabold ${
+              isDark ? 'text-white' : 'text-slate-900'
+            }`}
+          >
+            Bluetooth
+          </Text>
         </View>
-      )}
-    </View>
-
-    <View className={card(isDark, 'border-emerald-500/30')}>
-      <View className="mb-4 flex-row items-center">
-        <QrCode size={20} color="#059669" />
-        <Text
-          className={`ml-2 text-lg font-extrabold ${
-            isDark ? 'text-white' : 'text-slate-900'
-          }`}
-        >
-          QR Code
-        </Text>
-      </View>
-      {qrPayload ? (
-        <View className="items-center">
-          <View className="rounded-2xl bg-white p-3">
-            <QRCodeDisplay value={qrPayload} size={230} />
-          </View>
-          <View className="mt-4 rounded-full bg-emerald-500/10 px-4 py-2">
+        {isPermissionError && onRequestBlePermissions ? (
+          <TouchableOpacity onPress={onRequestBlePermissions}>
             <Text
-              className={`text-xs font-bold ${
-                isDark ? 'text-emerald-300' : 'text-emerald-700'
+              className={`text-sm font-semibold underline ${
+                isDark ? 'text-amber-400' : 'text-amber-600'
               }`}
             >
-              {qrPayload
-                ? `New QR code in ${qrRemainingSeconds}s`
-                : 'Preparing QR code...'}
+              {bleStartError}
             </Text>
+          </TouchableOpacity>
+        ) : (
+          <Text
+            className={`text-sm font-semibold ${
+              bleActive
+                ? 'text-emerald-600'
+                : bluetoothEnabled && !bleAdvertisingSupported
+                ? 'text-amber-600'
+                : isDark
+                ? 'text-slate-300'
+                : 'text-slate-600'
+            }`}
+          >
+            {!bleSupportChecked
+              ? 'Checking BLE advertising support...'
+              : bluetoothEnabled && !bleAdvertisingSupported
+              ? 'BLE advertising not supported on this device'
+              : !bluetoothEnabled
+              ? 'Enable Bluetooth for faster attendance'
+              : bleStartError
+              ? bleStartError
+              : bleActive
+              ? `Broadcasting attendance signals for ${session.unitCode}`
+              : 'Starting Bluetooth attendance...'}
+          </Text>
+        )}
+        {bleSupportChecked && !bluetoothEnabled && (
+          <View className="mt-3 flex-row items-center justify-between">
+            <Text className={isDark ? 'text-slate-400' : 'text-slate-500'}>
+              Enable Bluetooth
+            </Text>
+            <Switch
+              value={bluetoothEnabled}
+              onValueChange={value => {
+                if (value) void onEnableBluetooth();
+              }}
+              trackColor={{ false: '#cbd5e1', true: '#6ee7b7' }}
+              thumbColor={bluetoothEnabled ? '#059669' : '#94a3b8'}
+            />
           </View>
-        </View>
-      ) : (
-        <View className="items-center py-8">
-          <ActivityIndicator color="#059669" />
-          <Text className="mt-3 text-xs text-slate-500">
-            Preparing QR code...
+        )}
+      </View>
+
+      <View className={card(isDark, 'border-emerald-500/30')}>
+        <View className="mb-4 flex-row items-center">
+          <QrCode size={20} color="#059669" />
+          <Text
+            className={`ml-2 text-lg font-extrabold ${
+              isDark ? 'text-white' : 'text-slate-900'
+            }`}
+          >
+            QR Code
           </Text>
         </View>
-      )}
-    </View>
-
-    <View className={card(isDark, 'border-amber-500/30')}>
-      <View className="mb-4 flex-row items-center">
-        <KeyRound size={20} color="#d97706" />
-        <Text
-          className={`ml-2 text-lg font-extrabold ${
-            isDark ? 'text-white' : 'text-slate-900'
-          }`}
-        >
-          PIN Fallback
-        </Text>
+        {qrPayload ? (
+          <View className="items-center">
+            <View className="rounded-2xl bg-white p-3">
+              <QRCodeDisplay value={qrPayload} size={230} />
+            </View>
+            <View className="mt-4 rounded-full bg-emerald-500/10 px-4 py-2">
+              <Text
+                className={`text-xs font-bold ${
+                  isDark ? 'text-emerald-300' : 'text-emerald-700'
+                }`}
+              >
+                {qrPayload
+                  ? `New QR code in ${qrRemainingSeconds}s`
+                  : 'Preparing QR code...'}
+              </Text>
+            </View>
+          </View>
+        ) : (
+          <View className="items-center py-8">
+            <ActivityIndicator color="#059669" />
+            <Text className="mt-3 text-xs text-slate-500">
+              Preparing QR code...
+            </Text>
+          </View>
+        )}
       </View>
-      <Text
+
+      <View className={card(isDark, 'border-amber-500/30')}>
+        <View className="mb-4 flex-row items-center">
+          <KeyRound size={20} color="#d97706" />
+          <Text
+            className={`ml-2 text-lg font-extrabold ${
+              isDark ? 'text-white' : 'text-slate-900'
+            }`}
+          >
+            PIN Fallback
+          </Text>
+        </View>
         className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
-      >
-        Students can enter this PIN if QR or BLE is unavailable.
-      </Text>
-      <View
-        className={`items-center rounded-2xl border border-dashed py-6 ${
-          isDark
-            ? 'border-amber-500/40 bg-slate-800'
-            : 'border-amber-300 bg-amber-50'
-        }`}
-      >
-        <Text className="text-4xl font-extrabold tracking-[8px] text-amber-600">
-          {pin || '------'}
-        </Text>
         <Text
-          className={`mt-3 text-xs font-bold ${
-            isDark ? 'text-amber-300' : 'text-amber-700'
+          className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
+        >
+          Students can enter this PIN if QR or BLE is unavailable.
+        </Text>
+        <View
+          className={`items-center rounded-2xl border border-dashed py-6 ${
+            isDark
+              ? 'border-amber-500/40 bg-slate-800'
+              : 'border-amber-300 bg-amber-50'
           }`}
         >
-          {pin
-            ? `New PIN in ${pinRemainingSeconds}s`
-            : 'Preparing rotating PIN...'}
-        </Text>
+          <Text className="text-4xl font-extrabold tracking-[8px] text-amber-600">
+            {pin || '------'}
+          </Text>
+          <Text
+            className={`mt-3 text-xs font-bold ${
+              isDark ? 'text-amber-300' : 'text-amber-700'
+            }`}
+          >
+            {pin
+              ? `New PIN in ${pinRemainingSeconds}s`
+              : 'Preparing rotating PIN...'}
+          </Text>
+        </View>
       </View>
-    </View>
 
-    <ManualMarkCard
-      onSubmit={onManualMark}
-      unitCode={session.unitCode}
-      token={token}
-      isDark={isDark}
-    />
-  </View>
-);
+      <ManualMarkCard
+        onSubmit={onManualMark}
+        unitCode={session.unitCode}
+        token={token}
+        isDark={isDark}
+      />
+    </View>
+  );
+};
 
 const ManualMarkCard = ({
   onSubmit,
