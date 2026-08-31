@@ -1,5 +1,3 @@
-import { normalizeUnitCode } from "../../shared/unitCodes.js";
-
 export { normalizeUnitCode } from "../../shared/unitCodes.js";
 
 export const MAX_ONLINE_SESSION_MINUTES = 60;
