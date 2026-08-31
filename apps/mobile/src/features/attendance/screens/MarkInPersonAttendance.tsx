@@ -605,6 +605,30 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           );
           return;
         }
+        // A definitive server rejection (wrong PIN, session expired, not
+        // enrolled, ...) is not a connectivity problem. Queuing it for
+        // offline retry would just resubmit the identical, already-rejected
+        // payload once the sync timer fires — producing a second, redundant
+        // rejection notification for the same PIN entry. Only genuinely
+        // transient failures (no network, or a 5xx/408/429 from the server)
+        // belong in the retry queue; mirrors isPermanentServerRejection in
+        // useAttendanceSync.ts.
+        const transient =
+          !(error instanceof ApiRequestError) ||
+          error.status >= 500 ||
+          error.status === 408 ||
+          error.status === 429;
+        if (!transient) {
+          setShowPin(false);
+          setPinValue('');
+          Alert.alert(
+            'PIN not accepted',
+            error instanceof Error
+              ? error.message
+              : 'Check the PIN and try again.',
+          );
+          return;
+        }
         try {
           const pending = await enqueuePendingPin({
             unitCode: pinUnitCode,

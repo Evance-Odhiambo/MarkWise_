@@ -27,6 +27,12 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
   // is the only thing that closes that loop for every method, not just PIN —
   // without it, a background rejection is silent and the student has no way
   // to know they aren't actually marked present.
+  //
+  // A single logical attendance attempt can legitimately reach this twice —
+  // e.g. an immediate sync() call racing a background syncPending() sweep of
+  // the same queued record — so skip re-notifying an identical outcome for
+  // the same session/method the caller already just reported.
+  const NOTIFY_DEDUPE_WINDOW_MS = 5 * 60 * 1000;
   const notifyAttendanceOutcome = async (
     studentId: string,
     method: InPersonMethod | string,
@@ -34,6 +40,23 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     sessionId: string,
     reason?: string
   ) => {
+    const outcome = success ? "verified" : "rejected";
+    const recent = await app.prisma.notification
+      .findFirst({
+        where: {
+          userId: studentId,
+          type: "attendance",
+          createdAt: { gte: new Date(Date.now() - NOTIFY_DEDUPE_WINDOW_MS) },
+          AND: [
+            { data: { path: ["sessionId"], equals: sessionId } },
+            { data: { path: ["method"], equals: method } },
+            { data: { path: ["outcome"], equals: outcome } },
+          ],
+        },
+        select: { id: true },
+      })
+      .catch(() => null);
+    if (recent) return;
     const label = METHOD_LABELS[method] || "attendance";
     const notification = await app.prisma.notification
       .create({

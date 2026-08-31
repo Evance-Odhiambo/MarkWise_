@@ -1,6 +1,7 @@
 import { hmacSha256Hex } from './attendanceCrypto';
 import {
   deriveAbsoluteCounter,
+  normalizeUnitCode,
   PIN_LENGTH,
   PIN_ROTATION_SECONDS,
 } from './attendanceProtocol';
@@ -21,9 +22,13 @@ export const createAttendancePin = async (
     PIN_ROTATION_SECONDS,
     nowMs,
   );
+  // Must match the backend's verifyPin message exactly (see
+  // inPerson.verification.service.ts) — unitCode has to be normalized the
+  // same way here as the session's canonical spelling can carry a space
+  // (e.g. "SBT 2170"), which the server never includes in what it hashes.
   const message = [
     session.id,
-    session.unitCode,
+    normalizeUnitCode(session.unitCode),
     session.sessionNonce,
     counter,
   ].join('|');
