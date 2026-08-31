@@ -10,7 +10,6 @@ import android.bluetooth.le.BluetoothLeAdvertiser
 import android.content.Context
 import android.content.Intent
 import android.os.Build
-import android.os.ParcelUuid
 import android.util.Base64
 import android.util.Log
 
@@ -35,7 +34,6 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
     companion object {
         private const val TAG = "BLEAdvertiserModule"
         private const val REQUEST_ENABLE_BT = 4123
-        private val SERVICE_UUID = ParcelUuid.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private const val MANUFACTURER_ID = 0x1234
     }
 
@@ -182,10 +180,10 @@ class BLEAdvertiserModule(reactContext: ReactApplicationContext) :
         val advertiseData = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
-            // Match the compact transport used by the legacy Android and
-            // iOS scanners: UUID identifies MarkWise, manufacturer data
-            // carries the 9-byte rotating payload.
-            .addServiceUuid(SERVICE_UUID)
+            // Keep the legacy advertisement packet small. The 9-byte
+            // manufacturer payload is the MarkWise transport identifier;
+            // adding the 128-bit service UUID here can exceed Android's
+            // 31-byte legacy advertising limit and causes DATA_TOO_LARGE.
             .addManufacturerData(MANUFACTURER_ID, dataBytes)
             .build()
 

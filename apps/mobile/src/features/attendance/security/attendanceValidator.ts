@@ -11,6 +11,7 @@ import {
   normalizeUnitCode,
 } from './attendanceProtocol';
 import { isValidAttendancePin } from './attendancePin';
+import { nowEpochMs } from './serverClock';
 
 export interface LocalValidationResult {
   valid: boolean;
@@ -21,7 +22,7 @@ export interface LocalValidationResult {
 export const validateAttendancePayload = (
   rawPayload: string,
   session: InPersonSession,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ): LocalValidationResult => {
   try {
     const payload = decodeAttendancePayload(rawPayload);
@@ -63,7 +64,7 @@ export const validateAttendancePayload = (
 export const validateAttendancePinPayload = (
   rawPayload: string,
   session: InPersonSession,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ): LocalValidationResult => {
   const parts = rawPayload.split(':');
   if (
@@ -88,7 +89,7 @@ export const validateAttendancePinPayload = (
 export const validateBlePayload = (
   rawPayload: string,
   session: InPersonSession,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ): LocalValidationResult => {
   try {
     const beacon = decodeCompactBlePayload(rawPayload);

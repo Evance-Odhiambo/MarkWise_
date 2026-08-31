@@ -135,11 +135,9 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           success: true,
           data: { status: "queued" as const },
         });
-      const startCounter = Math.floor(
-        session.sessionStart / 1000 / PIN_WINDOW_SECONDS
+      const currentCounter = Math.floor(
+        scannedAt / 1000 / PIN_WINDOW_SECONDS
       );
-      const currentCounter =
-        Math.floor(scannedAt / 1000 / PIN_WINDOW_SECONDS) - startCounter;
       const rawPayload = `MWPIN1:${session.id}:${pin}:${currentCounter}`;
       try {
         const result = await service.submitPin(request.user.id, {

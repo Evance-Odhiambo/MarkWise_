@@ -25,6 +25,7 @@ import {
   PIN_ROTATION_SECONDS,
   QR_ROTATION_SECONDS,
 } from '../security/attendanceProtocol';
+import { nowEpochMs } from '../security/serverClock';
 import {
   createSignedPayload,
   encodeAttendancePayload,
@@ -352,13 +353,14 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     }
     const updateQrTimer = () => {
       const currentWindow =
-        Math.floor(Date.now() / 1_000) % QR_ROTATION_SECONDS;
+        Math.floor(nowEpochMs() / 1_000) % QR_ROTATION_SECONDS;
       setQrRemainingSeconds(QR_ROTATION_SECONDS - currentWindow);
     };
     const updatePinTimer = () => {
-      const currentWindow =
-        Math.floor(Date.now() / 1_000) % PIN_ROTATION_SECONDS;
-      setPinRemainingSeconds(PIN_ROTATION_SECONDS - currentWindow);
+      setPinRemainingSeconds(
+        PIN_ROTATION_SECONDS -
+          (Math.floor(nowEpochMs() / 1_000) % PIN_ROTATION_SECONDS),
+      );
     };
     updateQrTimer();
     updatePinTimer();

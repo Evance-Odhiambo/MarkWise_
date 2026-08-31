@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../constants';
 import type { AttendanceSession } from '../../features/attendance/types';
+import { updateServerClock } from '../../features/attendance/security/serverClock';
 
 interface ApiOptions {
   token: string;
@@ -10,6 +11,7 @@ async function request<T>(
   options: RequestInit & ApiOptions,
 ): Promise<T> {
   const { token, ...init } = options;
+  const requestStartedAt = Date.now();
   const response = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     headers: {
@@ -18,6 +20,7 @@ async function request<T>(
       ...(init.headers ?? {}),
     },
   });
+  updateServerClock(response.headers.get('date'), requestStartedAt, Date.now());
 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {

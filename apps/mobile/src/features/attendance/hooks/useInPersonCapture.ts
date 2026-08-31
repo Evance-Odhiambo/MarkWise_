@@ -11,6 +11,7 @@ import {
 } from '../security/attendanceValidator';
 import { getOrCreateSecureDeviceId } from '../../../shared/storage/secureDeviceId';
 import { useAuth } from '../../auth/context/AuthContext';
+import { nowEpochMs } from '../security/serverClock';
 
 export const useInPersonCapture = (session: InPersonSession | null) => {
   const { userId } = useAuth();
@@ -43,11 +44,11 @@ export const useInPersonCapture = (session: InPersonSession | null) => {
           throw new Error(validation.reason || 'Invalid attendance payload');
       }
       return {
-        id: `${activeSession.id}:${Date.now()}`,
+        id: `${activeSession.id}:${nowEpochMs()}`,
         sessionId: activeSession.id,
         unitCode: activeSession.unitCode,
         sessionStart: activeSession.sessionStart,
-        scannedAt: Date.now(),
+        scannedAt: nowEpochMs(),
         method,
         rawPayload,
         deviceId: await getOrCreateSecureDeviceId(),

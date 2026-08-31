@@ -153,9 +153,9 @@ export class InPersonVerificationService {
       throw new Error("SIGNATURE_INVALID");
     }
 
-    const expectedCounter =
-      Math.floor(now / 1000 / QR_WINDOW_SECONDS) -
-      Math.floor(sessionStart / 1000 / QR_WINDOW_SECONDS);
+    const expectedCounter = Math.floor(
+      payload.issuedAt / 1000 / QR_WINDOW_SECONDS
+    );
     if (Math.abs(payload.counter - expectedCounter) > 3)
       throw new Error("COUNTER_DRIFT");
 
@@ -231,9 +231,12 @@ export class InPersonVerificationService {
     )
       throw new Error("BLE_SESSION_MISMATCH");
     const expectedCounter =
-      Math.floor(now / 1000 / BLE_WINDOW_SECONDS) -
-      Math.floor(start / 1000 / BLE_WINDOW_SECONDS);
-    if (Math.abs(beacon.counter - expectedCounter) > 3)
+      Math.floor(Number(input.scannedAt) / 1000 / BLE_WINDOW_SECONDS) & 0xffff;
+    const counterDistance = Math.min(
+      Math.abs(beacon.counter - expectedCounter),
+      0x10000 - Math.abs(beacon.counter - expectedCounter)
+    );
+    if (counterDistance > 3)
       throw new Error("COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({
       where: {
@@ -305,9 +308,9 @@ export class InPersonVerificationService {
       throw new Error("PIN_FORMAT_INVALID");
     const receivedPin = parts[2]!;
     const receivedCounter = Number(parts[3]);
-    const relativeStart = Math.floor(start / 1000 / PIN_WINDOW_SECONDS);
-    const expectedCounter =
-      Math.floor(scannedAt / 1000 / PIN_WINDOW_SECONDS) - relativeStart;
+    const expectedCounter = Math.floor(
+      scannedAt / 1000 / PIN_WINDOW_SECONDS
+    );
     if (Math.abs(receivedCounter - expectedCounter) > MAX_PIN_DRIFT)
       throw new Error("PIN_COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({
@@ -424,9 +427,12 @@ export class InPersonVerificationService {
       .digest("hex");
     if (!safeEqualHex(expected, relay.signature))
       throw new Error("RELAY_SIGNATURE_INVALID");
-    const expectedCounter =
-      Math.floor(Date.now() / 1000 / QR_WINDOW_SECONDS) -
-      Math.floor(session.sessionStart.getTime() / 1000 / QR_WINDOW_SECONDS);
+    // Relays also carry the absolute QR rotation window. Keeping this
+    // calculation epoch-based makes relayed beacons interoperable across
+    // devices and avoids session-start clock drift.
+    const expectedCounter = Math.floor(
+      Date.now() / 1000 / QR_WINDOW_SECONDS
+    );
     if (Math.abs(relay.counter - expectedCounter) > 3)
       throw new Error("RELAY_COUNTER_DRIFT");
     const unit = await this.prisma.unit.findFirst({

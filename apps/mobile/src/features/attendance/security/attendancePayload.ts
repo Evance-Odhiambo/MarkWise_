@@ -7,6 +7,7 @@ import {
   QR_ROTATION_SECONDS,
   normalizeUnitCode,
 } from './attendanceProtocol';
+import { nowEpochMs } from './serverClock';
 
 const unsignedPayload = (payload: Omit<AttendancePayload, 'signature'>) =>
   [
@@ -21,7 +22,7 @@ const unsignedPayload = (payload: Omit<AttendancePayload, 'signature'>) =>
 export const createSignedPayload = async (
   session: InPersonSession,
   sessionSecret: string,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ) => {
   const payload: Omit<AttendancePayload, 'signature'> = {
     version: ATTENDANCE_PROTOCOL_VERSION,
@@ -71,7 +72,7 @@ export const getUnsignedPayload = (payload: AttendancePayload) => {
 export const createCompactBlePayload = async (
   session: InPersonSession,
   sessionSecret: string,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ) => {
   if (session.bleUnitId == null)
     throw new Error('BLE unit mapping unavailable');

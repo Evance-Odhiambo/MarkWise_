@@ -1,5 +1,6 @@
 import { API_BASE_URL } from '../../../shared/constants';
 import type { InPersonSession, LocalInPersonRecord } from '../types/inPerson';
+import { updateServerClock } from '../security/serverClock';
 
 export class ApiRequestError extends Error {
   constructor(message: string, public readonly status: number) {
@@ -15,6 +16,7 @@ const request = async <T>(
 ): Promise<T> => {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15_000);
+  const requestStartedAt = Date.now();
   try {
     const response = await fetch(`${API_BASE_URL}${path}`, {
       ...init,
@@ -25,6 +27,11 @@ const request = async <T>(
         ...(init.headers || {}),
       },
     });
+    updateServerClock(
+      response.headers.get('date'),
+      requestStartedAt,
+      Date.now(),
+    );
     const body = await response.json().catch(() => ({}));
     if (!response.ok)
       throw new ApiRequestError(

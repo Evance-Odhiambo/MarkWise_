@@ -5,6 +5,7 @@ import {
   PIN_ROTATION_SECONDS,
 } from './attendanceProtocol';
 import type { InPersonSession } from '../types/inPerson';
+import { nowEpochMs } from './serverClock';
 
 /**
  * Generates the lecturer-only PIN for a 30-second window.
@@ -13,7 +14,7 @@ import type { InPersonSession } from '../types/inPerson';
 export const createAttendancePin = async (
   session: InPersonSession,
   sessionSecret: string,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ) => {
   const counter = deriveAbsoluteCounter(
     Math.floor(session.sessionStart / 1000),
@@ -35,7 +36,7 @@ export const createAttendancePin = async (
 export const createAttendancePinPayload = async (
   session: InPersonSession,
   sessionSecret: string,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ) => {
   const counter = deriveAbsoluteCounter(
     Math.floor(session.sessionStart / 1000),
@@ -51,7 +52,7 @@ export const isValidAttendancePin = (value: string) => /^\d{6}$/.test(value);
 export const createSubmittedPinPayload = (
   session: InPersonSession,
   pin: string,
-  nowMs = Date.now(),
+  nowMs = nowEpochMs(),
 ) => {
   if (!isValidAttendancePin(pin))
     throw new Error('PIN must contain six digits');

@@ -25,7 +25,11 @@ import {
   ApiRequestError,
 } from '../api/inPersonAttendanceApi';
 import { createSubmittedPinPayload } from '../security/attendancePin';
-import { RELAY_ROTATION_SECONDS } from '../security/attendanceProtocol';
+import {
+  PIN_ROTATION_SECONDS,
+  RELAY_ROTATION_SECONDS,
+} from '../security/attendanceProtocol';
+import { nowEpochMs } from '../security/serverClock';
 import { shouldElectRelay } from '../security/relayElection';
 import { PinInput } from '../components/PinInput';
 import { useUnitSelection } from '../../unit-selection/hooks/useUnitSelection';
@@ -99,6 +103,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const [pinValue, setPinValue] = useState('');
   const [pinUnitCode, setPinUnitCode] = useState('');
   const [pinRemainingSeconds, setPinRemainingSeconds] = useState(0);
+  const pinComplete = /^\d{6}$/.test(pinValue);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const pinWindowRef = useRef<number | null>(null);
   const autoMarkedSessions = useRef(new Set<string>());
@@ -207,7 +212,8 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
 
   useEffect(() => {
     const update = () => {
-      const currentWindow = Math.floor(Date.now() / 1000 / 30);
+      const now = nowEpochMs();
+      const currentWindow = Math.floor(now / 1000 / PIN_ROTATION_SECONDS);
       if (
         pinWindowRef.current !== null &&
         pinWindowRef.current !== currentWindow
@@ -215,7 +221,10 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         setPinValue('');
       }
       pinWindowRef.current = currentWindow;
-      setPinRemainingSeconds(30 - (Math.floor(Date.now() / 1000) % 30));
+      setPinRemainingSeconds(
+        PIN_ROTATION_SECONDS -
+          (Math.floor(now / 1000) % PIN_ROTATION_SECONDS),
+      );
     };
     update();
     const timer = setInterval(update, 1_000);
@@ -441,7 +450,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   );
 
   const submitPin = async () => {
-    const pinScannedAt = Date.now();
+    const pinScannedAt = nowEpochMs();
     if (!pinUnitCode) {
       Alert.alert(
         'Select a unit',
@@ -454,7 +463,13 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       pinSession = await getCachedActiveInPersonSessionByUnit(pinUnitCode);
     }
     if (!pinSession || pinSession.unitCode !== pinUnitCode) {
-      if (!token) return;
+      if (!token) {
+        Alert.alert(
+          'PIN requires internet',
+          'Connect to the internet so the server can validate this PIN. It cannot create a relay while offline.',
+        );
+        return;
+      }
       try {
         const result = await submitPinByUnit(
           {
@@ -519,7 +534,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           const pending = await enqueuePendingPin({
             unitCode: pinUnitCode,
             pin: pinValue,
-            scannedAt: Date.now(),
+            scannedAt: nowEpochMs(),
             deviceId: await getOrCreateSecureDeviceId(),
           });
           setShowPin(false);
@@ -649,7 +664,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   }, [route.params.sessionId, token]);
 
   useEffect(() => {
-    if (!token) return;
     const listener = NativeBLEScanner.addDeviceListener(async device => {
       if (!device.payload) return;
       const opaqueValue = `MWR1:${device.payload}`;
@@ -676,6 +690,14 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           nonce: beacon.nonce,
           seenAt: Date.now(),
         });
+        const cached = await getCachedInPersonSession(beacon.nonce);
+        if (cached) {
+          setRawPayload(value);
+          setSession(cached);
+          setMethod('ble');
+          autoMarkBle(cached, value, device.rssi);
+        }
+        if (!token) return;
         getInPersonSessionByBleNonce(beacon.nonce, token)
           .then(async response => {
             await cacheInPersonSession(response.data);
@@ -684,15 +706,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             setMethod('ble');
             autoMarkBle(response.data, value, device.rssi);
           })
-          .catch(async () => {
-            const cached = await getCachedInPersonSession(beacon.nonce);
-            if (cached) {
-              setRawPayload(value);
-              setSession(cached);
-              setMethod('ble');
-              autoMarkBle(cached, value, device.rssi);
-            }
-          });
+          .catch(() => undefined);
       } catch {
         /* ignore unrelated beacons */
       }
@@ -727,7 +741,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       }
       if (value.trim().startsWith('MWIR1:')) {
         const relay = decodeRelayPayload(value.trim());
-        if (!token) return;
         const parent = relay.parentPayload.startsWith('MWBLE1:')
           ? decodeCompactBlePayload(relay.parentPayload)
           : decodeAttendancePayload(relay.parentPayload);
@@ -735,7 +748,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           'nonce' in parent ? parent.nonce : parent.sessionNonce;
         const cached = await getCachedInPersonSession(parentNonce);
         let resolvedSession = cached;
-        if (!resolvedSession) {
+        if (!resolvedSession && token) {
           try {
             const response = await getInPersonSession(relay.sessionId, token);
             await cacheInPersonSession(response.data);
@@ -800,7 +813,10 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           // Calculate actual session start from issued time and counter
           // QR codes rotate every QR_ROTATION_SECONDS, so we can estimate session start
           const QR_ROTATION_SECONDS = 3;
-          const approximateSessionStart = payload.issuedAt - (payload.counter * QR_ROTATION_SECONDS * 1000);
+          // Epoch counters do not encode session age. The signed issuedAt is
+          // sufficient to validate and queue the scan locally; use it as the
+          // local session anchor until the authoritative session is synced.
+          const approximateSessionStart = payload.issuedAt;
           
           // Assume 10 minute session duration (standard)
           const sessionDuration = 10 * 60 * 1000;
@@ -833,7 +849,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       if (!resolvedSession) {
         if (!token) {
           throw new Error(
-            'Unable to verify session offline. Connect to the internet or ensure unit data is cached.'
+            'This QR session is not cached yet. Connect once to load the session, then future attendance can work offline.'
           );
         }
         
@@ -956,10 +972,10 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                 <PinInput value={pinValue} onChangeText={setPinValue} />
               </View>
               <TouchableOpacity
-                disabled={submitting || pinValue.length !== 6 || !pinUnitCode}
+                disabled={submitting || !pinComplete || !pinUnitCode}
                 onPress={() => void submitPin()}
                 className={`mt-6 rounded-xl py-4 ${
-                  submitting || pinValue.length !== 6 || !pinUnitCode
+                  submitting || !pinComplete || !pinUnitCode
                     ? 'bg-slate-300'
                     : 'bg-emerald-600'
                 }`}

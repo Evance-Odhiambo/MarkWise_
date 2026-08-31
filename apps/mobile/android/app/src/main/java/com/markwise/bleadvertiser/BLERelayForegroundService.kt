@@ -15,7 +15,6 @@ import android.os.Build
 import android.os.Handler
 import android.os.IBinder
 import android.os.Looper
-import android.os.ParcelUuid
 import android.util.Base64
 import android.util.Log
 
@@ -28,7 +27,6 @@ class BLERelayForegroundService : Service() {
         private const val TAG = "BLERelayService"
         private const val CHANNEL_ID = "markwise_ble_relay"
         private const val NOTIFICATION_ID = 4817
-        private val SERVICE_UUID = ParcelUuid.fromString("00001101-0000-1000-8000-00805F9B34FB")
         private const val MANUFACTURER_ID = 0x1234
         private const val ROTATION_MS = 5_000L
     }
@@ -110,7 +108,6 @@ class BLERelayForegroundService : Service() {
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .setIncludeTxPowerLevel(false)
-            .addServiceUuid(SERVICE_UUID)
             .addManufacturerData(MANUFACTURER_ID, bytes)
             .build()
         if (advertising) currentAdvertiser.stopAdvertising(callback)

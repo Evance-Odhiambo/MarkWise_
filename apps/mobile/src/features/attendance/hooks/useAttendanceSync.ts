@@ -32,7 +32,11 @@ export const useAttendanceSync = (token: string | null) => {
       // Persist the attendance before attempting any network operation. This
       // is the source of truth for offline attendance and survives app restarts.
       const storageId = await enqueueInPersonAttendance(record);
-      if (!token) {
+      // A lecturer who started offline has no ConductedSession row on the
+      // server yet. Never send that local-only ID immediately; doing so causes
+      // the student to receive misleading session-expiry/session-not-found
+      // errors. The record remains durable and pending for later handoff.
+      if (!token || record.method === 'qr' || record.sessionId.startsWith('offline-')) {
         setSyncing(false);
         return { success: true, data: { status: 'queued' as const } };
       }

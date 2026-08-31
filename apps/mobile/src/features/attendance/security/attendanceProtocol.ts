@@ -1,4 +1,5 @@
 export { normalizeUnitCode } from '../../../shared/utils/unitCodes';
+import { nowEpochMs } from './serverClock';
 
 export const ATTENDANCE_PROTOCOL_VERSION = 1 as const;
 export const QR_ROTATION_SECONDS = 3;
@@ -10,24 +11,26 @@ export const MAX_COUNTER_DRIFT = 3;
 export const MAX_SESSION_MINUTES = 60;
 export const PIN_LENGTH = 6;
 
-export const deriveCounter = (
-  sessionStartSeconds: number,
+/** Seconds remaining until the next global Unix-epoch rotation window. */
+export const getWindowRemainingSeconds = (
   windowSeconds: number,
-  nowMs = Date.now(),
-) =>
-  Math.floor(nowMs / 1000 / windowSeconds) -
-  Math.floor(sessionStartSeconds / windowSeconds);
+  nowMs = nowEpochMs(),
+) => {
+  const elapsed = Math.floor(nowMs / 1000) % windowSeconds;
+  return windowSeconds - elapsed;
+};
+
+export const deriveCounter = (
+  _sessionStartSeconds: number,
+  windowSeconds: number,
+  nowMs = nowEpochMs(),
+) => Math.floor(nowMs / 1000 / windowSeconds);
 
 export const deriveAbsoluteCounter = (
-  sessionStartSeconds: number,
+  _sessionStartSeconds: number,
   windowSeconds: number,
-  nowMs = Date.now(),
-) =>
-  Math.max(
-    0,
-    Math.floor(nowMs / 1000 / windowSeconds) -
-      Math.floor(sessionStartSeconds / windowSeconds),
-  );
+  nowMs = nowEpochMs(),
+) => Math.floor(nowMs / 1000 / windowSeconds);
 
 export const normalizePin = (value: string) =>
   String(value || '').replace(/\D/g, '');

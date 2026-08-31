@@ -17,11 +17,27 @@ export const PinInput = ({
   const inputs = useRef<Array<any>>([]);
 
   const handleChange = (text: string, index: number) => {
-    const newValue =
-      value.substring(0, index) + text + value.substring(index + 1);
+    const digits = text.replace(/\D/g, '');
+    // Some Android keyboards deliver pasted/autofilled text to one field.
+    // Distribute it across the fields instead of losing digits.
+    if (digits.length > 1) {
+      const next = value.split('');
+      digits
+        .slice(0, length - index)
+        .split('')
+        .forEach((digit, offset) => {
+          next[index + offset] = digit;
+        });
+      onChangeText(next.join('').slice(0, length));
+      inputs.current[Math.min(index + digits.length, length - 1)]?.focus();
+      return;
+    }
+    const next = value.split('');
+    next[index] = digits;
+    const newValue = next.join('').slice(0, length);
     onChangeText(newValue);
 
-    if (text.length === 1 && index < length - 1) {
+    if (digits.length === 1 && index < length - 1) {
       inputs.current[index + 1]?.focus();
     }
   };
@@ -65,13 +81,15 @@ const styles = StyleSheet.create({
   container: {
     flexDirection: 'row',
     justifyContent: 'center',
-    gap: 12,
+    width: '100%',
+    paddingHorizontal: 2,
   },
   input: {
-    width: 56,
-    height: 56,
+    width: 46,
+    height: 52,
     borderRadius: 12,
     fontSize: 24,
     fontWeight: '600',
+    marginHorizontal: 3,
   },
 });
