@@ -45,8 +45,4 @@ export function validateLecturerAssistedMark(body: Record<string, unknown>) {
   return errors;
 }
 
-export const normalizeUnitCode = (value: string) =>
-  String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
+export { normalizeUnitCode } from "../../../shared/unitCodes.js";

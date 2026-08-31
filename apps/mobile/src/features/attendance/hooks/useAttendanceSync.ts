@@ -27,12 +27,17 @@ export const useAttendanceSync = (token: string | null) => {
 
   const sync = useCallback(
     async (record: LocalInPersonRecord) => {
-      if (!token || !userId) throw new Error('Authentication required');
+      if (!userId) throw new Error('Student account is required');
       setSyncing(true);
-      let storageId: string | null = null;
+      // Persist the attendance before attempting any network operation. This
+      // is the source of truth for offline attendance and survives app restarts.
+      const storageId = await enqueueInPersonAttendance(record);
+      if (!token) {
+        setSyncing(false);
+        return { success: true, data: { status: 'queued' as const } };
+      }
       try {
         await registerRelayKey(token).catch(() => undefined);
-        storageId = await enqueueInPersonAttendance(record);
         try {
           const result = await submitInPersonAttendance(record, token);
           await markInPersonAttendanceVerified(storageId);
@@ -46,7 +51,7 @@ export const useAttendanceSync = (token: string | null) => {
           return { success: true, data: { status: 'queued' as const } };
         }
       } catch (error) {
-        if (storageId) await markInPersonAttendanceRetry(storageId, error);
+        await markInPersonAttendanceRetry(storageId, error);
         throw error;
       } finally {
         setSyncing(false);

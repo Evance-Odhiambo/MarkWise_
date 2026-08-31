@@ -102,6 +102,8 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       const limit = Number.isFinite(parsedLimit)
         ? Math.min(Math.max(parsedLimit, 1), 100)
         : 50;
+      
+      // Get units from Unit table
       const units = await app.prisma.unit.findMany({
         where: {
           semester: {
@@ -120,12 +122,41 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         take: limit,
         select: { id: true, code: true, name: true, bleId: true },
       });
+      
+      // Also get units from BleMapping that aren't in Unit table
+      const unitCodes = new Set(units.map(u => u.code));
+      const bleMappings = await app.prisma.bleMapping.findMany({
+        where: {
+          institutionId: lecturer.institutionId,
+          ...(query
+            ? {
+                unitCode: { contains: query, mode: "insensitive" },
+              }
+            : {}),
+        },
+        orderBy: { unitCode: "asc" },
+        take: limit,
+        select: { unitCode: true, unitBleId: true },
+      });
+      
+      // Add BleMapping units that don't exist in Unit table
+      const additionalUnits = bleMappings
+        .filter(mapping => mapping.unitCode && !unitCodes.has(mapping.unitCode))
+        .map(mapping => ({
+          id: `ble-${mapping.unitCode}`, // Synthetic ID for BleMapping units
+          code: mapping.unitCode!,
+          name: mapping.unitCode!, // Use code as name since we don't have a name field
+          bleId: mapping.unitBleId,
+        }));
+      
+      const allUnits = [...units, ...additionalUnits];
+      
       const assignments = await app.prisma.lecturerUnit.findMany({
         where: { lecturerId: request.user.id },
         select: { unitId: true },
       });
       return reply.send({
-        units,
+        units: allUnits,
         selectedUnitIds: assignments.map(({ unitId }) => unitId),
       });
     },
@@ -468,17 +499,20 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
           });
         }
 
-        const lecturer = await app.prisma.lecturer.upsert({
-          where: { 
-            institutionId_staffNumber: {
-              institutionId,
-              staffNumber
-            }
-          },
-          update: { fullName: name },       // never change institutionId on update
-          create: { fullName: name, staffNumber, institutionId },
-          select: { id: true, fullName: true, staffNumber: true },
+        const existingInInstitution = await app.prisma.lecturer.findFirst({
+          where: { institutionId, staffNumber },
+          select: { id: true },
         });
+        const lecturer = existingInInstitution
+          ? await app.prisma.lecturer.update({
+              where: { id: existingInInstitution.id },
+              data: { fullName: name },
+              select: { id: true, fullName: true, staffNumber: true },
+            })
+          : await app.prisma.lecturer.create({
+              data: { fullName: name, staffNumber, institutionId },
+              select: { id: true, fullName: true, staffNumber: true },
+            });
         createdLecturers.push(lecturer);
       }
 

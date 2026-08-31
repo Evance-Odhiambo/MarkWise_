@@ -3,17 +3,12 @@ import type { FastifyPluginAsync } from "fastify";
 import { requireAttendanceRole } from "../../plugins/index.js";
 import { sendPushNotification } from "../notification/notification.service.js";
 import { InPersonService } from "./in-person/inPerson.service.js";
+import { normalizeUnitCode } from "../../shared/unitCodes.js";
 
 const GRANT_TTL_MS = 15 * 60 * 1000;
 
 const hashGrant = (grant: string) =>
   crypto.createHash("sha256").update(grant).digest("hex");
-
-const normalizeUnitCode = (value: unknown) =>
-  String(value || "")
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, "");
 
 export const delegationRoutes: FastifyPluginAsync = async (app) => {
   const service = new InPersonService(app.prisma);

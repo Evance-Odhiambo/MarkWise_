@@ -97,8 +97,8 @@ const AppEntryScreen = ({ navigation }: Props) => {
                 ? 'StudentApp'
                 : 'StudentUnitSelection'
               : hasSavedSelection
-                ? 'LecturerApp'
-                : 'LecturerUnitSelection',
+              ? 'LecturerApp'
+              : 'LecturerUnitSelection',
           );
           return;
         }

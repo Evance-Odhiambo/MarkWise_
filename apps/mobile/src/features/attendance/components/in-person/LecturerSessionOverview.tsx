@@ -229,7 +229,6 @@ export const LecturerSessionOverview = ({
             PIN Fallback
           </Text>
         </View>
-        className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
         <Text
           className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}
         >

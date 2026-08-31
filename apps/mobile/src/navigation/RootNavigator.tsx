@@ -96,7 +96,7 @@ const RootNavigator = () => {
         </Stack.Screen>
         <Stack.Screen
           name="StudentUnitSelection"
-          component={StudentSelectionScreen}
+          component={StudentSelectionScreen as any}
         />
         <Stack.Screen
           name="LecturerUnitSelection"

@@ -14,41 +14,75 @@ export class InPersonService {
   }
 
   async createSession(lecturerId: string, input: CreateInPersonSessionBody) {
-    const unitCode = normalizeUnitCode(input.unitCode);
+    const requestedUnitCode = normalizeUnitCode(input.unitCode);
     const lecturer = await this.prisma.lecturer.findUnique({
       where: { id: lecturerId },
       select: { institutionId: true },
     });
     if (!lecturer) throw new Error("LECTURER_NOT_FOUND");
 
+    console.log(`Creating session for unit ${requestedUnitCode} at institution ${lecturer.institutionId}`);
+
     // Lecturers choose any unit belonging to their institution when starting
     // attendance; they are not required to have a pre-assigned unit record.
-    let unit = await this.prisma.unit.findFirst({
+    const institutionUnits = await this.prisma.unit.findMany({
       where: {
-        code: unitCode,
         semester: {
           courseYear: { course: { institutionId: lecturer.institutionId } },
         },
       },
-      select: { bleId: true },
+      select: { code: true, bleId: true },
     });
+    const matchedUnit = institutionUnits.find(
+      candidate => normalizeUnitCode(candidate.code) === requestedUnitCode,
+    );
+    // Keep the institution's canonical spelling (for example, SBT 2170)
+    // because attendance verification also resolves the unit by its code.
+    const unitCode = matchedUnit?.code ?? requestedUnitCode;
+    let unit = matchedUnit ? { bleId: matchedUnit.bleId } : null;
+    
+    if (unit) {
+      console.log(`Found unit in Unit table with bleId: ${unit.bleId}`);
+    }
     
     // If unit not found in Unit table, try BleMapping as fallback
     if (!unit) {
-      const bleMapping = await this.prisma.bleMapping.findFirst({
+      console.log(`Unit not in Unit table, checking BleMapping...`);
+      const bleMappings = await this.prisma.bleMapping.findMany({
         where: {
-          unitCode,
+          // Older mapping rows may also contain spaces or different casing;
+          // match them using the same canonical normalization as Unit records.
           institutionId: lecturer.institutionId,
+          NOT: {
+            unitCode: null, // Exclude null unitCodes
+          },
         },
-        select: { unitBleId: true },
+        select: { unitBleId: true, unitCode: true },
       });
+      const normalizedMapping = bleMappings.find(
+        mapping => normalizeUnitCode(mapping.unitCode || '') === requestedUnitCode,
+      );
       
-      if (bleMapping) {
-        // Use BLE mapping - session can still be created
-        unit = { bleId: bleMapping.unitBleId };
+      if (normalizedMapping) {
+        console.log(`Found in BleMapping: unitCode=${normalizedMapping.unitCode}, unitBleId=${normalizedMapping.unitBleId}`);
       } else {
-        // Unit not found in either table
-        throw new Error("UNIT_NOT_IN_INSTITUTION");
+        console.log(`Not found in BleMapping either`);
+        
+        // Check if ANY bleMappings exist for this institution
+        const count = await this.prisma.bleMapping.count({
+          where: { institutionId: lecturer.institutionId },
+        });
+        console.log(`Total BleMapping entries for institution: ${count}`);
+      }
+      
+      if (normalizedMapping && normalizedMapping.unitBleId) {
+        // Use BLE mapping - session can still be created
+        unit = { bleId: normalizedMapping.unitBleId };
+      } else {
+        // Unit not found in either table - but allow session creation anyway
+        // The lecturer can still use QR code and PIN methods
+        console.warn(`Unit ${requestedUnitCode} not found in Unit or BleMapping tables for institution ${lecturer.institutionId}. Creating session without BLE.`);
+        unit = { bleId: null };
       }
     }
 

@@ -32,6 +32,7 @@ import {
 } from '../security/attendancePayload';
 import { getAttendanceSessionSecret } from '../../../shared/security/secureKeyStorage';
 import { adaptiveConfig } from '../../../shared/utils/adaptiveAttendanceConfig';
+import { normalizeUnitCode } from '../../../shared/utils/unitCodes';
 import NativeBLEAdvertiser from '../../native/NativeBLEAdvertiser';
 import { LecturerSessionOverview } from '../components/in-person/LecturerSessionOverview';
 import { AttendanceBackHeader } from '../components/AttendanceBackHeader';
@@ -398,11 +399,11 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
 
   const refreshLecturerBleMapping = async (unitCode: string) => {
     if (!token || !userId) return null;
-    const normalizedCode = unitCode.trim().toUpperCase();
+    const normalizedCode = normalizeUnitCode(unitCode);
     const synced = await fetchBleMappingsFromApi('lecturer', token);
     if (!synced) return null;
     const match = synced.mappings.find(
-      mapping => mapping.unitCode.trim().toUpperCase() === normalizedCode,
+      mapping => normalizeUnitCode(mapping.unitCode) === normalizedCode,
     );
     if (!match?.bleId) return null;
     await saveUnitMappings(
@@ -423,6 +424,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     if (!unitCode || session || sessionStartingRef.current) return;
     sessionStartingRef.current = true;
     try {
+      // Try to get BLE unit ID from multiple sources (offline-first)
       const cachedBleUnitId = adaptiveConfig.getUnitId(unitCode);
       const storedMappings = userId
         ? await loadUnitMappings({
@@ -431,33 +433,41 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
             institutionId,
           }).catch(() => [])
         : [];
+      const normalizedUnitCode = unitCode.trim().toUpperCase().replace(/\s+/g, '');
       const storedMapping = storedMappings.find(
-        mapping => mapping.unitCode === unitCode,
+        mapping =>
+          mapping.unitCode.trim().toUpperCase().replace(/\s+/g, '') ===
+          normalizedUnitCode,
       );
       const storedBleUnitId = storedMapping?.bleId
         ? Number(storedMapping.bleId)
         : null;
       let bleUnitId = cachedBleUnitId ?? storedBleUnitId;
 
-      if (bleUnitId == null) {
-        setBleStartError('Refreshing BLE unit mapping...');
-        const refreshedBleUnitId = await refreshLecturerBleMapping(unitCode);
-        bleUnitId = refreshedBleUnitId ?? null;
+      // If no local BLE mapping, try to fetch from server (but don't block session creation)
+      if (bleUnitId == null && token) {
+        setBleStartError('Fetching BLE unit mapping...');
+        try {
+          const refreshedBleUnitId = await refreshLecturerBleMapping(unitCode);
+          bleUnitId = refreshedBleUnitId ?? null;
+        } catch (error) {
+          console.warn('Failed to fetch BLE mapping:', error);
+          // Continue without BLE - QR and PIN will still work
+        }
       }
 
-      if (bleUnitId == null) {
-        setBleStartError('BLE unit mapping is unavailable for this unit.');
-        Alert.alert(
-          'BLE mapping unavailable',
-          'This unit does not have a BLE mapping yet. Sync the unit list and try again.',
-        );
-        return;
-      }
+      // Start session regardless of BLE availability
+      // Session will work with QR code and PIN even without BLE
       await start({
         unitCode,
         durationMinutes: 10,
         bleUnitId,
       });
+      
+      // Show warning if BLE is not available (but don't block)
+      if (bleUnitId == null) {
+        setBleStartError('BLE unit mapping unavailable. QR and PIN methods will still work.');
+      }
     } catch (error) {
       Alert.alert(
         'Unable to start session',

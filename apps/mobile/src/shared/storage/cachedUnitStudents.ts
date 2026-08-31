@@ -1,6 +1,7 @@
 import { Q } from '@nozbe/watermelondb';
 import database from './database';
 import CachedUnitStudent from './models/CachedUnitStudent';
+import { normalizeUnitCode } from '../utils/unitCodes';
 
 export type CachedStudent = {
   unitCode: string;
@@ -12,12 +13,6 @@ export type CachedStudent = {
 
 const collection = () =>
   database.collections.get<CachedUnitStudent>('cached_unit_students');
-const normalizeUnitCode = (value: string) =>
-  String(value || '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '');
-
 export async function saveUnitStudents(
   unitCode: string,
   students: Omit<CachedStudent, 'unitCode' | 'syncedAt'>[],

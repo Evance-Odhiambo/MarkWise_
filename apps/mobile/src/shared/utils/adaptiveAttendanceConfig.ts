@@ -14,12 +14,7 @@ import {
   UnitMappingOwner,
   clearUnitMappings,
 } from '../storage/unitMappings';
-
-const normalizeCode = (value: string) =>
-  String(value || '')
-    .toUpperCase()
-    .replace(/\s+/g, '')
-    .replace(/[^A-Z0-9]/g, '');
+import { normalizeUnitCode as normalizeCode } from './unitCodes';
 
 const normalizeBleId = (value: string): string => {
   const raw = String(value || '').trim().toUpperCase();

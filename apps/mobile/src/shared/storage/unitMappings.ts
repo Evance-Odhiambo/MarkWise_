@@ -7,6 +7,7 @@ import {
   decryptLocalValue,
   encryptLocalValue,
 } from '../security/localStorageCrypto';
+import { normalizeUnitCode as normalizeCode } from '../utils/unitCodes';
 
 export type UnitMappingRole = 'student' | 'lecturer';
 
@@ -22,14 +23,10 @@ export interface StoredUnitMapping {
   bleId: string;
 }
 
-const normalizeCode = (code: string) =>
-  String(code || '')
-    .trim()
-    .toUpperCase()
-    .replace(/\s+/g, '');
-
 const normalizeBleId = (value: string): string => {
-  const raw = String(value || '').trim().toUpperCase();
+  const raw = String(value || '')
+    .trim()
+    .toUpperCase();
   if (!raw) return '';
   const stripped = raw.replace(/^0X/i, '').replace(/^[UR]/i, '');
   const numeric = Number(stripped);
@@ -182,9 +179,10 @@ export async function saveUnitMappings(
   const existingByCode = new Map(
     decoded.map(({ record, code }) => [code, record]),
   );
-  const operations = decoded
-    .filter(({ code }) => !normalized.has(code))
-    .map(({ record }) => record.prepareDestroyPermanently());
+  // Upsert only the mappings received from the server. Responses may be
+  // partial (for example, lecturer search results), so never delete unrelated
+  // cached mappings here. Cache deletion is explicit via clearUnitMappings.
+  const operations: ReturnType<typeof collection.prepareCreate>[] = [];
 
   // Pre-encrypt all values BEFORE creating operations (WatermelonDB batching requirement)
   const encryptedData = new Map<string, { name: string; bleId: string }>();
@@ -195,7 +193,7 @@ export async function saveUnitMappings(
     );
     const encryptedBleId = await encryptLocalValue(unit.bleId, aad('ble_id'));
     encryptedData.set(unit.unitCode, {
-      name: encryptedName,
+      name: encryptedName || '',
       bleId: encryptedBleId || '',
     });
   }
@@ -204,7 +202,7 @@ export async function saveUnitMappings(
   for (const unit of normalized.values()) {
     const record = existingByCode.get(unit.unitCode);
     const encrypted = encryptedData.get(unit.unitCode)!;
-    
+
     if (record) {
       operations.push(
         record.prepareUpdate(model => {

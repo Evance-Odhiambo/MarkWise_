@@ -29,6 +29,8 @@ import { RELAY_ROTATION_SECONDS } from '../security/attendanceProtocol';
 import { shouldElectRelay } from '../security/relayElection';
 import { PinInput } from '../components/PinInput';
 import { useUnitSelection } from '../../unit-selection/hooks/useUnitSelection';
+import { loadUnitMappings } from '../../../shared/storage/unitMappings';
+import { adaptiveConfig } from '../../../shared/utils/adaptiveAttendanceConfig';
 import { enqueuePendingPin } from '../../../shared/storage/pendingPinQueue';
 import { getOrCreateSecureDeviceId } from '../../../shared/storage/secureDeviceId';
 import { useInPersonCapture } from '../hooks/useInPersonCapture';
@@ -76,7 +78,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const MOTION_DELTA_THRESHOLD = 0.45;
   const { isDark } = useTheme();
   const { isTablet } = useResponsive();
-  const { token, userId } = useAuth();
+  const { token, userId, institutionId } = useAuth();
   const [session, setSession] = useState<InPersonSession | null>(null);
   const [rawPayload, setRawPayload] = useState('');
   const [method, setMethod] = useState<'qr' | 'ble'>('qr');
@@ -258,6 +260,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     ) => {
       if (
         !userId ||
+        verificationStatus !== 'verified' && verificationStatus !== 'duplicate' ||
         (attendanceMethod === 'pin' &&
           verificationStatus !== 'verified' &&
           verificationStatus !== 'duplicate') ||
@@ -392,7 +395,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       rssi?: number;
     }) => {
       const attendanceSession = override?.session ?? session;
-      if (!attendanceSession || !token) return;
+      if (!attendanceSession) return;
       setSubmitting(true);
       try {
         const attendanceMethod = override?.method ?? method;
@@ -771,8 +774,69 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       const payload = decodeAttendancePayload(value.trim());
       const cached = await getCachedInPersonSession(payload.sessionNonce);
       let resolvedSession = cached;
+      
+      // If not in cache, try to reconstruct from payload + cached unit data
+      if (!resolvedSession && payload.unitCode) {
+        // Try to get unit information from local cache
+        const storedMappings = userId
+          ? await loadUnitMappings({
+              userId,
+              role: 'student',
+              institutionId,
+            }).catch(() => [])
+          : [];
+        
+        const unitMapping = storedMappings.find(
+          mapping => mapping.unitCode === payload.unitCode
+        );
+        
+        const cachedBleUnitId = adaptiveConfig.getUnitId(payload.unitCode);
+        const bleId = cachedBleUnitId ?? (unitMapping?.bleId ? Number(unitMapping.bleId) : null);
+        
+        // Reconstruct session from QR payload data
+        // A signed QR contains enough session metadata to record attendance
+        // locally. Server verification is deferred until connectivity returns.
+        {
+          // Calculate actual session start from issued time and counter
+          // QR codes rotate every QR_ROTATION_SECONDS, so we can estimate session start
+          const QR_ROTATION_SECONDS = 3;
+          const approximateSessionStart = payload.issuedAt - (payload.counter * QR_ROTATION_SECONDS * 1000);
+          
+          // Assume 10 minute session duration (standard)
+          const sessionDuration = 10 * 60 * 1000;
+          
+          // We have enough info to reconstruct the session locally
+          resolvedSession = {
+            id: payload.sessionId,
+            unitCode: payload.unitCode,
+            sessionStart: approximateSessionStart,
+            expiresAt: approximateSessionStart + sessionDuration,
+            sessionNonce: payload.sessionNonce,
+            bleUnitId: bleId,
+            status: 'active' as const,
+          };
+          
+          // Cache the reconstructed session for future use
+          await cacheInPersonSession(resolvedSession);
+          
+          console.log('Reconstructed session from QR payload and cached data:', {
+            unitCode: payload.unitCode,
+            bleId,
+            sessionStart: new Date(approximateSessionStart).toISOString(),
+            expiresAt: new Date(approximateSessionStart + sessionDuration).toISOString(),
+            source: bleId ? 'cached' : 'offline'
+          });
+        }
+      }
+      
+      // If still not resolved, try backend as last resort
       if (!resolvedSession) {
-        if (!token) return;
+        if (!token) {
+          throw new Error(
+            'Unable to verify session offline. Connect to the internet or ensure unit data is cached.'
+          );
+        }
+        
         setLoading(true);
         try {
           const response = await getInPersonSession(payload.sessionId, token);
@@ -796,6 +860,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           throw new Error(`Could not find the session. ${errorMsg}`);
         }
       }
+      
       setSession(resolvedSession);
       setMethod('qr');
       const qrJoin = {

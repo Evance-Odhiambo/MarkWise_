@@ -11,6 +11,7 @@ import {
 import { useAuth } from '../../auth/context/AuthContext';
 import { API_BASE_URL } from '../../../shared/constants';
 import { saveUnitStudents } from '../../../shared/storage/cachedUnitStudents';
+import { normalizeUnitCode as normalizeCode } from '../../../shared/utils/unitCodes';
 import {
   cacheUnitSelectionSnapshot,
   isUnitSelectionSnapshotFresh,
@@ -24,9 +25,6 @@ const selectionInitializedKey = (
   role: UnitSelectionRole,
   userId?: string | null,
 ) => `@markwise/${role}-unit-selection/${userId || 'anonymous'}/initialized-v1`;
-
-const normalizeCode = (code: string) =>
-  code.trim().toUpperCase().replace(/\s+/g, '');
 
 const cacheLecturerRosters = async (token: string, unitCodes: string[]) => {
   await Promise.all(

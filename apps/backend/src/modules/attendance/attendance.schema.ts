@@ -1,3 +1,7 @@
+import { normalizeUnitCode } from "../../shared/unitCodes.js";
+
+export { normalizeUnitCode } from "../../shared/unitCodes.js";
+
 export const MAX_ONLINE_SESSION_MINUTES = 60;
 
 export interface CreateOnlineSessionBody {
@@ -31,8 +35,4 @@ export function validateCreateOnlineSession(
   }
 
   return errors;
-}
-
-export function normalizeUnitCode(unitCode: string): string {
-  return unitCode.trim().toUpperCase().replace(/\s+/g, "");
 }
