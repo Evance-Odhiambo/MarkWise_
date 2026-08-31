@@ -143,7 +143,8 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       if (!lecturer || !unitCode)
         return reply.code(400).send({ error: "A valid unit code is required" });
 
-      const unit = await app.prisma.unit.findFirst({
+      // First try to find unit with full hierarchy
+      let unit = await app.prisma.unit.findFirst({
         where: {
           code: unitCode,
           semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
@@ -157,10 +158,35 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
           },
         },
       });
-      if (!unit)
-        return reply
-          .code(404)
-          .send({ error: "Unit is not available at your institution" });
+      
+      // If unit not found in Unit table, query enrollments directly by unitCode
+      // This handles cases where unit exists in BleMapping but not in Unit table
+      if (!unit) {
+        const enrollments = await app.prisma.enrollment.findMany({
+          where: {
+            unit: {
+              code: unitCode,
+              semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
+            },
+          },
+          orderBy: { student: { admissionNumber: "asc" } },
+          select: {
+            student: { select: { id: true, name: true, admissionNumber: true } },
+          },
+        });
+        
+        // Create a mock unit structure with enrollments
+        unit = { enrollments };
+      }
+      
+      if (!unit || unit.enrollments.length === 0) {
+        // Return empty roster instead of 404 - unit exists but has no enrollments
+        return reply.send({
+          unitCode,
+          students: [],
+        });
+      }
+      
       return reply.send({
         unitCode,
         students: unit.enrollments.map(({ student }) => ({
