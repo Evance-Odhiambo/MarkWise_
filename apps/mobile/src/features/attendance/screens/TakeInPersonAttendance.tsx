@@ -43,16 +43,9 @@ import {
 import { submitDelegatedAssistedMark } from '../api/delegationApi';
 import { findCachedDelegationBySessionId } from '../storage/delegationStorage';
 import { getUnitStudents } from '../../../shared/storage/cachedUnitStudents';
-import {
-  loadUnitMappings,
-  saveUnitMappings,
-} from '../../../shared/storage/unitMappings';
+import { loadUnitMappings } from '../../../shared/storage/unitMappings';
 import { getCachedInPersonSessionById } from '../../../shared/storage/inPersonSessionCache';
 import { useUnitSelection } from '../../unit-selection/hooks/useUnitSelection';
-import {
-  cacheBleMappings,
-  fetchBleMappingsFromApi,
-} from '../../../shared/storage/bleCache';
 import { ChevronDown, QrCode, Radio, Search, X } from 'lucide-react-native';
 import { FadeSlideIn } from '../components/in-person/AnimatedAttendance';
 import {
@@ -397,29 +390,6 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     return () => clearTimeout(timeout);
   }, [end, session]);
 
-  const refreshLecturerBleMapping = async (unitCode: string) => {
-    if (!token || !userId) return null;
-    const normalizedCode = normalizeUnitCode(unitCode);
-    const synced = await fetchBleMappingsFromApi('lecturer', token);
-    if (!synced) return null;
-    const match = synced.mappings.find(
-      mapping => normalizeUnitCode(mapping.unitCode) === normalizedCode,
-    );
-    if (!match?.bleId) return null;
-    await saveUnitMappings(
-      { userId, role: 'lecturer', institutionId },
-      synced.mappings,
-    );
-    await cacheBleMappings('lecturer', synced.mappings, synced.version);
-    await adaptiveConfig.initialize(
-      'lecturer',
-      [normalizedCode],
-      institutionId,
-      userId,
-    );
-    return Number(match.bleId);
-  };
-
   const startSession = async (unitCode = selectedUnitCode) => {
     if (!unitCode || session || sessionStartingRef.current) return;
     sessionStartingRef.current = true;
@@ -444,24 +414,16 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
         : null;
       let bleUnitId = cachedBleUnitId ?? storedBleUnitId;
 
-      // If no local BLE mapping, try to fetch from server (but don't block session creation)
-      if (bleUnitId == null && token) {
-        setBleStartError('Fetching BLE unit mapping...');
-        try {
-          const refreshedBleUnitId = await refreshLecturerBleMapping(unitCode);
-          bleUnitId = refreshedBleUnitId ?? null;
-        } catch (error) {
-          console.warn('Failed to fetch BLE mapping:', error);
-          // Continue without BLE - QR and PIN will still work
-        }
-      }
-
       // Start session regardless of BLE availability
       // Session will work with QR code and PIN even without BLE
       await start({
         unitCode,
         durationMinutes: 10,
         bleUnitId,
+        // In-person attendance must start from the locally cached lecturer
+        // unit list. Server synchronization happens after attendance records
+        // are collected, not during session startup.
+        offlineOnly: true,
       });
       
       // Show warning if BLE is not available (but don't block)
@@ -583,7 +545,6 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
                   Select Unit
                 </Text>
                 <TouchableOpacity
-                  disabled={unitsLoading}
                   onPress={() => setUnitPickerOpen(true)}
                   className={`mt-3 flex-row items-center rounded-2xl border px-4 py-4 ${
                     isDark
@@ -747,7 +708,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
         transparent
         onRequestClose={() => setUnitPickerOpen(false)}
       >
-        <View className="flex-1 justify-start bg-black/40">
+        <SafeAreaView edges={['top', 'bottom']} className="flex-1 bg-black/40">
           <View
             className={`h-[88%] rounded-b-3xl p-5 ${
               isDark ? 'bg-slate-900' : 'bg-white'
@@ -829,7 +790,7 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
               )}
             </ScrollView>
           </View>
-        </View>
+        </SafeAreaView>
       </Modal>
     </SafeAreaView>
   );

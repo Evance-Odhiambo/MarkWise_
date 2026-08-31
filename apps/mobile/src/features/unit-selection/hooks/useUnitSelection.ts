@@ -101,7 +101,15 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
         institutionId,
       }).catch(() => []);
 
-      if (snapshot && isUnitSelectionSnapshotFresh(snapshot)) {
+      // Lecturer catalogues are institution-wide and searchable. A snapshot
+      // may contain only an earlier search result, so never short-circuit the
+      // lecturer fetch with it. The cached catalogue remains available while
+      // the request is in flight or when offline.
+      if (
+        snapshot &&
+        isUnitSelectionSnapshotFresh(snapshot) &&
+        role !== 'lecturer'
+      ) {
         if (!mounted) return;
         setCatalogue(snapshot.catalogue);
         setYears(snapshot.years);
@@ -136,7 +144,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
       )
         hasLocalSelection = true;
 
-      if (cachedUnits.length && !snapshot) {
+      if (cachedUnits.length && (!snapshot || role === 'lecturer')) {
         if (!mounted) return;
         setCatalogue(cachedUnits);
         setSelectedCodes(cachedCodes);

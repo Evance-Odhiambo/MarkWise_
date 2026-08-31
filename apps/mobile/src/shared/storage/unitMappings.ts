@@ -87,9 +87,6 @@ export async function saveSelectedUnitCodes(
     })),
   );
   const byCode = new Map(decoded.map(({ record, code }) => [code, record]));
-  const operations = decoded
-    .filter(({ code }) => !normalized.includes(code))
-    .map(({ record }) => record.prepareDestroyPermanently());
   const encryptedCodes = new Map(
     await Promise.all(
       normalized.map(
@@ -98,29 +95,28 @@ export async function saveSelectedUnitCodes(
     ),
   );
   const creates = normalized.filter(code => !byCode.has(code));
-  for (const code of normalized) {
-    const record = byCode.get(code);
-    if (record)
-      operations.push(
-        record.prepareUpdate(model => {
+  await database.write(async () => {
+    const operations = decoded
+      .filter(({ code }) => !normalized.includes(code))
+      .map(({ record }) => record.prepareDestroyPermanently());
+    for (const code of normalized) {
+      const record = byCode.get(code);
+      if (record)
+        operations.push(record.prepareUpdate(model => {
           model.unitCode = encryptedCodes.get(code) || '';
           model.selectedAt = Date.now();
-        }),
-      );
-  }
-  const createRecords = creates.map(code =>
-    selectedCollection().prepareCreate(model => {
-      model.userId = owner.userId;
-      model.role = owner.role;
-      model.institutionId = owner.institutionId || '';
-      model.unitCode = encryptedCodes.get(code) || '';
-      model.selectedAt = Date.now();
-    }),
-  );
-  if (operations.length || createRecords.length)
-    await database.write(async () =>
-      database.batch(...operations, ...createRecords),
-    );
+        }));
+    }
+    for (const code of creates)
+      operations.push(selectedCollection().prepareCreate(model => {
+        model.userId = owner.userId;
+        model.role = owner.role;
+        model.institutionId = owner.institutionId || '';
+        model.unitCode = encryptedCodes.get(code) || '';
+        model.selectedAt = Date.now();
+      }));
+    if (operations.length) await database.batch(...operations);
+  });
 }
 
 export async function loadUnitMappings(
@@ -179,12 +175,9 @@ export async function saveUnitMappings(
   const existingByCode = new Map(
     decoded.map(({ record, code }) => [code, record]),
   );
-  // Upsert only the mappings received from the server. Responses may be
-  // partial (for example, lecturer search results), so never delete unrelated
-  // cached mappings here. Cache deletion is explicit via clearUnitMappings.
-  const operations: ReturnType<typeof collection.prepareCreate>[] = [];
-
-  // Pre-encrypt all values BEFORE creating operations (WatermelonDB batching requirement)
+  // Encrypt before opening the writer. Model operations themselves must be
+  // prepared inside database.write(), otherwise WatermelonDB warns that
+  // prepareUpdate/prepareCreate were created outside the writer transaction.
   const encryptedData = new Map<string, { name: string; bleId: string }>();
   for (const unit of normalized.values()) {
     const encryptedName = await encryptLocalValue(
@@ -198,22 +191,19 @@ export async function saveUnitMappings(
     });
   }
 
-  // Now build operations synchronously with pre-encrypted values
-  for (const unit of normalized.values()) {
-    const record = existingByCode.get(unit.unitCode);
-    const encrypted = encryptedData.get(unit.unitCode)!;
-
-    if (record) {
-      operations.push(
-        record.prepareUpdate(model => {
+  await database.write(async () => {
+    const operations = [];
+    for (const unit of normalized.values()) {
+      const record = existingByCode.get(unit.unitCode);
+      const encrypted = encryptedData.get(unit.unitCode)!;
+      if (record) {
+        operations.push(record.prepareUpdate(model => {
           model.unitName = encrypted.name;
           model.bleId = encrypted.bleId;
           model.syncedAt = Date.now();
-        }),
-      );
-    } else {
-      operations.push(
-        collection.prepareCreate(model => {
+        }));
+      } else {
+        operations.push(collection.prepareCreate(model => {
           model.userId = owner.userId;
           model.role = owner.role;
           model.institutionId = owner.institutionId || '';
@@ -221,12 +211,11 @@ export async function saveUnitMappings(
           model.unitName = encrypted.name;
           model.bleId = encrypted.bleId;
           model.syncedAt = Date.now();
-        }),
-      );
+        }));
+      }
     }
-  }
-  if (operations.length)
-    await database.write(async () => database.batch(...operations));
+    if (operations.length) await database.batch(...operations);
+  });
 }
 
 export async function clearUnitMappings(

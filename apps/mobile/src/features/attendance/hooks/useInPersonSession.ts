@@ -20,11 +20,12 @@ export const useInPersonSession = (token: string | null) => {
       unitCode: string;
       durationMinutes?: number;
       bleUnitId?: number | null;
+      offlineOnly?: boolean;
     }) => {
       setLoading(true);
       const durationMs = Math.min(input.durationMinutes ?? 10, 60) * 60_000;
       try {
-        if (token) {
+        if (token && !input.offlineOnly) {
           try {
             const expiresAt = new Date(Date.now() + durationMs).toISOString();
             const result = await createInPersonSession(

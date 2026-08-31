@@ -187,13 +187,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           ),
         });
       } catch (error) {
-        if (
-          error instanceof Error &&
-          error.message === "UNIT_NOT_IN_INSTITUTION"
-        )
-          return reply.code(403).send({
-            error: "The selected unit is not available at your institution",
-          });
+        request.log.error({ err: error }, "Unable to create in-person session");
         throw error;
       }
     }
