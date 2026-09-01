@@ -55,7 +55,7 @@ export function LecturerCsvImportForm({ onDataImported }: CsvImportFormProps) {
 
       setError(null);
       setSuccessMessage(
-        `Successfully parsed and imported ${result.lecturers.length} faculty records`,
+        `Successfully parsed and imported ${result.lecturers.length} lecturer records`,
       );
       onDataImported(result.lecturers);
     } catch (err: unknown) {

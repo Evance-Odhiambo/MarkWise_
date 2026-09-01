@@ -64,7 +64,7 @@ export function LecturerManualEntryForm({
       <div className="rounded-lg border border-slate-200/90 bg-slate-50/70 p-2.5 space-y-2">
         <div className="flex items-center justify-between">
           <span className="font-bold text-slate-800 text-[11px]">
-            Add Faculty Member
+            Add Lecturer
           </span>
           {error && <span className="text-[10px] text-red-600 font-medium">{error}</span>}
         </div>
@@ -118,28 +118,28 @@ export function LecturerManualEntryForm({
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search faculty roster..."
+            placeholder="Search lecturer roster..."
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
             className="h-6 w-full rounded-md border border-slate-200 bg-white pl-7 pr-2 text-[10px] text-slate-800 placeholder-slate-400 outline-none focus:border-emerald-500 transition"
           />
         </div>
         <span className="text-[10px] font-mono text-slate-500">
-          Total Faculty: <strong className="text-slate-900">{data.length}</strong>
+          Total Lecturers: <strong className="text-slate-900">{data.length}</strong>
         </span>
       </div>
 
       {/* Compact Table */}
       {data.length === 0 ? (
         <div className="rounded-lg border border-dashed border-slate-200 bg-slate-50/50 p-6 text-center text-slate-400 text-[10.5px]">
-          No lecturers registered yet. Use the form above to add faculty members.
+          No lecturers registered yet. Use the form above to add lecturers.
         </div>
       ) : (
         <div className="rounded-lg border border-slate-200/90 bg-white shadow-2xs overflow-hidden">
           <table className="w-full text-left border-collapse">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/80 text-[9.5px] font-bold uppercase tracking-wider text-slate-500">
-                <th className="py-1.5 px-3">Faculty Name</th>
+                <th className="py-1.5 px-3">Lecturer Name</th>
                 <th className="py-1.5 px-3">Staff Number</th>
                 <th className="py-1.5 px-3 text-right w-16">Action</th>
               </tr>

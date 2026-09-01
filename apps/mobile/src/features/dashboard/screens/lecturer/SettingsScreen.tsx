@@ -167,7 +167,7 @@ const LecturerSettingsScreen = () => {
             {
               icon: Shield,
               label: 'Security',
-              desc: 'Faculty access controls',
+              desc: 'Lecturer access controls',
               accent: 'bg-blue-100',
               accentDark: 'bg-blue-500/20',
             },

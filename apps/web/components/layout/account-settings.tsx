@@ -193,7 +193,7 @@ export function AccountSettings({ role }: { role: Role }) {
   return (
     <RoleWorkspaceShell
       role={role}
-      eyebrow={isStudent ? "Student Account" : "Faculty Account"}
+      eyebrow={isStudent ? "Student Account" : "Lecturer Account"}
       title="Settings & Security"
       name={displayName}
       email={profile.email}

@@ -136,7 +136,7 @@ export function NotificationsPage({ role }: { role: "student" | "lecturer" }) {
   return (
     <RoleWorkspaceShell
       role={role}
-      eyebrow={isStudent ? "Student Portal" : "Faculty Portal"}
+      eyebrow={isStudent ? "Student Portal" : "Lecturer Portal"}
       title="Notifications & Alerts"
       name={user?.name}
       email={user?.email}

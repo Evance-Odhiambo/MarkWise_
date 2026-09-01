@@ -17,7 +17,7 @@ const methods: {
   {
     value: "manual",
     label: "Manual Entry",
-    description: "Add faculty records individually with staff IDs",
+    description: "Add lecturer records individually with staff IDs",
     icon: PlusCircle,
   },
   {
@@ -29,7 +29,7 @@ const methods: {
   {
     value: "api",
     label: "Institution LMS API",
-    description: "Sync faculty directly from ERP / HR database",
+    description: "Sync lecturer records directly from ERP / HR database",
     icon: Server,
   },
 ];

@@ -51,7 +51,7 @@ export function LecturerApiImportForm({
         staffNumber: item.staffNumber || item.employeeId || item.code || `EMP-${idx + 1}`,
       }));
 
-      setSuccess(`Synced ${formatted.length} faculty profiles successfully`);
+      setSuccess(`Synced ${formatted.length} lecturer profiles successfully`);
       onDataImported(formatted);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Sync failed");
@@ -82,7 +82,7 @@ export function LecturerApiImportForm({
           <Input
             value={apiUrl}
             onChange={(e) => setApiUrl(e.target.value)}
-            placeholder="https://hr.university.edu/api/v1/faculty"
+            placeholder="https://hr.university.edu/api/v1/lecturers"
             className="h-7 text-[10.5px] font-mono"
           />
         </div>

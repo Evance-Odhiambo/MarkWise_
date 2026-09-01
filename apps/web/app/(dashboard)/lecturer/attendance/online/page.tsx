@@ -208,7 +208,7 @@ export default function LecturerOnlineAttendancePage() {
   return (
     <RoleWorkspaceShell
       role="lecturer"
-      eyebrow="Faculty Operations"
+      eyebrow="Lecturer Operations"
       title="Live Session Broadcaster"
       actions={
         session && !session.endedAt && (

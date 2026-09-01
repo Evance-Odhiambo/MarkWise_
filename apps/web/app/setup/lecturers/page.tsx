@@ -168,10 +168,10 @@ export default function LecturersPage() {
       }
 
       await fetchLecturers();
-      setSaveMessage(`Successfully added ${newRows.length} faculty members.`);
+      setSaveMessage(`Successfully added ${newRows.length} lecturers.`);
       setTimeout(() => setSaveMessage(null), 3500);
     } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : "Failed to save faculty roster");
+      setSaveMessage(err instanceof Error ? err.message : "Failed to save lecturer roster");
     } finally {
       setIsSaving(false);
     }
@@ -200,10 +200,10 @@ export default function LecturersPage() {
           (await response.json().catch(() => ({}))).error ||
             "Failed to save lecturers",
         );
-      setSaveMessage("Faculty roster synced successfully.");
+      setSaveMessage("Lecturer roster synced successfully.");
       setTimeout(() => setSaveMessage(null), 3000);
     } catch (err) {
-      setSaveMessage(err instanceof Error ? err.message : "Failed to save faculty roster");
+      setSaveMessage(err instanceof Error ? err.message : "Failed to save lecturer roster");
     } finally {
       setIsSaving(false);
     }
@@ -308,7 +308,7 @@ export default function LecturersPage() {
     setSelectedIds(next);
   };
 
-  const exportFacultyCSV = () => {
+  const exportLecturerCSV = () => {
     const listToExport = selectedIds.size > 0
       ? data.filter((l) => selectedIds.has(l.id))
       : data;
@@ -348,7 +348,7 @@ export default function LecturersPage() {
           <div className="flex flex-wrap items-center justify-between gap-1.5 rounded-lg border border-slate-200 bg-white/95 px-2.5 py-1.5 shadow-2xs backdrop-blur-sm">
             <div className="flex items-center gap-1.5">
               <span className="text-xs font-bold tracking-tight text-slate-900">
-                Faculty & Lecturer Setup
+                Lecturer Setup
               </span>
               {selectedInstitution && (
                 <Badge
@@ -366,7 +366,7 @@ export default function LecturersPage() {
                 <Button
                   size="sm"
                   variant="outline"
-                  onClick={exportFacultyCSV}
+                  onClick={exportLecturerCSV}
                   className="h-6 px-2 text-[10px] text-slate-700 bg-white border-slate-200 hover:bg-slate-50 gap-1 shadow-2xs"
                 >
                   <Download className="h-3 w-3 text-slate-500" />
@@ -419,7 +419,7 @@ export default function LecturersPage() {
               <CardContent className="flex flex-col items-center justify-center py-8 text-center">
                 <School className="h-6 w-6 text-slate-400 mb-1" />
                 <h3 className="text-xs font-bold text-slate-800">
-                  Select an Institution to Manage Faculty
+                  Select an Institution to Manage Lecturers
                 </h3>
                 <p className="mt-0.5 max-w-sm text-[10px] text-slate-500">
                   Choose a registered institution from the dropdown above to load and configure its lecturer roster.
@@ -463,7 +463,7 @@ export default function LecturersPage() {
                   <div className="flex items-center gap-2">
                     <Users className="h-3.5 w-3.5 text-slate-700" />
                     <CardTitle className="text-xs font-bold text-slate-900">
-                      Active Faculty Roster
+                      Active Lecturer Roster
                     </CardTitle>
                     <Badge variant="outline" className="text-[9px] font-mono border-slate-200">
                       {data.length} Registered
@@ -492,7 +492,7 @@ export default function LecturersPage() {
                       <Search className="pointer-events-none absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-slate-400" />
                       <input
                         type="text"
-                        placeholder="Search faculty..."
+                        placeholder="Search lecturers..."
                         value={searchTerm}
                         onChange={(e) => setSearchTerm(e.target.value)}
                         className="h-6 w-full rounded-md border border-slate-200 bg-white pl-6 pr-2 text-[10px] text-slate-800 placeholder-slate-400 outline-none focus:border-emerald-500"
@@ -503,7 +503,7 @@ export default function LecturersPage() {
                 <CardContent className="p-0">
                   {data.length === 0 ? (
                     <div className="py-8 text-center text-slate-400 text-[10.5px]">
-                      No faculty members saved for this institution yet. Use the entry forms above to add lecturers.
+                      No lecturers saved for this institution yet. Use the entry forms above to add lecturers.
                     </div>
                   ) : (
                     <div className="overflow-x-auto max-h-[340px] overflow-y-auto">
@@ -521,7 +521,7 @@ export default function LecturersPage() {
                                 className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
                               />
                             </th>
-                            <th className="py-1.5 px-3">Faculty Name</th>
+                            <th className="py-1.5 px-3">Lecturer Name</th>
                             <th className="py-1.5 px-3">Staff / Payroll ID</th>
                             <th className="py-1.5 px-3 text-right w-20">Actions</th>
                           </tr>

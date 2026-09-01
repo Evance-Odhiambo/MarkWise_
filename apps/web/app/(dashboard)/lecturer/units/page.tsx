@@ -80,7 +80,7 @@ export default function LecturerUnitsPage() {
   return (
     <RoleWorkspaceShell
       role="lecturer"
-      eyebrow="Faculty Setup"
+      eyebrow="Lecturer Setup"
       title="Teaching Units Assignment"
       actions={
         <Button
