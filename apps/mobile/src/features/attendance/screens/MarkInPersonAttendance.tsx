@@ -47,7 +47,10 @@ import {
   decodeRelayPayload,
   getOrCreateRelayKey,
 } from '../security/attendanceRelay';
-import { getRelayBackoffMs } from '../security/relayElection';
+// Temporarily unused — see the disabled staggered-backoff block in the BLE
+// relay-advertise effect below (L->A->B->C chain testing). Restore this
+// import alongside that block.
+// import { getRelayBackoffMs } from '../security/relayElection';
 import { QRCodeDisplay } from '../components/in-person/QRCodeDisplay';
 import { AttendanceBackHeader } from '../components/AttendanceBackHeader';
 import { StudentAttendanceSurface } from '../components/in-person/StudentAttendanceSurface';
@@ -534,26 +537,42 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         }
       }
     };
-    // Stagger the first advertise attempt across devices that all became
-    // relay-eligible around the same moment (e.g. many students marking off
-    // the same upstream relay within seconds of each other) so they don't
-    // all request an advertiser slot from the BLE controller in the same
-    // instant — a real contention point that gets worse the more devices
-    // are simultaneously active, i.e. worse at greater hop distance from
-    // the lecturer. relayElection.ts's own jitter helper, otherwise unused.
-    let rotationTimer: ReturnType<typeof setInterval> | undefined;
-    const backoffTimer = setTimeout(() => {
-      if (!active) return;
-      void advertiseCurrent();
-      rotationTimer = setInterval(
-        () => void advertiseCurrent(),
-        RELAY_ROTATION_SECONDS * 1_000,
-      );
-    }, getRelayBackoffMs());
+    // TEMPORARILY DISABLED for L->A->B->C BLE relay chain testing, to
+    // isolate whether the staggered backoff itself is a variable before
+    // re-enabling it. Re-enable by restoring the block below (kept intact,
+    // commented out) once the chain is confirmed working without it.
+    //
+    // // Stagger the first advertise attempt across devices that all became
+    // // relay-eligible around the same moment (e.g. many students marking
+    // // off the same upstream relay within seconds of each other) so they
+    // // don't all request an advertiser slot from the BLE controller in the
+    // // same instant — a real contention point that gets worse the more
+    // // devices are simultaneously active, i.e. worse at greater hop
+    // // distance from the lecturer. relayElection.ts's own jitter helper,
+    // // otherwise unused.
+    // let rotationTimer: ReturnType<typeof setInterval> | undefined;
+    // const backoffTimer = setTimeout(() => {
+    //   if (!active) return;
+    //   void advertiseCurrent();
+    //   rotationTimer = setInterval(
+    //     () => void advertiseCurrent(),
+    //     RELAY_ROTATION_SECONDS * 1_000,
+    //   );
+    // }, getRelayBackoffMs());
+    // return () => {
+    //   active = false;
+    //   clearTimeout(backoffTimer);
+    //   if (rotationTimer) clearInterval(rotationTimer);
+    //   void stop();
+    // };
+    void advertiseCurrent();
+    const rotationTimer = setInterval(
+      () => void advertiseCurrent(),
+      RELAY_ROTATION_SECONDS * 1_000,
+    );
     return () => {
       active = false;
-      clearTimeout(backoffTimer);
-      if (rotationTimer) clearInterval(rotationTimer);
+      clearInterval(rotationTimer);
       void stop();
     };
   }, [bleAdvertisingSupported, bluetoothEnabled, session, success]);
