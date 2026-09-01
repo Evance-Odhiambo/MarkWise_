@@ -387,8 +387,64 @@ export class InPersonVerificationService {
     const expectedPin = String(
       (parseInt(digest.slice(0, 8), 16) >>> 0) % 1_000_000
     ).padStart(6, "0");
-    if (!session.sessionKey || expectedPin !== receivedPin)
-      throw new Error("PIN_INVALID");
+    if (!session.sessionKey || expectedPin !== receivedPin) {
+      // Not the lecturer's PIN — try a peer "helper PIN" instead. Any
+      // student already BLE/QR-*server*-verified for this exact session can
+      // generate one fully offline from their own relay device key (the
+      // same key already used to sign BLE/QR relay proofs); we can't know
+      // in advance which student's key a given code came from, so check
+      // against all of them. Server-side "verified" is the only signal this
+      // side can act on — it has no visibility into a student's local/
+      // optimistic state, and PIN-origin marks are deliberately excluded
+      // (PIN correctness is never confirmed except by the server itself, so
+      // a PIN-marked student can't yet be trusted to vouch for someone
+      // else). Two queries regardless of roster size, not one per candidate.
+      //
+      // Accepting a match against any of N verified students' codes instead
+      // of exactly one lecturer code trades random-guess resistance from
+      // 1-in-1,000,000 down to roughly N-in-1,000,000 per submission — N
+      // bounded by this session's roster, behind an authenticated per-
+      // student request. Same trust model as PIN-sharing already relies on
+      // today, just multiplied by roster size.
+      const helpers = await this.prisma.inPersonAttendanceRecord.findMany({
+        where: {
+          conductedSessionId: session.id,
+          verificationStatus: "verified",
+          method: { in: ["ble", "qr"] },
+        },
+        select: { studentId: true },
+        distinct: ["studentId"],
+      });
+      let matched = false;
+      if (helpers.length) {
+        const keys = await this.prisma.studentDevice.findMany({
+          where: {
+            userId: { in: helpers.map((h) => h.studentId) },
+            role: "student",
+          },
+          orderBy: { lastUsedAt: "desc" },
+        });
+        const keyByStudent = new Map<string, string>();
+        for (const key of keys)
+          if (!keyByStudent.has(key.userId))
+            keyByStudent.set(key.userId, key.deviceKey);
+        for (const [helperId, deviceKey] of keyByStudent) {
+          const peerMessage = [session.id, helperId, receivedCounter].join("|");
+          const peerDigest = crypto
+            .createHmac("sha256", deviceKey)
+            .update(peerMessage)
+            .digest("hex");
+          const peerExpected = String(
+            (parseInt(peerDigest.slice(0, 8), 16) >>> 0) % 1_000_000
+          ).padStart(6, "0");
+          if (peerExpected === receivedPin) {
+            matched = true;
+            break;
+          }
+        }
+      }
+      if (!matched) throw new Error("PIN_INVALID");
+    }
     await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
     const record = await this.prisma.inPersonAttendanceRecord.create({
       data: {

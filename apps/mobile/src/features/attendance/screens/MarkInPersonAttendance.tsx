@@ -26,7 +26,7 @@ import {
   submitPinByUnit,
   ApiRequestError,
 } from '../api/inPersonAttendanceApi';
-import { createSubmittedPinPayload } from '../security/attendancePin';
+import { createSubmittedPinPayload, createHelperPin } from '../security/attendancePin';
 import {
   PIN_ROTATION_SECONDS,
   RELAY_ROTATION_SECONDS,
@@ -51,6 +51,7 @@ import {
   decodeRelayPayload,
   decodeOpaqueRelayPayload,
   encodeOpaqueRelayPayload,
+  getOrCreateRelayKey,
 } from '../security/attendanceRelay';
 import { QRCodeDisplay } from '../components/in-person/QRCodeDisplay';
 import { AttendanceBackHeader } from '../components/AttendanceBackHeader';
@@ -106,6 +107,8 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const [relayCode, setRelayCode] = useState<string | null>(null);
   const [showRelayCodeEntry, setShowRelayCodeEntry] = useState(false);
   const [relayCodeInput, setRelayCodeInput] = useState('');
+  const [helperPin, setHelperPin] = useState<string | null>(null);
+  const [helperPinRemainingSeconds, setHelperPinRemainingSeconds] = useState(0);
   const [bluetoothEnabled, setBluetoothEnabled] = useState(false);
   const [bleAdvertisingSupported, setBleAdvertisingSupported] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -139,6 +142,14 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     session: InPersonSession;
     evidence: string;
   } | null>(null);
+  // Stricter than relayParentRef: excludes PIN-origin marks. A student who
+  // only typed the lecturer's PIN can't yet be locally certain that PIN was
+  // correct (only the server can confirm it), so they aren't trusted to
+  // vouch for a classmate via a helper PIN until that's server-verified —
+  // unlike BLE/QR, whose local structural validation is a real trust signal
+  // on its own (see scheduleRelay).
+  const helperPinParentRef = useRef<{ session: InPersonSession } | null>(null);
+  const helperRelayKeyRef = useRef<string | null>(null);
   const { capture } = useInPersonCapture(session);
   const { sync } = useAttendanceSync(token);
   const screenClasses = isDark ? 'bg-slate-950' : 'bg-slate-50';
@@ -299,6 +310,10 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       // broadcast relaying. There's no election/selection step; any
       // verified or duplicate mark is relay-eligible.
       relayParentRef.current = { session: attendanceSession, evidence };
+      // Helper-PIN eligibility is the same guard above, minus PIN-origin
+      // marks — see helperPinParentRef's declaration for why.
+      helperPinParentRef.current =
+        attendanceMethod === 'pin' ? null : { session: attendanceSession };
       setRelayError(null);
       if (userId) {
         // Persist relay eligibility so it survives app restarts/backgrounding
@@ -402,6 +417,51 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       if (timer) clearTimeout(timer);
     };
   }, [success, userId, token]);
+
+  // Displays a rotating 6-digit "helper PIN" for the struggling classmate to
+  // type into their own PIN entry — no server call to mint or redeem it,
+  // unlike the opaque relay code above. Only shown once helperPinParentRef
+  // is set (BLE/QR-origin, verified/duplicate — see scheduleRelay), and only
+  // recomputes locally on each rotation boundary.
+  useEffect(() => {
+    const parent = helperPinParentRef.current;
+    if (!parent || !userId) {
+      setHelperPin(null);
+      return;
+    }
+    let active = true;
+    const tick = async () => {
+      if (!active) return;
+      if (parent.session.expiresAt <= Date.now()) {
+        setHelperPin(null);
+        return;
+      }
+      const nowMs = nowEpochMs();
+      setHelperPinRemainingSeconds(
+        PIN_ROTATION_SECONDS - (Math.floor(nowMs / 1000) % PIN_ROTATION_SECONDS),
+      );
+      try {
+        if (!helperRelayKeyRef.current)
+          helperRelayKeyRef.current = await getOrCreateRelayKey();
+        if (!active) return;
+        const { pin } = await createHelperPin(
+          parent.session.id,
+          userId,
+          helperRelayKeyRef.current,
+          nowMs,
+        );
+        if (active) setHelperPin(pin);
+      } catch {
+        // Keychain access can transiently fail; the next tick retries.
+      }
+    };
+    void tick();
+    const timer = setInterval(() => void tick(), 1_000);
+    return () => {
+      active = false;
+      clearInterval(timer);
+    };
+  }, [success, userId]);
 
   useEffect(() => {
     const stop = async () => {
@@ -1416,6 +1476,27 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                     </Text>
                   )}
                 </View>
+                {helperPin && (
+                  <View
+                    className={`items-center rounded-2xl border p-5 ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-900'
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <Text className={`mb-2 text-lg font-bold ${titleClasses}`}>
+                      Help a classmate
+                    </Text>
+                    <Text className="text-3xl font-extrabold tracking-widest text-emerald-600">
+                      {helperPin}
+                    </Text>
+                    <Text className={`mt-3 text-center text-xs ${bodyClasses}`}>
+                      For a classmate whose phone can't scan QR or Bluetooth —
+                      they enter this in their own "Enter PIN" screen. Works
+                      fully offline; refreshes in {helperPinRemainingSeconds}s.
+                    </Text>
+                  </View>
+                )}
                 <View
                   className={`rounded-2xl border p-4 ${
                     relayBleActive
