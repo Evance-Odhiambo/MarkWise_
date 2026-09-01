@@ -33,3 +33,10 @@ export const getPriorityColor = (priority: Notification['priority']) => {
   };
   return colors[priority];
 };
+
+/** Truncates preview text to a word count, appending "..." if it was cut. */
+export const truncateWords = (text: string, maxWords = 12): string => {
+  const words = text.trim().split(/\s+/);
+  if (words.length <= maxWords) return text.trim();
+  return `${words.slice(0, maxWords).join(' ')}...`;
+};

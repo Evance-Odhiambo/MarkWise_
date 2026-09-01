@@ -5,6 +5,7 @@ import {
   formatTimestamp,
   getNotificationIcon,
   getPriorityColor,
+  truncateWords,
 } from '../utils/formatter';
 import { useTheme } from '../../theme/context/ThemeContext';
 
@@ -57,8 +58,11 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
             </Text>
           </View>
 
-          <Text className={`text-sm mt-1 ${bodyColor}`} numberOfLines={2}>
-            {body}
+          <Text
+            className={`text-sm font-semibold mt-1 ${bodyColor}`}
+            numberOfLines={2}
+          >
+            {truncateWords(body)}
           </Text>
         </View>
 
