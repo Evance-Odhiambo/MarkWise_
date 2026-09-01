@@ -223,8 +223,13 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         setRemainingSeconds(0);
         return;
       }
+      // nowEpochMs() (server-clock-adjusted), not Date.now() (raw device
+      // clock) — matches the lecturer's own countdown (TakeInPersonAttendance)
+      // and every other rotation timer in this app. Using the device's
+      // unadjusted clock here made the two counters visibly diverge
+      // whenever a student's device clock was skewed from the server's.
       setRemainingSeconds(
-        Math.max(0, Math.ceil((session.expiresAt - Date.now()) / 1000)),
+        Math.max(0, Math.ceil((session.expiresAt - nowEpochMs()) / 1000)),
       );
     };
     update();
@@ -355,7 +360,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     if (!parent) return;
     let active = true;
     const updateQr = async () => {
-      if (parent.session.expiresAt <= Date.now()) {
+      if (parent.session.expiresAt <= nowEpochMs()) {
         if (active) setRelayPayload(null);
         return;
       }
@@ -393,11 +398,11 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     let active = true;
     const tick = async () => {
       if (!active) return;
-      if (parent.session.expiresAt <= Date.now()) {
+      const nowMs = nowEpochMs();
+      if (parent.session.expiresAt <= nowMs) {
         setHelperPin(null);
         return;
       }
-      const nowMs = nowEpochMs();
       try {
         if (!helperRelayKeyRef.current)
           helperRelayKeyRef.current = await getOrCreateRelayKey();
@@ -433,14 +438,14 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       !bluetoothEnabled ||
       !bleAdvertisingSupported ||
       !session ||
-      session.expiresAt <= Date.now()
+      session.expiresAt <= nowEpochMs()
     ) {
       void stop();
       return;
     }
     let active = true;
     const advertiseCurrent = async () => {
-      if (session.expiresAt <= Date.now()) {
+      if (session.expiresAt <= nowEpochMs()) {
         await stop();
         return;
       }
@@ -467,7 +472,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         if (Platform.OS === 'android')
           await NativeBLEAdvertiser.startBackgroundAdvertising(
             base64Payload,
-            Math.ceil((session.expiresAt - Date.now()) / 1_000),
+            Math.ceil((session.expiresAt - nowEpochMs()) / 1_000),
           );
         else await NativeBLEAdvertiser.startAdvertising(base64Payload);
         if (active) {
@@ -691,7 +696,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       );
       return;
     }
-    if (pinSession.expiresAt <= Date.now()) {
+    if (pinSession.expiresAt <= nowEpochMs()) {
       Alert.alert(
         'Session ended',
         'This attendance session is no longer active.',
