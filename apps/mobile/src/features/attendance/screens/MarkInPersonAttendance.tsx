@@ -496,6 +496,18 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         await stop();
         return;
       }
+      // The scan effect (823-...) independently stops scanning on this same
+      // `success` flip, but as a separate, uncoordinated useEffect there's
+      // no guarantee its stopScan() actually completes at the radio/
+      // controller level before this effect's startAdvertising() fires —
+      // both just react to the same state change concurrently. The
+      // lecturer's device never scans at all, so it never hits this
+      // transition; a relay device does, on every single hop, right as it
+      // becomes eligible. Explicitly awaiting the stop here (idempotent —
+      // a no-op if scanning is already stopped) removes that race instead
+      // of hoping the two independent effects happen to order themselves
+      // correctly.
+      await NativeBLEScanner.stopScan().catch(() => undefined);
       try {
         // Dev-only regression guard: a relay must rebroadcast the exact
         // session identity it was verified against — same id/nonce/unit/
@@ -1477,7 +1489,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                   </View>
                   <Text className={`mt-1 text-xs ${bodyClasses}`}>
                     {relayBleActive
-                      ? 'Nearby classmates are detected automatically.'
+                      ? 'Broadcasting BLE signals to nearby classmates.'
                       : relayError || 'Starts once your mark is confirmed.'}
                   </Text>
                 </View>
