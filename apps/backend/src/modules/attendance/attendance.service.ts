@@ -4,6 +4,7 @@ import {
   MAX_ONLINE_SESSION_MINUTES,
   normalizeUnitCode,
 } from "./attendance.schema.js";
+import { assertLecturerCourseScope } from "./courseScope.js";
 
 export class AttendanceService {
   constructor(
@@ -184,7 +185,7 @@ export class AttendanceService {
   }) {
     const student = await this.prisma.student.findUnique({
       where: { id: input.studentId },
-      select: { admissionNumber: true, institutionId: true },
+      select: { admissionNumber: true, institutionId: true, courseId: true },
     });
     if (!student) {
       await this.audit({
@@ -202,7 +203,13 @@ export class AttendanceService {
 
     const session = await this.prisma.onlineAttendanceSession.findUnique({
       where: { id: input.sessionId },
-      select: { unitCode: true, expiresAt: true, endedAt: true, institutionId: true },
+      select: {
+        unitCode: true,
+        expiresAt: true,
+        endedAt: true,
+        institutionId: true,
+        lecturerId: true,
+      },
     });
     if (!session || session.endedAt || session.expiresAt <= new Date()) {
       await this.audit({
@@ -362,6 +369,27 @@ export class AttendanceService {
         ipAddress: input.ipAddress,
         success: false,
         reason: "NOT_ENROLLED",
+      });
+      return { success: false, blocked: true as const };
+    }
+
+    try {
+      await assertLecturerCourseScope(
+        this.prisma,
+        session.lecturerId,
+        unit.id,
+        student.courseId,
+      );
+    } catch {
+      await this.audit({
+        event: "ONLINE_ATTENDANCE_SUBMIT",
+        actorId: input.studentId,
+        role: "student",
+        sessionId: input.sessionId,
+        deviceId: input.deviceId,
+        ipAddress: input.ipAddress,
+        success: false,
+        reason: "WRONG_COURSE_SECTION",
       });
       return { success: false, blocked: true as const };
     }

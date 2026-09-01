@@ -8,7 +8,24 @@ export type OnlineSession = {
   _count?: { records: number };
 };
 
-export type TeachingUnit = { id: string; code: string; name: string };
+export type TeachingUnit = {
+  id: string;
+  code: string;
+  name: string;
+  bleId?: string | null;
+  // Courses this unit is offered under. Length 0-1 means no course picker
+  // is needed - either a BleMapping-only synthetic unit, or the common case
+  // of a unit offered under just one course.
+  courses?: Array<{ id: string; name: string }>;
+};
+
+// A lecturer's scoping for one unit: null = unrestricted (teaches every
+// course this unit is offered under), an array = teaches only those
+// course(s)' cohort as their own section.
+export type TeachingUnitSelection = {
+  unitId: string;
+  courseIds: string[] | null;
+};
 
 function token() {
   if (typeof window === "undefined") return "";
@@ -153,23 +170,31 @@ export function getLecturerUnitCatalog() {
     const body = await response.json().catch(() => ({}));
     if (!response.ok)
       throw new Error(body.error ?? "Unable to load unit catalog");
-    return body as { units: TeachingUnit[]; selectedUnitIds: string[] };
+    return body as {
+      units: TeachingUnit[];
+      selectedUnitIds: string[];
+      selections: TeachingUnitSelection[];
+    };
   });
 }
 
-export function saveLecturerUnits(unitIds: string[]) {
+export function saveLecturerUnits(selections: TeachingUnitSelection[]) {
   return fetch("/api/v1/lecturers/units", {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${token()}`,
     },
-    body: JSON.stringify({ unitIds }),
+    body: JSON.stringify({ selections }),
   }).then(async (response) => {
     const body = await response.json().catch(() => ({}));
     if (!response.ok)
       throw new Error(body.error ?? "Unable to save teaching units");
-    return body as { success: true; selectedUnitIds: string[] };
+    return body as {
+      success: true;
+      selectedUnitIds: string[];
+      selections: TeachingUnitSelection[];
+    };
   });
 }
 
@@ -182,7 +207,13 @@ export function getOnlineSession(id: string) {
 export function getAttendees(id: string) {
   return request<{
     success: true;
-    data: Array<{ id: string; admissionNumber: string; markedAt: string }>;
+    data: Array<{
+      id: string;
+      studentId: string;
+      admissionNumber: string;
+      unitCode: string;
+      markedAt: string;
+    }>;
   }>(`/sessions/${encodeURIComponent(id)}/attendees`);
 }
 

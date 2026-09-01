@@ -73,14 +73,15 @@ model OnboardingRequest {
 // ── Academic structure ────────────────────────────────────────────────────────
 
 model Course {
-  id            String       @id @default(uuid())
+  id            String         @id @default(uuid())
   name          String
   description   String?
   institutionId String
   students      Student[]
   years         CourseYear[]
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  lecturerUnits LecturerUnit[]
+  createdAt     DateTime       @default(now())
+  updatedAt     DateTime       @updatedAt
 
   institution Institution @relation(fields: [institutionId], references: [id])
 
@@ -311,16 +312,27 @@ model LecturerAuth {
 
 // ── Lecturer teaching units ──────────────────────────────────────────────
 
+// A lecturer's teaching-unit assignment. courseId is null by default,
+// meaning "unrestricted" - the lecturer teaches this unit to whichever
+// course(s) it's offered under (the common case: units offered under just
+// one course, or a genuinely shared class across courses). When a unit is
+// offered under multiple courses and a lecturer only teaches a subset of
+// them as separate sections, one row per selected course narrows their
+// scope: attendance verification then only accepts students whose own
+// course matches one of these rows (see assertLecturerCourseScope).
 model LecturerUnit {
   id         String   @id @default(uuid())
   lecturerId String
   unitId     String
+  courseId   String?
   lecturer   Lecturer @relation(fields: [lecturerId], references: [id], onDelete: Cascade)
   unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  course     Course?  @relation(fields: [courseId], references: [id], onDelete: Cascade)
 
-  @@unique([lecturerId, unitId])
+  @@unique([lecturerId, unitId, courseId])
   @@index([unitId])
   @@index([lecturerId])
+  @@index([courseId])
   @@map("LecturerUnit")
 }
 

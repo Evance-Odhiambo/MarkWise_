@@ -4,6 +4,7 @@ import { requireAttendanceRole } from "../../plugins/index.js";
 import { sendPushNotification } from "../notification/notification.service.js";
 import { InPersonService } from "./in-person/inPerson.service.js";
 import { normalizeUnitCode } from "../../shared/unitCodes.js";
+import { assertLecturerCourseScope } from "./courseScope.js";
 
 const GRANT_TTL_MS = 15 * 60 * 1000;
 
@@ -35,7 +36,7 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(404).send({ error: "Lecturer was not found" });
       const student = await app.prisma.student.findUnique({
         where: { id: studentId },
-        select: { id: true, name: true, institutionId: true },
+        select: { id: true, name: true, institutionId: true, courseId: true },
       });
       const unit = await app.prisma.unit.findFirst({
         where: {
@@ -55,6 +56,20 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
         return reply
           .code(403)
           .send({ error: "Student is not enrolled in this unit" });
+
+      try {
+        await assertLecturerCourseScope(
+          app.prisma,
+          request.user.id,
+          unit.id,
+          student.courseId,
+        );
+      } catch {
+        return reply.code(403).send({
+          error:
+            "This student is enrolled in a different course's section of this unit",
+        });
+      }
 
       const grant = crypto.randomBytes(32).toString("base64url");
       const validUntil = Date.now() + GRANT_TTL_MS;

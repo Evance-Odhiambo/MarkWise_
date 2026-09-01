@@ -12,11 +12,16 @@ import {
   getLecturerUnitCatalog,
   saveLecturerUnits,
   type TeachingUnit,
+  type TeachingUnitSelection,
 } from "@/lib/attendance/online-attendance";
+
+// unitId -> courseIds. null = unrestricted (teaches every course this unit
+// is offered under); an array = teaches only those course(s)' own section.
+type SelectionState = Record<string, string[] | null>;
 
 export default function LecturerUnitsPage() {
   const [units, setUnits] = useState<TeachingUnit[]>([]);
-  const [selected, setSelected] = useState<string[]>([]);
+  const [selections, setSelections] = useState<SelectionState>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState("");
@@ -26,7 +31,11 @@ export default function LecturerUnitsPage() {
     getLecturerUnitCatalog()
       .then((result) => {
         setUnits(result.units);
-        setSelected(result.selectedUnitIds);
+        setSelections(
+          Object.fromEntries(
+            result.selections.map((s) => [s.unitId, s.courseIds]),
+          ),
+        );
       })
       .catch((error: unknown) =>
         setMessage(
@@ -39,18 +48,44 @@ export default function LecturerUnitsPage() {
   }, []);
 
   const toggleUnit = (unitId: string) =>
-    setSelected((current) =>
-      current.includes(unitId)
-        ? current.filter((id) => id !== unitId)
-        : [...current, unitId],
-    );
+    setSelections((current) => {
+      if (unitId in current) {
+        const next = { ...current };
+        delete next[unitId];
+        return next;
+      }
+      return { ...current, [unitId]: null };
+    });
+
+  // Sets a unit's course scope directly - null for "all courses", or a
+  // specific list when the lecturer narrows to their own section(s).
+  const setUnitCourses = (unitId: string, courseIds: string[] | null) =>
+    setSelections((current) => ({ ...current, [unitId]: courseIds }));
+
+  const toggleUnitCourse = (unitId: string, courseId: string) =>
+    setSelections((current) => {
+      const existing = current[unitId];
+      if (existing === null || existing === undefined) {
+        return { ...current, [unitId]: [courseId] };
+      }
+      const next = existing.includes(courseId)
+        ? existing.filter((id) => id !== courseId)
+        : [...existing, courseId];
+      return { ...current, [unitId]: next };
+    });
 
   const selectAll = () => {
-    setSelected(filteredUnits.map((u) => u.id));
+    setSelections((current) => {
+      const next = { ...current };
+      filteredUnits.forEach((unit) => {
+        if (!(unit.id in next)) next[unit.id] = null;
+      });
+      return next;
+    });
   };
 
   const deselectAll = () => {
-    setSelected([]);
+    setSelections({});
   };
 
   const filteredUnits = units.filter((unit) =>
@@ -63,7 +98,10 @@ export default function LecturerUnitsPage() {
     setSaving(true);
     setMessage("");
     try {
-      await saveLecturerUnits(selected);
+      const payload: TeachingUnitSelection[] = Object.entries(selections).map(
+        ([unitId, courseIds]) => ({ unitId, courseIds }),
+      );
+      await saveLecturerUnits(payload);
       setMessage("Teaching units saved successfully.");
       setTimeout(() => setMessage(""), 3500);
     } catch (error: unknown) {
@@ -110,7 +148,7 @@ export default function LecturerUnitsPage() {
               Curriculum Unit Catalog
             </span>
             <Badge variant="outline" className="border-emerald-200 bg-emerald-50 text-emerald-800 text-[9.5px]">
-              {selected.length} Selected
+              {Object.keys(selections).length} Selected
             </Badge>
           </div>
 
@@ -170,44 +208,89 @@ export default function LecturerUnitsPage() {
         ) : (
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
             {filteredUnits.map((unit) => {
-              const active = selected.includes(unit.id);
+              const active = unit.id in selections;
+              const courseSelection = selections[unit.id];
+              const courses = unit.courses ?? [];
+              const needsCoursePicker = active && courses.length > 1;
 
               return (
-                <button
+                <div
                   key={unit.id}
-                  type="button"
-                  onClick={() => toggleUnit(unit.id)}
-                  className={`flex items-start gap-2.5 rounded-lg border p-2.5 text-left transition shadow-2xs ${
+                  className={`rounded-lg border p-2.5 transition shadow-2xs ${
                     active
                       ? "border-emerald-500/80 bg-emerald-50/70"
                       : "border-slate-200 bg-white hover:border-slate-300 hover:bg-slate-50/50"
                   }`}
                 >
-                  <span
-                    className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
-                      active
-                        ? "border-emerald-600 bg-emerald-600 text-white"
-                        : "border-slate-300 bg-white text-transparent"
-                    }`}
+                  <button
+                    type="button"
+                    onClick={() => toggleUnit(unit.id)}
+                    className="flex w-full items-start gap-2.5 text-left"
                   >
-                    <Check className="h-3 w-3" />
-                  </span>
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-1.5">
-                      <span className="font-bold text-[11px] text-slate-900 font-mono">
-                        {unit.code}
-                      </span>
-                      {unit.bleId && (
-                        <span className="text-[8.5px] font-mono text-slate-400 bg-slate-100 px-1 rounded">
-                          HEX: {unit.bleId}
+                    <span
+                      className={`mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded border transition ${
+                        active
+                          ? "border-emerald-600 bg-emerald-600 text-white"
+                          : "border-slate-300 bg-white text-transparent"
+                      }`}
+                    >
+                      <Check className="h-3 w-3" />
+                    </span>
+                    <div className="min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <span className="font-bold text-[11px] text-slate-900 font-mono">
+                          {unit.code}
                         </span>
-                      )}
+                        {unit.bleId && (
+                          <span className="text-[8.5px] font-mono text-slate-400 bg-slate-100 px-1 rounded">
+                            HEX: {unit.bleId}
+                          </span>
+                        )}
+                      </div>
+                      <p className="mt-0.5 text-[10px] text-slate-600 leading-snug line-clamp-2">
+                        {unit.name}
+                      </p>
                     </div>
-                    <p className="mt-0.5 text-[10px] text-slate-600 leading-snug line-clamp-2">
-                      {unit.name}
-                    </p>
-                  </div>
-                </button>
+                  </button>
+
+                  {needsCoursePicker && (
+                    <div className="mt-2 flex flex-wrap items-center gap-1 border-t border-emerald-100 pt-2">
+                      <span className="mr-0.5 text-[9px] font-semibold uppercase tracking-wide text-slate-500">
+                        Teaching for:
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setUnitCourses(unit.id, null)}
+                        className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold transition ${
+                          courseSelection === null
+                            ? "bg-emerald-600 text-white"
+                            : "border border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
+                        }`}
+                      >
+                        All courses
+                      </button>
+                      {courses.map((course) => {
+                        const picked =
+                          courseSelection !== null &&
+                          (courseSelection ?? []).includes(course.id);
+                        return (
+                          <button
+                            key={course.id}
+                            type="button"
+                            onClick={() => toggleUnitCourse(unit.id, course.id)}
+                            className={`rounded-full px-1.5 py-0.5 text-[9.5px] font-semibold transition ${
+                              picked
+                                ? "bg-emerald-600 text-white"
+                                : "border border-slate-200 bg-white text-slate-600 hover:border-emerald-300"
+                            }`}
+                          >
+                            {course.name}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               );
             })}
           </div>

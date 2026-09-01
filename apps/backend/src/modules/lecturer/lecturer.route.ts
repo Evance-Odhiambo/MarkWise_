@@ -33,8 +33,40 @@ interface BulkCreateBody {
   lecturers: Array<{ name: string; staffNumber: string; email?: string }>;
 }
 
+interface TeachingUnitSelection {
+  unitId: string;
+  // Which course(s) this lecturer teaches this unit for, when it's offered
+  // under more than one. Omitted/null/empty = unrestricted - the lecturer
+  // teaches every course this unit is offered under (today's default, and
+  // the only possibility for the common case of a unit offered under just
+  // one course).
+  courseIds?: string[] | null;
+}
+
 interface TeachingUnitSelectionBody {
-  unitIds: string[];
+  selections?: TeachingUnitSelection[];
+  // Legacy shape, still sent by the mobile app (which has no course
+  // concept at all) - treated as `selections` with every unit unrestricted.
+  unitIds?: string[];
+}
+
+// Rows read back from LecturerUnit for one lecturer, grouped per unit: a
+// null courseId anywhere in the group means unrestricted for that unit.
+function groupLecturerUnitAssignments(
+  rows: Array<{ unitId: string; courseId: string | null }>,
+): Array<{ unitId: string; courseIds: string[] | null }> {
+  const byUnit = new Map<string, Set<string | null>>();
+  for (const { unitId, courseId } of rows) {
+    const set = byUnit.get(unitId) ?? new Set<string | null>();
+    set.add(courseId);
+    byUnit.set(unitId, set);
+  }
+  return [...byUnit.entries()].map(([unitId, courseIdSet]) => ({
+    unitId,
+    courseIds: courseIdSet.has(null)
+      ? null
+      : [...courseIdSet].filter((id): id is string => id !== null),
+  }));
 }
 
 export const lecturerRoutes: FastifyPluginAsync = async (app) => {
@@ -103,7 +135,9 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         ? Math.min(Math.max(parsedLimit, 1), 100)
         : 50;
       
-      // Get units from Unit table
+      // Get units from Unit table, along with which course(s) each is
+      // offered under - the frontend only needs to show a course picker
+      // when a unit has more than one.
       const units = await app.prisma.unit.findMany({
         where: {
           institutionId: lecturer.institutionId,
@@ -118,9 +152,32 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         },
         orderBy: { code: "asc" },
         take: limit,
-        select: { id: true, code: true, name: true, bleId: true },
+        select: {
+          id: true,
+          code: true,
+          name: true,
+          bleId: true,
+          offerings: {
+            select: {
+              semester: {
+                select: {
+                  courseYear: { select: { course: { select: { id: true, name: true } } } },
+                },
+              },
+            },
+          },
+        },
       });
-      
+
+      const unitsWithCourses = units.map(({ offerings, ...unit }) => {
+        const courseMap = new Map<string, { id: string; name: string }>();
+        for (const offering of offerings) {
+          const course = offering.semester.courseYear.course;
+          if (!courseMap.has(course.id)) courseMap.set(course.id, course);
+        }
+        return { ...unit, courses: [...courseMap.values()] };
+      });
+
       // Also get units from BleMapping that aren't in Unit table
       const unitCodes = new Set(units.map(u => u.code));
       const bleMappings = await app.prisma.bleMapping.findMany({
@@ -136,7 +193,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         take: limit,
         select: { unitCode: true, unitBleId: true },
       });
-      
+
       // Add BleMapping units that don't exist in Unit table
       const additionalUnits = bleMappings
         .filter(mapping => mapping.unitCode && !unitCodes.has(mapping.unitCode))
@@ -145,17 +202,22 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
           code: mapping.unitCode!,
           name: mapping.unitCode!, // Use code as name since we don't have a name field
           bleId: mapping.unitBleId,
+          courses: [] as { id: string; name: string }[],
         }));
-      
-      const allUnits = [...units, ...additionalUnits];
-      
+
+      const allUnits = [...unitsWithCourses, ...additionalUnits];
+
       const assignments = await app.prisma.lecturerUnit.findMany({
         where: { lecturerId: request.user.id },
-        select: { unitId: true },
+        select: { unitId: true, courseId: true },
       });
+      const selections = groupLecturerUnitAssignments(assignments);
       return reply.send({
         units: allUnits,
-        selectedUnitIds: assignments.map(({ unitId }) => unitId),
+        // Legacy flat shape, kept for the mobile app (no course concept).
+        selectedUnitIds: selections.map((s) => s.unitId),
+        // Richer shape for the web UI's per-course scoping.
+        selections,
       });
     },
   );
@@ -173,25 +235,31 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         return reply.code(400).send({ error: "A valid unit code is required" });
 
       // First try to find unit with full hierarchy
-      let unit = await app.prisma.unit.findFirst({
+      const unit = await app.prisma.unit.findFirst({
         where: {
           code: unitCode,
           institutionId: lecturer.institutionId,
         },
         select: {
+          id: true,
           enrollments: {
             orderBy: { student: { admissionNumber: "asc" } },
             select: {
-              student: { select: { id: true, name: true, admissionNumber: true } },
+              student: {
+                select: { id: true, name: true, admissionNumber: true, courseId: true },
+              },
             },
           },
         },
       });
-      
-      // If unit not found in Unit table, query enrollments directly by unitCode
-      // This handles cases where unit exists in BleMapping but not in Unit table
+
+      // If unit not found in Unit table, query enrollments directly by
+      // unitCode. This handles cases where unit exists in BleMapping but
+      // not in Unit table - there's no Unit.id here for a LecturerUnit
+      // course-scoping row to attach to, so nothing to narrow by.
+      let enrollments = unit?.enrollments;
       if (!unit) {
-        const enrollments = await app.prisma.enrollment.findMany({
+        enrollments = await app.prisma.enrollment.findMany({
           where: {
             unit: {
               code: unitCode,
@@ -200,25 +268,41 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
           },
           orderBy: { student: { admissionNumber: "asc" } },
           select: {
-            student: { select: { id: true, name: true, admissionNumber: true } },
+            student: {
+              select: { id: true, name: true, admissionNumber: true, courseId: true },
+            },
           },
         });
-        
-        // Create a mock unit structure with enrollments
-        unit = { enrollments };
       }
-      
-      if (!unit || unit.enrollments.length === 0) {
+
+      if (!enrollments || enrollments.length === 0) {
         // Return empty roster instead of 404 - unit exists but has no enrollments
         return reply.send({
           unitCode,
           students: [],
         });
       }
-      
+
+      // Narrow to this lecturer's course-scoped section(s) for the unit, if
+      // they've selected any - see LecturerUnit.courseId in schema.prisma.
+      if (unit) {
+        const scopes = await app.prisma.lecturerUnit.findMany({
+          where: { lecturerId: request.user.id, unitId: unit.id },
+          select: { courseId: true },
+        });
+        const unrestricted =
+          scopes.length === 0 || scopes.some((s) => s.courseId === null);
+        if (!unrestricted) {
+          const allowedCourseIds = new Set(scopes.map((s) => s.courseId));
+          enrollments = enrollments.filter((e) =>
+            allowedCourseIds.has(e.student.courseId),
+          );
+        }
+      }
+
       return reply.send({
         unitCode,
-        students: unit.enrollments.map(({ student }) => ({
+        students: enrollments.map(({ student }) => ({
           studentId: student.id,
           studentName: student.name,
           admissionNumber: student.admissionNumber,
@@ -231,17 +315,27 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
     "/units",
     { preHandler: requireAttendanceRole("lecturer") },
     async (request, reply) => {
-      const unitIds = Array.isArray(request.body.unitIds)
-        ? [
-            ...new Set(
-              request.body.unitIds.filter(
-                (id): id is string => typeof id === "string",
-              ),
-            ),
-          ]
-        : null;
-      if (!unitIds)
-        return reply.code(400).send({ error: "Unit IDs must be an array" });
+      // Accept the new per-unit course-scoped `selections` shape, or the
+      // legacy flat `unitIds` shape still sent by the mobile app (which has
+      // no course concept) - a legacy submission always creates an
+      // unrestricted (courseId: null) row per unit.
+      let selections: TeachingUnitSelection[];
+      if (Array.isArray(request.body.selections)) {
+        selections = request.body.selections.filter(
+          (s): s is TeachingUnitSelection => !!s && typeof s.unitId === "string",
+        );
+      } else if (Array.isArray(request.body.unitIds)) {
+        selections = request.body.unitIds
+          .filter((id): id is string => typeof id === "string")
+          .map((unitId) => ({ unitId, courseIds: null }));
+      } else {
+        return reply.code(400).send({ error: "Unit selections must be an array" });
+      }
+
+      // Dedupe by unitId - last one wins if the client sent the same unit twice.
+      const byUnitId = new Map<string, TeachingUnitSelection>();
+      for (const selection of selections) byUnitId.set(selection.unitId, selection);
+      selections = [...byUnitId.values()];
 
       const lecturer = await app.prisma.lecturer.findUnique({
         where: { id: request.user.id },
@@ -249,12 +343,23 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       });
       if (!lecturer)
         return reply.code(404).send({ error: "Lecturer record not found" });
+
+      const unitIds = selections.map((s) => s.unitId);
       const validUnits = await app.prisma.unit.findMany({
         where: {
           id: { in: unitIds },
           institutionId: lecturer.institutionId,
         },
-        select: { id: true },
+        select: {
+          id: true,
+          offerings: {
+            select: {
+              semester: {
+                select: { courseYear: { select: { course: { select: { id: true } } } } },
+              },
+            },
+          },
+        },
       });
       if (validUnits.length !== unitIds.length)
         return reply
@@ -263,19 +368,45 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
             error: "One or more units are not part of your institution",
           });
 
+      const offeredCourseIdsByUnit = new Map(
+        validUnits.map((u) => [
+          u.id,
+          new Set(u.offerings.map((o) => o.semester.courseYear.course.id)),
+        ]),
+      );
+
+      // One row per selection with no courseIds (unrestricted), or one row
+      // per selected course - silently dropping any courseId that isn't
+      // actually one of the unit's real offerings (a stale or tampered
+      // client payload shouldn't be able to create a meaningless row).
+      const rows: { lecturerId: string; unitId: string; courseId: string | null }[] = [];
+      for (const selection of selections) {
+        const offeredCourseIds = offeredCourseIdsByUnit.get(selection.unitId) ?? new Set();
+        const requestedCourseIds = (selection.courseIds ?? []).filter((id) =>
+          offeredCourseIds.has(id),
+        );
+        if (requestedCourseIds.length === 0) {
+          rows.push({ lecturerId: request.user.id, unitId: selection.unitId, courseId: null });
+        } else {
+          for (const courseId of requestedCourseIds)
+            rows.push({ lecturerId: request.user.id, unitId: selection.unitId, courseId });
+        }
+      }
+
       await app.prisma.$transaction(async (transaction) => {
         await transaction.lecturerUnit.deleteMany({
           where: { lecturerId: request.user.id },
         });
-        if (unitIds.length > 0)
-          await transaction.lecturerUnit.createMany({
-            data: unitIds.map((unitId) => ({
-              lecturerId: request.user.id,
-              unitId,
-            })),
-          });
+        if (rows.length > 0)
+          await transaction.lecturerUnit.createMany({ data: rows });
       });
-      return reply.send({ success: true, selectedUnitIds: unitIds });
+
+      const savedSelections = groupLecturerUnitAssignments(rows);
+      return reply.send({
+        success: true,
+        selectedUnitIds: unitIds,
+        selections: savedSelections,
+      });
     },
   );
 
@@ -289,7 +420,18 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         select: { unit: { select: { id: true, code: true, name: true } } },
       });
 
-      return reply.send({ units: assignments.map(({ unit }) => unit) });
+      // A lecturer can now have multiple rows per unit (one per course-
+      // scoped section) - dedupe to the distinct units for this simple list.
+      const seen = new Set<string>();
+      const units = assignments
+        .map(({ unit }) => unit)
+        .filter((unit) => {
+          if (seen.has(unit.id)) return false;
+          seen.add(unit.id);
+          return true;
+        });
+
+      return reply.send({ units });
     },
   );
 

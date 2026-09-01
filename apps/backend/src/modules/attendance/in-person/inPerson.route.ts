@@ -49,6 +49,8 @@ const REJECTION_REASON_MESSAGES: Record<string, string> = {
   METHOD_MISMATCH: "this method isn't available for this code",
   UNIT_NOT_FOUND: "this unit could not be found",
   NOT_ENROLLED: "you're not enrolled in this unit",
+  WRONG_COURSE_SECTION:
+    "this session is for a different course's section of this unit",
   DEVICE_CONFLICT:
     "this device is already linked to another student's attendance",
 };

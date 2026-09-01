@@ -1,4 +1,4 @@
-import type { Lecturer } from "../../../types/setup-lecturer";
+import type { Lecturer } from "../../types/setup-lecturer";
 
 interface ParseResult {
   headers: string[];

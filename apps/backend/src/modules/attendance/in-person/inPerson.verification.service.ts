@@ -11,6 +11,7 @@ import {
   PIN_ROTATION_SECONDS as PIN_WINDOW_SECONDS,
   QR_ROTATION_SECONDS as QR_WINDOW_SECONDS,
 } from "./inPerson.schema.js";
+import { assertLecturerCourseScope } from "../courseScope.js";
 
 const MAX_PIN_DRIFT = 1;
 
@@ -213,8 +214,15 @@ export class InPersonVerificationService {
       where: {
         studentId_unitId: { studentId: input.studentId, unitId },
       },
+      select: { id: true, student: { select: { courseId: true } } },
     });
     if (!enrollment) throw new Error("NOT_ENROLLED");
+    await assertLecturerCourseScope(
+      this.prisma,
+      session.lecturerId,
+      unitId,
+      enrollment.student.courseId,
+    );
 
     const duplicate = await this.prisma.inPersonAttendanceRecord.findFirst({
       where: { studentId: input.studentId, conductedSessionId: session.id },
@@ -273,8 +281,15 @@ export class InPersonVerificationService {
       where: {
         studentId_unitId: { studentId: input.studentId, unitId },
       },
+      select: { id: true, student: { select: { courseId: true } } },
     });
     if (!enrolled) throw new Error("NOT_ENROLLED");
+    await assertLecturerCourseScope(
+      this.prisma,
+      session.lecturerId,
+      unitId,
+      enrolled.student.courseId,
+    );
     const duplicate = await this.prisma.inPersonAttendanceRecord.findFirst({
       where: { studentId: input.studentId, conductedSessionId: session.id },
     });
@@ -338,8 +353,15 @@ export class InPersonVerificationService {
       where: {
         studentId_unitId: { studentId: input.studentId, unitId },
       },
+      select: { id: true, student: { select: { courseId: true } } },
     });
     if (!enrolled) throw new Error("NOT_ENROLLED");
+    await assertLecturerCourseScope(
+      this.prisma,
+      session.lecturerId,
+      unitId,
+      enrolled.student.courseId,
+    );
     const duplicate = await this.prisma.inPersonAttendanceRecord.findFirst({
       where: { studentId: input.studentId, conductedSessionId: session.id },
     });
@@ -520,8 +542,15 @@ export class InPersonVerificationService {
       where: {
         studentId_unitId: { studentId: input.studentId, unitId },
       },
+      select: { id: true, student: { select: { courseId: true } } },
     });
     if (!enrolled) throw new Error("NOT_ENROLLED");
+    await assertLecturerCourseScope(
+      this.prisma,
+      session.lecturerId,
+      unitId,
+      enrolled.student.courseId,
+    );
     const duplicate = await this.prisma.inPersonAttendanceRecord.findFirst({
       where: { studentId: input.studentId, conductedSessionId: session.id },
     });
