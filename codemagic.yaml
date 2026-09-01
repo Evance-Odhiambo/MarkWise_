@@ -1,0 +1,65 @@
+workflows:
+  ios-markwise:
+    name: MarkWise iOS
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    # Manually triggered only (no `triggering` block) — this project has no Mac,
+    # so builds cost real Codemagic minutes and there's no local way to sanity
+    # check a change before it runs here. Trigger builds by hand in the
+    # Codemagic dashboard, or add a `triggering:` block later once this is
+    # proven stable.
+    environment:
+      groups:
+        # Create this group in the Codemagic UI (Teams > your team > Group
+        # variables) once the App Store Connect API key integration (see the
+        # passkey/iOS plan's prerequisite step 5) exists. Referencing it here
+        # keeps the key itself out of this file / the git history.
+        - appstore_credentials
+      vars:
+        BUNDLE_ID: "com.markwise"
+        XCODE_WORKSPACE: "apps/mobile/ios/MarkWise.xcworkspace"
+        XCODE_SCHEME: "MarkWise"
+      node: 22.11.0
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Install npm dependencies
+        script: |
+          cd apps/mobile
+          # --legacy-peer-deps works around a pre-existing, unrelated peer-dep
+          # conflict between @nozbe/with-observables and @types/react in this
+          # project's lockfile — not specific to iOS or Codemagic.
+          npm ci --legacy-peer-deps
+      - name: Install CocoaPods dependencies
+        script: |
+          cd apps/mobile/ios
+          pod install
+      - name: Set up code signing
+        script: |
+          # Automatic signing via the App Store Connect API key integration —
+          # Codemagic creates/renews the certificate and provisioning profile
+          # for $BUNDLE_ID itself. Requires the Associated Domains capability
+          # to already be enabled on this App ID in the Apple Developer Portal
+          # (a manual, one-time step — see the plan's prerequisite step 2),
+          # or the generated profile won't include it and passkeys will fail
+          # even though the app builds and signs fine.
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_STORE \
+            --create
+          keychain initialize
+          app-store-connect list-builds --app-store-connect-provider-id > /dev/null || true
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Build .ipa
+        script: |
+          cd apps/mobile
+          xcode-project build-ipa \
+            --workspace "$XCODE_WORKSPACE" \
+            --scheme "$XCODE_SCHEME"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
+    publishing:
+      app_store_connect:
+        auth: integration
+        submit_to_testflight: true
