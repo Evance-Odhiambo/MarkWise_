@@ -1021,18 +1021,32 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             )
           : await getCachedInPersonSessionById(relay.sessionId);
         let resolvedSession = cached;
-        if (!resolvedSession && token) {
+        // A cached session resolved this way — especially by id, when the
+        // parent is itself a relay sentinel — may predate bleUnitId being
+        // populated on it (e.g. it was first cached via the manual-
+        // reconstruction fallback further down, which can't always resolve
+        // a BLE mapping locally, only the backend's getPublicSession can).
+        // Refresh whenever we don't have a session at all, or have one but
+        // it's missing bleUnitId — this is what was behind "Offline BLE
+        // relay is unavailable for this unit" showing up for a session
+        // resolved purely from a stale local cache.
+        if ((!resolvedSession || resolvedSession.bleUnitId == null) && token) {
           try {
             const response = await getInPersonSession(relay.sessionId, token);
             await cacheInPersonSession(response.data);
             resolvedSession = response.data;
           } catch (error) {
-            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-            console.error('Failed to fetch relay session:', {
-              sessionId: relay.sessionId,
-              error: errorMsg,
-            });
-            throw new Error(`Could not find the session. ${errorMsg}`);
+            if (!resolvedSession) {
+              const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+              console.error('Failed to fetch relay session:', {
+                sessionId: relay.sessionId,
+                error: errorMsg,
+              });
+              throw new Error(`Could not find the session. ${errorMsg}`);
+            }
+            // Already have a usable (if BLE-incomplete) cached session —
+            // keep going with it. The refresh would only have upgraded BLE
+            // relay capability, not blocked marking altogether.
           }
         }
         if (!resolvedSession)
@@ -1114,30 +1128,37 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         });
       }
       
-      // If still not resolved, try backend as last resort
-      if (!resolvedSession) {
-        if (!token) {
-          throw new Error(
-            'This QR session is not cached yet. Connect once to load the session, then future attendance can work offline.'
-          );
-        }
-        
+      // If still not resolved, try backend as last resort. Also refresh
+      // when the reconstructed/cached session is missing bleUnitId — the
+      // manual reconstruction above only resolves it from local
+      // enrollment/adaptive-config caches, which don't always have an
+      // entry; the backend's getPublicSession is the authoritative source
+      // (same hardening as the relay/MWIR1 branch above).
+      if ((!resolvedSession || resolvedSession.bleUnitId == null) && token) {
         setLoading(true);
         try {
           const response = await getInPersonSession(payload.sessionId, token);
           await cacheInPersonSession(response.data);
           resolvedSession = response.data;
         } catch (error) {
-          // Provide more specific error for debugging
-          const errorMsg = error instanceof Error ? error.message : 'Unknown error';
-          console.error('Failed to fetch session:', {
-            sessionId: payload.sessionId,
-            error: errorMsg,
-          });
-          throw new Error(`Could not find the session. ${errorMsg}`);
+          if (!resolvedSession) {
+            const errorMsg = error instanceof Error ? error.message : 'Unknown error';
+            console.error('Failed to fetch session:', {
+              sessionId: payload.sessionId,
+              error: errorMsg,
+            });
+            throw new Error(`Could not find the session. ${errorMsg}`);
+          }
+          // Already have a usable (if BLE-incomplete) session from the
+          // reconstruction above — keep going with it.
         }
       }
-      
+      if (!resolvedSession) {
+        throw new Error(
+          'This QR session is not cached yet. Connect once to load the session, then future attendance can work offline.'
+        );
+      }
+
       setSession(resolvedSession);
       setMethod('qr');
       const qrJoin = {
