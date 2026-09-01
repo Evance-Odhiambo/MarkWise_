@@ -47,6 +47,7 @@ import {
   decodeRelayPayload,
   getOrCreateRelayKey,
 } from '../security/attendanceRelay';
+import { getRelayBackoffMs } from '../security/relayElection';
 import { QRCodeDisplay } from '../components/in-person/QRCodeDisplay';
 import { AttendanceBackHeader } from '../components/AttendanceBackHeader';
 import { StudentAttendanceSurface } from '../components/in-person/StudentAttendanceSurface';
@@ -142,6 +143,18 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     session: InPersonSession;
     evidence: string;
   } | null>(null);
+  // Cleared only on genuine screen unmount — the relay-QR effect below used
+  // to null relayParentRef.current in its own per-run cleanup, which fires
+  // on every dependency change, not just unmount. relayParentRef is only
+  // ever repopulated by scheduleRelay() (once per successful mark), so a
+  // stray re-run of that effect after the ref was set would permanently
+  // stop the relay QR from regenerating — silently, since the effect's
+  // very first line bails out on a null parent before its try/catch.
+  useEffect(() => {
+    return () => {
+      relayParentRef.current = null;
+    };
+  }, []);
   // Stricter than relayParentRef: excludes PIN-origin marks. A student who
   // only typed the lecturer's PIN can't yet be locally certain that PIN was
   // correct (only the server can confirm it), so they aren't trusted to
@@ -395,7 +408,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     return () => {
       active = false;
       clearInterval(timer);
-      relayParentRef.current = null;
     };
   }, [success, userId]);
 
@@ -451,6 +463,12 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       !bluetoothEnabled ||
       !bleAdvertisingSupported ||
       !session ||
+      // No BLE unit mapping for this session — createCompactBlePayload
+      // would throw 'BLE unit mapping unavailable' on every single retry
+      // forever (a persistent, not transient, failure). Skip cleanly
+      // instead of hammering the radio with a call that can never succeed;
+      // the relay QR remains available regardless.
+      session.bleUnitId == null ||
       session.expiresAt <= nowEpochMs()
     ) {
       void stop();
@@ -499,23 +517,43 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           setRelayBlePayload(nextPayload);
           setRelayBleActive(true);
         }
-      } catch {
+      } catch (error) {
         if (active) {
           setRelayBleActive(false);
+          // The native side classifies exactly what went wrong (a specific
+          // E_BLE_ADVERTISING_* code, a bridge timeout, or this call's own
+          // createCompactBlePayload throw) — log it instead of discarding
+          // it, so a real controller-contention issue is actually visible
+          // in field logs rather than indistinguishable from every other
+          // failure mode behind one generic message.
+          const message = error instanceof Error ? error.message : String(error);
+          console.warn('[BLE relay] advertise failed:', message);
           setRelayError(
             'BLE relay could not start. Keep the relay QR visible instead.',
           );
         }
       }
     };
-    void advertiseCurrent();
-    const rotationTimer = setInterval(
-      () => void advertiseCurrent(),
-      RELAY_ROTATION_SECONDS * 1_000,
-    );
+    // Stagger the first advertise attempt across devices that all became
+    // relay-eligible around the same moment (e.g. many students marking off
+    // the same upstream relay within seconds of each other) so they don't
+    // all request an advertiser slot from the BLE controller in the same
+    // instant — a real contention point that gets worse the more devices
+    // are simultaneously active, i.e. worse at greater hop distance from
+    // the lecturer. relayElection.ts's own jitter helper, otherwise unused.
+    let rotationTimer: ReturnType<typeof setInterval> | undefined;
+    const backoffTimer = setTimeout(() => {
+      if (!active) return;
+      void advertiseCurrent();
+      rotationTimer = setInterval(
+        () => void advertiseCurrent(),
+        RELAY_ROTATION_SECONDS * 1_000,
+      );
+    }, getRelayBackoffMs());
     return () => {
       active = false;
-      clearInterval(rotationTimer);
+      clearTimeout(backoffTimer);
+      if (rotationTimer) clearInterval(rotationTimer);
       void stop();
     };
   }, [bleAdvertisingSupported, bluetoothEnabled, session, success]);
@@ -821,6 +859,19 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   }, [route.params.sessionId, token]);
 
   useEffect(() => {
+    if (success) {
+      // Already marked — this device's own evidence is captured, so
+      // scanning has no further purpose. Every relay-eligible student
+      // device otherwise keeps an unfiltered LOW_LATENCY scan running for
+      // the rest of the screen's life *while also* advertising as a relay
+      // — concurrent central+peripheral BLE roles are a real contention
+      // point on many Android chipsets, and this is the one difference
+      // between a relay device and the lecturer (who never scans at all,
+      // and reliably works). Stopping the scan here halves that
+      // concurrency for every relay hop.
+      void NativeBLEScanner.stopScan().catch(() => undefined);
+      return;
+    }
     const listener = NativeBLEScanner.addDeviceListener(async device => {
       if (!device.payload) return;
       const value = `MWBLE1:${device.payload}`;
@@ -907,7 +958,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       listener.remove();
       void NativeBLEScanner.stopScan().catch(() => undefined);
     };
-  }, [autoMarkBle, token, bluetoothEnabled]);
+  }, [autoMarkBle, token, bluetoothEnabled, success]);
 
   const loadQrSession = async (value: string) => {
     setScanCount(current => Math.min(2, current + 1));
@@ -915,12 +966,28 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     try {
       if (value.trim().startsWith('MWIR1:')) {
         const relay = decodeRelayPayload(value.trim());
-        const parent = relay.parentPayload.startsWith('MWBLE1:')
+        // A relay-of-a-relay's own parentPayload is the fixed sentinel
+        // 'MWIR1:RELAYED' (see updateQr below — it deliberately doesn't
+        // re-embed a nested envelope to keep the QR from growing with
+        // chain depth), not a real decodable manifest/BLE payload. The
+        // backend already trusts this via the relayerRecord chain check
+        // without decoding it (inPerson.verification.service.ts's
+        // parentMethod === "relay" branch) — decoding it here always threw
+        // "Unsupported attendance payload", which is what made scanning
+        // any relay-of-a-relay's QR (chain depth 3+) fail outright. Resolve
+        // the session from relay.sessionId directly instead, same as the
+        // network-fallback path a few lines down already does.
+        const isChainedRelay = relay.parentPayload.trim().startsWith('MWIR1:');
+        const parent = isChainedRelay
+          ? null
+          : relay.parentPayload.startsWith('MWBLE1:')
           ? decodeCompactBlePayload(relay.parentPayload)
           : decodeAttendancePayload(relay.parentPayload);
-        const parentNonce =
-          'nonce' in parent ? parent.nonce : parent.sessionNonce;
-        const cached = await getCachedInPersonSession(parentNonce);
+        const cached = parent
+          ? await getCachedInPersonSession(
+              'nonce' in parent ? parent.nonce : parent.sessionNonce,
+            )
+          : await getCachedInPersonSessionById(relay.sessionId);
         let resolvedSession = cached;
         if (!resolvedSession && token) {
           try {
