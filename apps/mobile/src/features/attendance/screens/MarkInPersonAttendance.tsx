@@ -1565,9 +1565,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                     />
                   </View>
                   <Text className={`mt-3 text-xs ${bodyClasses}`}>
-                    {method === 'ble'
-                      ? 'Waiting for a nearby BLE signals.'
-                      : scanCount
+                    {scanCount
                       ? 'Session detected. Attendance will be submitted automatically.'
                       : 'Scan the lecturer QR code to submit automatically.'}
                   </Text>
@@ -1663,14 +1661,17 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                   }`}
                 >
                   <View className="flex-row items-center">
-                    <Radio
-                      size={21}
-                      color={bluetoothEnabled ? '#059669' : '#d97706'}
-                    />
+                    {bluetoothEnabled ? (
+                      <PulseView>
+                        <Radio size={21} color="#059669" />
+                      </PulseView>
+                    ) : (
+                      <Radio size={21} color="#d97706" />
+                    )}
                     <Text
                       className={`ml-2 text-lg font-extrabold ${titleClasses}`}
                     >
-                      Auto Attendance
+                      BLE Scanning
                     </Text>
                   </View>
                   <Text
@@ -1679,8 +1680,8 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                     }`}
                   >
                     {bluetoothEnabled
-                      ? 'Automatic detection is active'
-                      : 'Enable Bluetooth for automatic attendance'}
+                      ? 'Continuously scanning for nearby BLE signals — attendance marks automatically the moment one is detected.'
+                      : 'Enable Bluetooth to continuously scan for nearby BLE signals'}
                   </Text>
                   {!bluetoothEnabled && (
                     <TouchableOpacity
