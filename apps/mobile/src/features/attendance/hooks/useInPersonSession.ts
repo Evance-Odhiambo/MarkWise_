@@ -9,6 +9,8 @@ import {
   clearAttendanceSessionSecret,
 } from '../../../shared/security/secureKeyStorage';
 import { cacheInPersonSession } from '../../../shared/storage/inPersonSessionCache';
+import { saveUnitMappings } from '../../../shared/storage/unitMappings';
+import { useAuth } from '../../auth/context/AuthContext';
 import {
   randomNonce,
   randomSecret,
@@ -29,6 +31,7 @@ type PendingClaim = {
 };
 
 export const useInPersonSession = (token: string | null) => {
+  const { userId, institutionId } = useAuth();
   const [session, setSession] = useState<InPersonSession | null>(null);
   const [loading, setLoading] = useState(false);
   const [claimed, setClaimed] = useState(false);
@@ -114,6 +117,22 @@ export const useInPersonSession = (token: string | null) => {
         );
         setClaimed(true);
         setPendingClaim(null);
+        // The claim is often the first time this device learns a unit's real
+        // bleUnitId (the local cache was empty/stale, e.g. a fresh login or
+        // a unit synced from a different device) — persist it so every
+        // future session for this unit resolves it instantly from the local
+        // cache, online or offline, instead of starting with no BLE beacon
+        // every time until the next claim round-trip corrects it.
+        if (safeSession.bleUnitId != null && userId)
+          await saveUnitMappings(
+            { userId, role: 'lecturer', institutionId },
+            [
+              {
+                unitCode: safeSession.unitCode,
+                bleId: String(safeSession.bleUnitId),
+              },
+            ],
+          ).catch(() => undefined);
       } catch (error) {
         if (cancelled) return;
         const reason =
@@ -132,7 +151,7 @@ export const useInPersonSession = (token: string | null) => {
       cancelled = true;
       clearInterval(interval);
     };
-  }, [pendingClaim, token]);
+  }, [pendingClaim, token, userId, institutionId]);
 
   const end = useCallback(async () => {
     if (!session) return;
