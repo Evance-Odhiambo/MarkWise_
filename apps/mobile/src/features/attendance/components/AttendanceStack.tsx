@@ -10,12 +10,12 @@ import StudentSelectionScreen from '../../unit-selection/screens/StudentSelectio
 import LecturerSelectionScreen from '../../unit-selection/screens/LecturerSelectionScreen';
 import StudentProgressScreen from '../../dashboard/screens/student/UnitProgressScreen';
 import LecturerProgressScreen from '../../dashboard/screens/lecturer/UnitProgressScreen';
-import { useAuth } from '../../auth/context/AuthContext';
+import StudentDelegationScreen from '../screens/StudentDelegationScreen';
+import LecturerDelegationScreen from '../screens/LecturerDelegationScreen';
 
 const Stack = createNativeStackNavigator<AttendanceStackParamList>();
 
 const AttendanceStack = () => {
-  const { role } = useAuth();
   return (
     <Stack.Navigator
       initialRouteName={'AttendanceMode'}
@@ -37,6 +37,14 @@ const AttendanceStack = () => {
         options={{ headerShown: false }}
       />
       <Stack.Screen name="AttendanceMode" component={AttendanceModeScreen} />
+      <Stack.Screen
+        name="StudentDelegation"
+        component={StudentDelegationScreen}
+      />
+      <Stack.Screen
+        name="LecturerDelegation"
+        component={LecturerDelegationScreen}
+      />
       <Stack.Screen
         name="StudentUnitSelection"
         component={StudentSelectionScreen as any}
