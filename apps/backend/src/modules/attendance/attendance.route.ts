@@ -76,16 +76,20 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
       prisma.conductedSession.findMany({
         where: { lecturerId },
         select: {
+          id: true,
           unitCode: true,
           sessionStart: true,
+          sessionEnd: true,
           attendanceRecords: { select: { id: true } },
         },
       }),
       prisma.onlineAttendanceSession.findMany({
         where: { lecturerId },
         select: {
+          id: true,
           unitCode: true,
           createdAt: true,
+          endedAt: true,
           records: { select: { id: true } },
         },
       }),
@@ -120,16 +124,20 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
 
   const sessions = [
     ...inPersonSessions.map((session) => ({
+      id: session.id,
       unitCode: session.unitCode,
       date: session.sessionStart,
       checkIns: session.attendanceRecords.length,
-      method: "inPerson",
+      method: "inPerson" as const,
+      ended: session.sessionEnd != null,
     })),
     ...onlineSessions.map((session) => ({
+      id: session.id,
       unitCode: session.unitCode,
       date: session.createdAt,
       checkIns: session.records.length,
-      method: "online",
+      method: "online" as const,
+      ended: session.endedAt != null,
     })),
   ].filter((session) => selectedCodes.has(session.unitCode.toUpperCase()));
 
@@ -242,6 +250,22 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
 
   atRiskStudents.sort((a, b) => a.attendanceRate - b.attendanceRate);
 
+  // Both in-person (ConductedSession) and online (OnlineAttendanceSession)
+  // sessions, newest first — the same combined `sessions` list unitStats and
+  // trend are already built from, so "recent sessions" can't drift back to
+  // one method the way a separately-fetched, method-specific list would.
+  const recent = [...sessions]
+    .sort((a, b) => b.date.getTime() - a.date.getTime())
+    .slice(0, 10)
+    .map((session) => ({
+      id: session.id,
+      unitCode: session.unitCode,
+      createdAt: session.date.toISOString(),
+      checkIns: session.checkIns,
+      method: session.method,
+      status: session.ended ? "ended" : "active",
+    }));
+
   return {
     trend,
     units: unitStats,
@@ -254,6 +278,7 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
     },
     overallComplianceRate,
     atRiskStudents,
+    recent,
     currentTerm: termName,
   };
 }

@@ -14,6 +14,8 @@ import {
   Zap,
   Award,
   Activity,
+  Radio,
+  Video,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -59,16 +61,6 @@ interface LecturerUnit {
   name: string;
 }
 
-interface OnlineSession {
-  id: string;
-  unitCode: string;
-  expiresAt: string;
-  endedAt?: string | null;
-  status?: string;
-  createdAt?: string;
-  _count?: { records: number };
-}
-
 interface LecturerAnalytics {
   totals: {
     sessions: number;
@@ -88,12 +80,14 @@ interface LecturerAnalytics {
     averageAttendance: number;
     lastSession?: string;
   }>;
+  // Combines both ConductedSession (in-person) and OnlineAttendanceSession
+  // (online) records — see getLecturerSummary in attendance.route.ts.
   recent: Array<{
     id: string;
     unitCode: string;
     createdAt: string;
-    endedAt?: string | null;
     checkIns: number;
+    method: "inPerson" | "online";
     status: string;
   }>;
 }
@@ -118,7 +112,6 @@ export default function LecturerDashboardPage() {
   const router = useRouter();
   const [lecturerProfile, setLecturerProfile] = useState<LecturerSession | null>(null);
   const [units, setUnits] = useState<LecturerUnit[]>([]);
-  const [sessions, setSessions] = useState<OnlineSession[]>([]);
   const [analytics, setAnalytics] = useState<LecturerAnalytics | null>(null);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
@@ -129,12 +122,10 @@ export default function LecturerDashboardPage() {
       const headers = { Authorization: `Bearer ${token}` };
       setError("");
 
-      const [unitsResponse, sessionsResponse, analyticsResponse] =
-        await Promise.all([
-          fetch("/api/v1/lecturers/units", { headers }),
-          fetch("/api/v1/attendance/online/sessions", { headers }),
-          fetch("/api/v1/attendance/lecturer/summary", { headers }),
-        ]);
+      const [unitsResponse, analyticsResponse] = await Promise.all([
+        fetch("/api/v1/lecturers/units", { headers }),
+        fetch("/api/v1/attendance/lecturer/summary", { headers }),
+      ]);
 
       if (unitsResponse.status === 401 || unitsResponse.status === 403) {
         localStorage.removeItem("user");
@@ -145,17 +136,11 @@ export default function LecturerDashboardPage() {
       const unitsResult = unitsResponse.ok
         ? await unitsResponse.json()
         : { units: [] };
-      const sessionsResult = sessionsResponse.ok
-        ? await sessionsResponse.json()
-        : { data: [] };
       const analyticsResult = analyticsResponse.ok
         ? await analyticsResponse.json()
         : null;
 
       setUnits(Array.isArray(unitsResult.units) ? unitsResult.units : []);
-      setSessions(
-        Array.isArray(sessionsResult.data) ? sessionsResult.data : [],
-      );
       setAnalytics(analyticsResult);
     } catch {
       setError("Unable to reach the attendance service.");
@@ -685,49 +670,60 @@ export default function LecturerDashboardPage() {
                 <span>Recent Attendance Sessions</span>
               </CardTitle>
               <CardDescription className="text-[10px] text-slate-500">
-                Your latest conducted sessions
+                Your latest conducted sessions — in-person and online
               </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <div className="divide-y divide-slate-100">
-                {recentSessions.map((session) => (
-                  <div
-                    key={session.id}
-                    className="flex items-center justify-between gap-4 py-3 px-3.5 hover:bg-slate-50/50 transition-colors"
-                  >
-                    <div className="flex items-center gap-3 min-w-0 flex-1">
-                      <div className="rounded-lg bg-violet-50 p-2">
-                        <CalendarCheck2 className="h-4 w-4 text-violet-600" />
-                      </div>
-                      <div className="min-w-0">
-                        <p className="font-bold font-mono text-slate-900 text-[11px]">
-                          {session.unitCode}
-                        </p>
-                        <p className="text-[10px] text-slate-500 font-mono">
-                          {new Date(session.createdAt).toLocaleDateString(undefined, {
-                            month: "short",
-                            day: "numeric",
-                            hour: "2-digit",
-                            minute: "2-digit",
-                          })}{" "}
-                          · {session.checkIns} check-ins
-                        </p>
-                      </div>
-                    </div>
-                    <Badge
-                      variant="outline"
-                      className={
-                        session.endedAt || session.status === "ended"
-                          ? "text-slate-500 border-slate-200 bg-slate-50"
-                          : "text-emerald-700 border-emerald-200 bg-emerald-50"
-                      }
+                {recentSessions.map((session) => {
+                  const isOnline = session.method === "online";
+                  const MethodIcon = isOnline ? Video : Radio;
+                  return (
+                    <div
+                      key={session.id}
+                      className="flex items-center justify-between gap-4 py-3 px-3.5 hover:bg-slate-50/50 transition-colors"
                     >
-                      <span className="text-[8.5px] font-bold font-mono">
-                        {session.endedAt || session.status === "ended" ? "COMPLETED" : "ACTIVE"}
-                      </span>
-                    </Badge>
-                  </div>
-                ))}
+                      <div className="flex items-center gap-3 min-w-0 flex-1">
+                        <div
+                          className={`rounded-lg p-2 ${isOnline ? "bg-sky-50" : "bg-emerald-50"}`}
+                        >
+                          <MethodIcon
+                            className={`h-4 w-4 ${isOnline ? "text-sky-600" : "text-emerald-600"}`}
+                          />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="font-bold font-mono text-slate-900 text-[11px]">
+                            {session.unitCode}
+                            <span className="ml-1.5 font-sans font-normal text-slate-400">
+                              {isOnline ? "Online" : "In-person"}
+                            </span>
+                          </p>
+                          <p className="text-[10px] text-slate-500 font-mono">
+                            {new Date(session.createdAt).toLocaleDateString(undefined, {
+                              month: "short",
+                              day: "numeric",
+                              hour: "2-digit",
+                              minute: "2-digit",
+                            })}{" "}
+                            · {session.checkIns} check-ins
+                          </p>
+                        </div>
+                      </div>
+                      <Badge
+                        variant="outline"
+                        className={
+                          session.status === "ended"
+                            ? "text-slate-500 border-slate-200 bg-slate-50"
+                            : "text-emerald-700 border-emerald-200 bg-emerald-50"
+                        }
+                      >
+                        <span className="text-[8.5px] font-bold font-mono">
+                          {session.status === "ended" ? "COMPLETED" : "ACTIVE"}
+                        </span>
+                      </Badge>
+                    </div>
+                  );
+                })}
               </div>
             </CardContent>
           </Card>
