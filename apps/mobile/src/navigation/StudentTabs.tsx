@@ -22,6 +22,23 @@ const Tab = createBottomTabNavigator<StudentTabParamList>();
 
 type RootNavProp = NativeStackNavigationProp<RootStackParamList>;
 
+// Defined once at module scope, not inline in tabBarIcon, so React Navigation
+// sees the same component identity across renders instead of remounting the
+// icon on every StudentTabNavigator re-render (react/no-unstable-nested-components).
+type TabIconProps = { color: string; size: number };
+const HomeTabIcon = ({ color, size }: TabIconProps) => (
+  <HomeIcon color={color} size={size} />
+);
+const AlertsTabIcon = ({ color, size }: TabIconProps) => (
+  <Bell color={color} size={size} />
+);
+const AttendanceTabIcon = ({ color, size }: TabIconProps) => (
+  <CalendarClock color={color} size={size} />
+);
+const SettingsTabIcon = ({ color, size }: TabIconProps) => (
+  <SettingsIcon color={color} size={size} />
+);
+
 export default function StudentTabNavigator() {
   const { isDark } = useTheme();
   const activeColor = '#10b981';
@@ -82,17 +99,13 @@ export default function StudentTabNavigator() {
       <Tab.Screen
         name="Home"
         component={StudentHomeScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <HomeIcon color={color} size={size} />
-          ),
-        }}
+        options={{ tabBarIcon: HomeTabIcon }}
       />
       <Tab.Screen
         name="Alerts"
         component={NotificationStack}
         options={{
-          tabBarIcon: ({ color, size }) => <Bell color={color} size={size} />,
+          tabBarIcon: AlertsTabIcon,
           tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#ef4444',
@@ -106,21 +119,12 @@ export default function StudentTabNavigator() {
       <Tab.Screen
         name="Attendance"
         component={AttendanceStack}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <CalendarClock color={color} size={size} />
-          ),
-          tabBarLabel: 'Attendance',
-        }}
+        options={{ tabBarIcon: AttendanceTabIcon, tabBarLabel: 'Attendance' }}
       />
       <Tab.Screen
         name="Settings"
         component={StudentSettingsScreen}
-        options={{
-          tabBarIcon: ({ color, size }) => (
-            <SettingsIcon color={color} size={size} />
-          ),
-        }}
+        options={{ tabBarIcon: SettingsTabIcon }}
       />
     </Tab.Navigator>
   );

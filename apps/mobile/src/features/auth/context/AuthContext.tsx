@@ -1,8 +1,10 @@
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import React, {
   createContext,
+  useCallback,
   useContext,
   useEffect,
+  useMemo,
   useState,
   ReactNode,
 } from 'react';
@@ -149,14 +151,14 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
     };
   }, []);
 
-  const selectRole = (nextRole: UserRole) => {
+  const selectRole = useCallback((nextRole: UserRole) => {
     setRole(nextRole);
     setSessionState(current =>
       current && current.role === nextRole ? current : null,
     );
-  };
+  }, []);
 
-  const setSession = async (nextSession: AuthSession) => {
+  const setSession = useCallback(async (nextSession: AuthSession) => {
     const normalized: AuthSession = {
       ...nextSession,
       role: nextSession.role,
@@ -170,9 +172,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       AsyncStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(normalized)),
       cacheSessionSnapshot(normalized),
     ]);
-  };
+  }, []);
 
-  const signOut = async () => {
+  const signOut = useCallback(async () => {
     const currentSession = session;
     const cleanupErrors: unknown[] = [];
     try {
@@ -226,9 +228,9 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         '[Auth] Logout completed with local cleanup warnings',
         cleanupErrors,
       );
-  };
+  }, [role, session]);
 
-  const deleteAccount = async () => {
+  const deleteAccount = useCallback(async () => {
     const currentSession = session;
     if (!currentSession) throw new Error('No active account');
 
@@ -245,25 +247,30 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
       throw new Error(result.error || 'Unable to delete account');
 
     await signOut();
-  };
+  }, [session, signOut]);
+
+  // Memoized so every consumer of useAuth() doesn't re-render (and, for
+  // RootNavigator specifically, doesn't recreate its tab-navigator render
+  // functions and force a full remount) on every AuthProvider render — only
+  // when the actual auth state changes.
+  const value = useMemo(
+    () => ({
+      role,
+      session,
+      token: session?.token ?? null,
+      userId: session?.userId ?? null,
+      institutionId: session?.institutionId ?? null,
+      isAuthenticated: Boolean(session?.token),
+      isHydrated,
+      setRole: selectRole,
+      setSession,
+      signOut,
+      deleteAccount,
+    }),
+    [role, session, isHydrated, selectRole, setSession, signOut, deleteAccount],
+  );
 
   return (
-    <AuthContext.Provider
-      value={{
-        role,
-        session,
-        token: session?.token ?? null,
-        userId: session?.userId ?? null,
-        institutionId: session?.institutionId ?? null,
-        isAuthenticated: Boolean(session?.token),
-        isHydrated,
-        setRole: selectRole,
-        setSession,
-        signOut,
-        deleteAccount,
-      }}
-    >
-      {children}
-    </AuthContext.Provider>
+    <AuthContext.Provider value={value}>{children}</AuthContext.Provider>
   );
 };

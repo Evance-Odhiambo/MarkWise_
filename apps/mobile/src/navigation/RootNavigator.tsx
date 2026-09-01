@@ -90,12 +90,8 @@ const RootNavigator = () => {
         <Stack.Screen name="StudentSignUp" component={StudentSignUp} />
         <Stack.Screen name="LecturerSignIn" component={LecturerSignIn} />
         <Stack.Screen name="LecturerSignUp" component={LecturerSignUp} />
-        <Stack.Screen name="StudentApp">
-          {() => <StudentTabNavigator />}
-        </Stack.Screen>
-        <Stack.Screen name="LecturerApp">
-          {() => <LecturerTabNavigator />}
-        </Stack.Screen>
+        <Stack.Screen name="StudentApp" component={StudentTabNavigator} />
+        <Stack.Screen name="LecturerApp" component={LecturerTabNavigator} />
         <Stack.Screen
           name="StudentUnitSelection"
           component={StudentSelectionScreen as any}
