@@ -1,5 +1,6 @@
 package com.markwise
 
+import android.content.Intent
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -19,4 +20,15 @@ class MainActivity : ReactActivity() {
    */
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled)
+
+  /**
+   * Required for RN's Linking module to see a "markwise://attend?session=..." tap while the
+   * app is already running: android:launchMode="singleTask" routes that case through
+   * onNewIntent rather than a fresh cold start, and ReactActivity doesn't forward it on its
+   * own — without this, Linking.getInitialURL()/the 'url' event miss warm-start deep links.
+   */
+  override fun onNewIntent(intent: Intent) {
+    super.onNewIntent(intent)
+    setIntent(intent)
+  }
 }

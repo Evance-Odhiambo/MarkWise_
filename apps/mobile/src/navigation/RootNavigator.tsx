@@ -1,8 +1,11 @@
-import React from 'react';
-import { Animated, View, Text, StatusBar } from 'react-native';
+import React, { useCallback, useEffect, useRef } from 'react';
+import { Animated, Linking, View, Text, StatusBar } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NavigationContainer,
+  createNavigationContainerRef,
+} from '@react-navigation/native';
 import AppEntryScreen from '../features/auth/screens/AppEntryScreen';
 import StudentSignIn from '../features/auth/screens/StudentSignIn';
 import StudentSignUp from '../features/auth/screens/StudentSignUp';
@@ -15,8 +18,11 @@ import LecturerSelectionScreen from '../features/unit-selection/screens/Lecturer
 import { useAuth } from '../features/auth/context/AuthContext';
 import { RootStackParamList } from './types';
 import { useAttendancePermissions } from '../features/attendance/hooks/useAttendancePermissions';
+import { subscribeToIncomingAttendanceLinks } from '../features/attendance/deepLink/incomingAttendanceLink';
+import { WEB_APP_URL } from '../shared/constants';
 
 const Stack = createNativeStackNavigator<RootStackParamList>();
+const navigationRef = createNavigationContainerRef<RootStackParamList>();
 
 const BootSplash = () => {
   const progress = React.useRef(new Animated.Value(0)).current;
@@ -70,12 +76,80 @@ const RootNavigator = () => {
     return 'AppEntry';
   }, [hasSession, session]);
 
+  // Deep-link handling needs the latest auth state, but must subscribe to
+  // Linking exactly once — Linking.getInitialURL() isn't "consumed", so
+  // re-subscribing on every auth-state change would reprocess the same
+  // cold-start link every time the student later logs in/out. A ref holds
+  // the latest values for the one long-lived subscription below to read.
+  const authStateRef = useRef({ isHydrated, hasSession, session });
+  useEffect(() => {
+    authStateRef.current = { isHydrated, hasSession, session };
+  }, [isHydrated, hasSession, session]);
+
+  // Buffers a link caught before hydration finishes (cold start) until the
+  // flush effect further down can process it.
+  const pendingSessionIdRef = useRef<string | null>(null);
+
+  const openInAttendanceScreen = useCallback((sessionId: string) => {
+    const navigate = () => {
+      if (!navigationRef.isReady()) {
+        setTimeout(navigate, 100);
+        return;
+      }
+      navigationRef.navigate('StudentApp', {
+        screen: 'Attendance',
+        params: { screen: 'MarkOnline', params: { sessionId, autoMark: true } },
+      });
+    };
+    navigate();
+  }, []);
+
+  const processSessionId = useCallback(
+    (sessionId: string) => {
+      const current = authStateRef.current;
+      if (!current.isHydrated) {
+        pendingSessionIdRef.current = sessionId;
+        return;
+      }
+      if (current.hasSession && current.session?.role === 'student') {
+        openInAttendanceScreen(sessionId);
+        return;
+      }
+      // Not a logged-in student (logged out, or a lecturer tapped a
+      // student's link) — the app can't complete this itself, so bounce
+      // back out to the browser rather than silently swallowing the link
+      // and stranding the student on the blank page the web side leaves
+      // behind once it sees the app came to the foreground.
+      Linking.openURL(`${WEB_APP_URL}/attend?session=${sessionId}`).catch(
+        () => undefined,
+      );
+    },
+    [openInAttendanceScreen],
+  );
+
+  useEffect(
+    () => subscribeToIncomingAttendanceLinks(processSessionId),
+    [processSessionId],
+  );
+
+  // Flushes a link that arrived before hydration finished, once it does.
+  useEffect(() => {
+    if (isHydrated && pendingSessionIdRef.current) {
+      const pending = pendingSessionIdRef.current;
+      pendingSessionIdRef.current = null;
+      processSessionId(pending);
+    }
+  }, [isHydrated, processSessionId]);
+
   if (!isHydrated && !hasSession) {
     return <BootSplash />;
   }
 
   return (
-    <NavigationContainer key={`root-${session?.role ?? 'guest'}`}>
+    <NavigationContainer
+      key={`root-${session?.role ?? 'guest'}`}
+      ref={navigationRef}
+    >
       <Stack.Navigator
         initialRouteName={initialRouteName}
         screenOptions={{

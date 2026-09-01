@@ -38,7 +38,16 @@ export type AttendanceStackParamList = {
     unitCode: string;
     unitName?: string;
   };
-  MarkOnline: { sessionId: string; unitCode?: string; unitName?: string };
+  MarkOnline: {
+    sessionId: string;
+    unitCode?: string;
+    unitName?: string;
+    /** Set when this screen was opened by tapping a lecturer's shared deep
+     * link (markwise://attend?session=...) with the app already installed
+     * and a student logged in — triggers handleJoin() automatically instead
+     * of waiting for the "Mark Attendance" button. */
+    autoMark?: boolean;
+  };
 };
 
 export type StudentTabParamList = {

@@ -32,6 +32,18 @@
             <action android:name="android.intent.action.MAIN" />
             <category android:name="android.intent.category.LAUNCHER" />
         </intent-filter>
+        <!-- Catches the lecturer's shared "markwise://attend?session=..." link
+             (built by TakeOnlineAttendance.tsx, attempted by the web app's
+             deep-link-handler.ts) so an installed app can auto-mark attendance
+             instead of the student always landing on web WebAuthn. Plain custom
+             scheme, not an App Link — no autoVerify/Digital Asset Links needed,
+             unlike the separate assetlinks.json passkey setup. -->
+        <intent-filter>
+            <action android:name="android.intent.action.VIEW" />
+            <category android:name="android.intent.category.DEFAULT" />
+            <category android:name="android.intent.category.BROWSABLE" />
+            <data android:scheme="markwise" android:host="attend" />
+        </intent-filter>
       </activity>
       <service
         android:name=".bleadvertiser.BLERelayForegroundService"

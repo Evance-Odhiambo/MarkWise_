@@ -24,11 +24,19 @@ async function request<T>(
 
   const body = await response.json().catch(() => ({}));
   if (!response.ok) {
-    throw new Error(
+    // A 409 duplicate (e.g. the same device/session already has a record —
+    // see attendance.service.ts's DUPLICATE_SUBMISSION check) has no
+    // body.error/message, so without this callers can't tell "already
+    // marked" apart from a real network failure and end up queuing a
+    // pointless retry for a submission that already succeeded.
+    const error = new Error(
       body.error ??
         body.message ??
         `Attendance request failed (${response.status})`,
-    );
+    ) as Error & { status?: number; duplicate?: boolean };
+    error.status = response.status;
+    error.duplicate = body.duplicate === true;
+    throw error;
   }
   return body as T;
 }

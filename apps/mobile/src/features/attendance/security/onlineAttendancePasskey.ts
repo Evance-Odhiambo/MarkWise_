@@ -33,8 +33,19 @@ const request = async <T>(
     },
   });
   const body = await response.json().catch(() => ({}));
-  if (!response.ok)
-    throw new Error(body.error || `Passkey request failed (${response.status})`);
+  if (!response.ok) {
+    // Same reasoning as attendanceApi.ts's request(): a 409 duplicate (the
+    // passkey path's credential-derived deviceId already has a record for
+    // this session) has no body.error, so callers need .duplicate/.status
+    // to tell it apart from a real failure rather than falling back to the
+    // deviceId path and queuing a pointless retry.
+    const error = new Error(
+      body.error || `Passkey request failed (${response.status})`,
+    ) as Error & { status?: number; duplicate?: boolean };
+    error.status = response.status;
+    error.duplicate = body.duplicate === true;
+    throw error;
+  }
   return body as T;
 };
 

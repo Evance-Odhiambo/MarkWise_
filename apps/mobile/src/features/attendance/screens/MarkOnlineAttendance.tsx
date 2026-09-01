@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import {
   View,
   Text,
@@ -41,6 +41,7 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
   const [offerPasskeyRegister, setOfferPasskeyRegister] = useState(false);
+  const autoMarkTriggeredRef = useRef(false);
   const screenClasses = isDark ? 'bg-slate-950' : 'bg-slate-50';
   const cardClasses = isDark
     ? 'bg-slate-900 border-slate-800'
@@ -90,6 +91,21 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
     })();
   }, [route.params.sessionId, token]);
 
+  const isDuplicateSubmissionError = (error: unknown) =>
+    error instanceof Error &&
+    ((error as Error & { duplicate?: boolean }).duplicate === true ||
+      (error as Error & { status?: number }).status === 409);
+
+  const showAlreadyMarkedAlert = () => {
+    Alert.alert(
+      'Attendance marked',
+      route.params.autoMark
+        ? 'You already marked attendance for this session. You can return to your meeting now.'
+        : 'You already marked attendance for this session.',
+      [{ text: 'Done', onPress: () => navigation.goBack() }],
+    );
+  };
+
   const submitWithDeviceId = async (authToken: string) => {
     const deviceId = await getOrCreateSecureDeviceId();
     try {
@@ -99,10 +115,22 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
         { token: authToken },
       );
       await removeQueuedOnlineSubmission(route.params.sessionId, deviceId);
-      Alert.alert('Attendance marked', 'Your attendance was recorded.', [
-        { text: 'Done', onPress: () => navigation.goBack() },
-      ]);
+      Alert.alert(
+        'Attendance marked',
+        route.params.autoMark
+          ? 'Your attendance was recorded. You can return to your meeting now.'
+          : 'Your attendance was recorded.',
+        [{ text: 'Done', onPress: () => navigation.goBack() }],
+      );
     } catch (error) {
+      if (isDuplicateSubmissionError(error)) {
+        // Already have a record for this session on this device — not a
+        // failure. Clear any stale queued entry so it doesn't keep retrying
+        // a submission that already succeeded.
+        await removeQueuedOnlineSubmission(route.params.sessionId, deviceId);
+        showAlreadyMarkedAlert();
+        return;
+      }
       await queueOnlineSubmission({
         sessionId: route.params.sessionId,
         deviceId,
@@ -133,11 +161,17 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
           }
           Alert.alert(
             'Attendance marked',
-            'Your attendance was verified with your device passkey.',
+            route.params.autoMark
+              ? 'Your attendance was verified with your device passkey. You can return to your meeting now.'
+              : 'Your attendance was verified with your device passkey.',
             [{ text: 'Done', onPress: () => navigation.goBack() }],
           );
           return;
-        } catch {
+        } catch (error) {
+          if (isDuplicateSubmissionError(error)) {
+            showAlreadyMarkedAlert();
+            return;
+          }
           // Passkey ceremony failed, was cancelled, or the device otherwise
           // couldn't complete it — fall back to the deviceId path rather
           // than stranding the student.
@@ -166,6 +200,24 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
       setSubmitting(false);
     }
   };
+
+  // Opened via a lecturer's shared "markwise://attend?session=..." link
+  // (RootNavigator's deep-link handling sets autoMark: true) — mark
+  // attendance immediately instead of waiting for the button tap, using the
+  // same passkey-first/deviceId-fallback path handleJoin already runs for a
+  // manual tap. Only fires once per screen instance.
+  useEffect(() => {
+    if (
+      route.params.autoMark &&
+      session &&
+      session.status === 'active' &&
+      !autoMarkTriggeredRef.current
+    ) {
+      autoMarkTriggeredRef.current = true;
+      handleJoin();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [route.params.autoMark, session]);
 
   return (
     <SafeAreaView className={`flex-1 ${screenClasses}`}>
