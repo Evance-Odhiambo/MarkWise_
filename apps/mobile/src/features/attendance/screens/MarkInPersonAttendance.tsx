@@ -366,33 +366,40 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   // has to read aloud or type in needs to stay put, not refresh every 3s.
   // Minting requires this student's own mark to already be server-verified
   // (RELAY_PARENT_NOT_VERIFIED otherwise), which can lag behind the local
-  // "success" state — so this retries on a slower cadence until it lands.
+  // "success" state by little more than one network round-trip in the
+  // common case — a flat 30s retry made that common case feel stuck for up
+  // to 30s waiting on what's usually a 1-2s race. Retry quickly at first
+  // and back off only if it's still not landed after several tries (a
+  // genuinely offline/slow sync), capping at 30s.
   useEffect(() => {
     const parent = relayParentRef.current;
     if (!parent || !token) return;
     let active = true;
-    let timer: ReturnType<typeof setInterval> | undefined;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const retryDelaysMs = [1_500, 2_500, 4_000, 6_000, 10_000, 15_000, 30_000];
+    let attempt = 0;
     const mintRelayCode = async () => {
-      if (!active || parent.session.expiresAt <= Date.now()) {
-        if (timer) clearInterval(timer);
-        return;
-      }
+      if (!active || parent.session.expiresAt <= Date.now()) return;
       try {
         const result = await createInPersonRelayToken(parent.session.id, token);
         const hex = decodeOpaqueRelayPayload(result.data.payload);
         if (active) setRelayCode(hex);
-        if (timer) clearInterval(timer);
+        return;
       } catch {
         // Most likely the mark hasn't synced/verified server-side yet —
-        // retry on the interval below rather than surfacing an error; the
-        // relay QR and BLE relay remain available in the meantime.
+        // retry below rather than surfacing an error; the relay QR and BLE
+        // relay remain available in the meantime.
       }
+      if (!active) return;
+      const delay =
+        retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)];
+      attempt += 1;
+      timer = setTimeout(() => void mintRelayCode(), delay);
     };
     void mintRelayCode();
-    timer = setInterval(() => void mintRelayCode(), 30_000);
     return () => {
       active = false;
-      if (timer) clearInterval(timer);
+      if (timer) clearTimeout(timer);
     };
   }, [success, userId, token]);
 
@@ -872,12 +879,40 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         /* ignore unrelated beacons */
       }
     });
-    void NativeBLEScanner.startScanNoFilter().catch(() => undefined);
+    // startScanNoFilter can fail with nothing to show for it — Bluetooth
+    // still off at mount, or the BLUETOOTH_SCAN permission request (fired
+    // once, app-wide, at root — see useAttendancePermissions) still pending
+    // when this screen mounted. Previously a single failed attempt here
+    // meant BLE discovery was silently dead for the rest of the screen
+    // visit, with no path to recover short of leaving and re-entering the
+    // screen — which is exactly why it looked like BLE "only worked after"
+    // some other unrelated action gave it a second chance to start. Retry
+    // with backoff instead of a one-shot attempt, and this effect also
+    // re-runs whenever bluetoothEnabled flips true (below), covering
+    // Bluetooth being off at mount and turned on moments later.
+    let active = true;
+    let retryTimer: ReturnType<typeof setTimeout> | undefined;
+    const retryDelaysMs = [1_000, 2_000, 4_000, 8_000];
+    let attempt = 0;
+    const startScanning = async () => {
+      if (!active) return;
+      try {
+        await NativeBLEScanner.startScanNoFilter();
+      } catch {
+        if (!active || attempt >= retryDelaysMs.length) return;
+        const delay = retryDelaysMs[attempt];
+        attempt += 1;
+        retryTimer = setTimeout(() => void startScanning(), delay);
+      }
+    };
+    void startScanning();
     return () => {
+      active = false;
+      if (retryTimer) clearTimeout(retryTimer);
       listener.remove();
       void NativeBLEScanner.stopScan().catch(() => undefined);
     };
-  }, [autoMarkBle, token]);
+  }, [autoMarkBle, token, bluetoothEnabled]);
 
   const loadQrSession = async (value: string) => {
     setScanCount(current => Math.min(2, current + 1));
