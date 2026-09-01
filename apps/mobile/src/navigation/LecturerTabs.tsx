@@ -113,7 +113,7 @@ export default function LecturerTabNavigator() {
         component={NotificationStack}
         options={{
           tabBarIcon: AlertsTabIcon,
-          tabBarBadge: unreadCount > 0 ? unreadCount : undefined,
+          tabBarBadge: unreadCount > 9 ? '9+' : unreadCount > 0 ? unreadCount : undefined,
           tabBarBadgeStyle: {
             backgroundColor: '#ef4444',
             color: '#ffffff',
