@@ -39,6 +39,12 @@ const AppHeader: React.FC = () => {
               How it Works
             </Link>
             <Link
+              href="/pricing"
+              className="px-4 py-2 rounded-xl text-gray-700 hover:text-gray-900 hover:bg-green-50 font-medium text-base transition-all duration-200"
+            >
+              Pricing
+            </Link>
+            <Link
               href="/about"
               className="px-4 py-2 rounded-xl text-gray-700 hover:text-gray-900 hover:bg-green-50 font-medium text-base transition-all duration-200"
             >
@@ -106,6 +112,13 @@ const AppHeader: React.FC = () => {
                 onClick={() => setIsMobileMenuOpen(false)}
               >
                 How it Works
+              </Link>
+              <Link
+                href="/pricing"
+                className="block py-3 px-4 text-gray-700 hover:text-gray-900 hover:bg-green-50 font-medium text-base rounded-xl transition-all duration-200"
+                onClick={() => setIsMobileMenuOpen(false)}
+              >
+                Pricing
               </Link>
               <Link
                 href="/about"

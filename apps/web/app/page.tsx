@@ -119,37 +119,6 @@ const HOW_IT_WORKS_STEPS = [
   },
 ];
 
-const TESTIMONIALS = [
-  {
-    quote:
-      "MarkWise has completely transformed how we manage attendance. Our lecturers save 5+ hours every week — hours they now spend on actual teaching.",
-    author: "Dr. Lawrence Nderu",
-    role: "Head of Computer Sciences",
-    institution: "Jomo Kenyatta University of Agriculture and Technology",
-  },
-  {
-    quote:
-      "Switching from paper sheets to MarkWise was instant. The check-in takes seconds, and we've cut attendance time by 90%.",
-    author: "Prof. Michael Chen",
-    role: "Dean of Academics",
-    institution: "Oxford University",
-  },
-  {
-    quote:
-      "Students love the convenience, and I love the real-time dashboard. I can see exactly who's present before the lecture even starts.",
-    author: "Eng. Emily Rodriguez",
-    role: "Head of Student Services",
-    institution: "Stanford University",
-  },
-];
-
-const STATS = [
-  { value: "99.9%", label: "Successful check-ins" },
-  { value: "< 30s", label: "Average check-in time" },
-  { value: "10x", label: "Faster than paper roll calls" },
-  { value: "1M+", label: "Records processed" },
-];
-
 // ─── HomePage Component ─────────────────────────────────────
 const HomePage: React.FC = () => {
   const [isVisible, setIsVisible] = useState(true);
@@ -290,27 +259,6 @@ const HomePage: React.FC = () => {
                 </svg>
                 Book a Demo
               </Link>
-            </div>
-
-            {/* ─── Stats ──────────────────────────────────────── */}
-            <div className="mt-16 grid grid-cols-2 md:grid-cols-4 gap-6">
-              {STATS.map((stat, index) => (
-                <div
-                  key={index}
-                  className={`bg-white/10 backdrop-blur-sm rounded-2xl p-4 border border-white/10 transition-all duration-700 delay-${index * 100} ${
-                    isVisible
-                      ? "opacity-100 transform translate-y-0"
-                      : "opacity-0 transform translate-y-8"
-                  }`}
-                >
-                  <div className="text-2xl md:text-3xl font-bold text-white">
-                    {stat.value}
-                  </div>
-                  <div className="text-sm text-white/60 font-medium">
-                    {stat.label}
-                  </div>
-                </div>
-              ))}
             </div>
 
             {/* ─── Impact Badges ────────────────────────────────────── */}
@@ -585,63 +533,6 @@ const HomePage: React.FC = () => {
         </div>
       </section>
 
-      {/* ─── Testimonials ────────────────────────────────────── */}
-      <section className="py-20 px-4 bg-linear-to-br from-slate-50 to-white">
-        <div className="container mx-auto">
-          <div className="text-center mb-16">
-            <span className="inline-block px-4 py-1.5 rounded-full bg-green-100 text-green-700 text-sm font-semibold mb-4">
-              What They Say
-            </span>
-            <h2 className="text-3xl md:text-4xl font-bold text-slate-900 mb-4">
-              Trusted by Leading Educators
-            </h2>
-            <p className="text-lg text-slate-600 max-w-2xl mx-auto">
-              See what lecturers, administrators, and institutions are achieving
-              with MarkWise.
-            </p>
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-5xl mx-auto">
-            {TESTIMONIALS.map((testimonial, index) => (
-              <div
-                key={index}
-                className="relative bg-white rounded-2xl p-8 shadow-md border border-slate-100 hover:shadow-xl transition-shadow"
-              >
-                <div className="flex text-green-400 mb-5">
-                  {[...Array(5)].map((_, i) => (
-                    <svg
-                      key={i}
-                      className="w-4 h-4 fill-current"
-                      viewBox="0 0 24 24"
-                    >
-                      <path d="M12 17.27L18.18 21l-1.64-7.03L22 9.24l-7.19-.61L12 2 9.19 8.63 2 9.24l5.46 4.73L5.82 21z" />
-                    </svg>
-                  ))}
-                </div>
-                <blockquote className="text-slate-700 text-lg leading-relaxed mb-6 italic">
-                  <span className="text-4xl text-green-200 leading-none mr-2">
-                    “
-                  </span>
-                  {testimonial.quote}
-                  <span className="text-4xl text-green-200 leading-none ml-2">
-                    ”
-                  </span>
-                </blockquote>
-                <div className="border-t border-green-100 pt-4">
-                  <p className="font-semibold text-green-800">
-                    {testimonial.author}
-                  </p>
-                  <p className="text-sm text-slate-500">{testimonial.role}</p>
-                  <p className="text-sm text-slate-400">
-                    {testimonial.institution}
-                  </p>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </section>
-
       {/* ─── CTA Section ────────────────────────────────────── */}
       <section className="py-20 px-4 bg-linear-to-br from-green-800 via-green-900 to-teal-800">
         <div className="container mx-auto text-center relative">
@@ -658,11 +549,11 @@ const HomePage: React.FC = () => {
               Start Managing Attendance the Smart Way
             </h2>
             <p className="text-lg text-white/80 mb-8">
-              Join thousands of educators who have simplified their attendance
-              management with MarkWise.
+              Get your institution set up with layered, offline-resilient
+              attendance in-person and online.
             </p>
             <Link
-              href="/setup"
+              href="/admin/school-admin/register"
               className="inline-flex items-center gap-2 bg-white text-green-700 hover:bg-green-50 px-10 py-4 rounded-xl font-extrabold text-lg transition-all shadow-xl hover:shadow-2xl transform hover:-translate-y-0.5"
             >
               Request institution onboarding
@@ -680,9 +571,6 @@ const HomePage: React.FC = () => {
                 />
               </svg>
             </Link>
-            <p className="text-sm text-white/60 mt-4">
-              No credit card required • Free 14-day trial
-            </p>
           </div>
         </div>
       </section>
