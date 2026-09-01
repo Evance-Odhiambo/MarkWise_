@@ -78,7 +78,14 @@ export default function StudentTabNavigator() {
 
   return (
     <Tab.Navigator
-      detachInactiveScreens
+      // detachInactiveScreens physically tears down and rebuilds each tab's
+      // native view hierarchy on every switch. On reattach, the fresh native
+      // view briefly reports stale/zero safe-area insets before
+      // react-native-safe-area-context's WindowInsets callback corrects it -
+      // that's the "pops out of the safe area then snaps in" flash, and the
+      // teardown/rebuild itself is what makes the switch feel slow. lazy +
+      // freezeOnBlur below are JS-level (mount-once, pause when unfocused)
+      // and give most of the same win without touching the native tree.
       screenOptions={{
         lazy: true,
         freezeOnBlur: true,
