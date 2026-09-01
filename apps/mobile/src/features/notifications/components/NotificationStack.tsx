@@ -3,6 +3,7 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { NotificationStackParamList } from '../../../navigation/types';
 import NotificationsScreen from '../screens/NotificationScreen';
 import NotificationDetailScreen from '../screens/NotificationDetailScreen';
+import NotificationBinScreen from '../screens/NotificationBinScreen';
 import { useAuth } from '../../auth/context/AuthContext';
 
 const Stack = createNativeStackNavigator<NotificationStackParamList>();
@@ -34,6 +35,7 @@ const NotificationStack = () => {
         name="NotificationDetail"
         component={NotificationDetailScreen}
       />
+      <Stack.Screen name="NotificationBin" component={NotificationBinScreen} />
     </Stack.Navigator>
   );
 };

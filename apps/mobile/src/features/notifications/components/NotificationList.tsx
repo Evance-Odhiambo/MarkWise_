@@ -6,12 +6,20 @@ import NotificationItem from './NotificationItem';
 interface NotificationListProps {
   notifications: Notification[];
   onNotificationPress: (notification: Notification) => void;
+  onDelete: (id: string) => void;
+  onLongPress: (id: string) => void;
+  selectionMode?: boolean;
+  selectedIds?: Set<string>;
   loading?: boolean;
 }
 
 const NotificationList: React.FC<NotificationListProps> = ({
   notifications,
   onNotificationPress,
+  onDelete,
+  onLongPress,
+  selectionMode = false,
+  selectedIds,
   loading = false,
 }) => {
   if (loading) {
@@ -44,6 +52,10 @@ const NotificationList: React.FC<NotificationListProps> = ({
           key={notification.id}
           notification={notification}
           onPress={onNotificationPress}
+          onDelete={onDelete}
+          onLongPress={onLongPress}
+          selectionMode={selectionMode}
+          selected={selectedIds?.has(notification.id)}
         />
       ))}
     </View>

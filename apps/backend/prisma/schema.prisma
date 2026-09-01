@@ -470,18 +470,20 @@ model Delegation {
 // ── Notifications ────────────────────────────────────────────────────────────
 
 model Notification {
-  id        String   @id @default(uuid())
+  id        String    @id @default(uuid())
   userId    String
   userType  UserType
   type      String?
   title     String
   message   String
   data      Json?
-  read      Boolean  @default(false)
-  createdAt DateTime @default(now())
+  read      Boolean   @default(false)
+  createdAt DateTime  @default(now())
+  deletedAt DateTime?
 
   @@index([userId])
   @@index([userId, read])
+  @@index([userId, deletedAt])
   @@map("Notification")
 }
 

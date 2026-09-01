@@ -15,6 +15,7 @@ export type RootStackParamList = {
 export type NotificationStackParamList = {
   NotificationList: undefined;
   NotificationDetail: { notificationId: string };
+  NotificationBin: undefined;
 };
 
 export type AttendanceStackParamList = {

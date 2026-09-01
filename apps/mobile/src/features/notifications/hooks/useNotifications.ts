@@ -2,7 +2,11 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Notification, NotificationRole } from '../types/notification';
 import { useAuth } from '../../auth/context/AuthContext';
 import { API_BASE_URL } from '../../../shared/constants';
-import { onNotificationReceived } from '../notificationEvents';
+import {
+  emitNotificationsChanged,
+  onNotificationReceived,
+  onNotificationsChanged,
+} from '../notificationEvents';
 
 const getFilteredNotifications = (
   notifications: Notification[],
@@ -133,6 +137,52 @@ export const useNotifications = (role?: NotificationRole) => {
     );
   }, [roleFilter, token]);
 
+  // Shared by both delete paths below — removes ids from this instance's
+  // own state and from the shared cache so a newly-mounted instance (or one
+  // that hasn't refetched yet) doesn't briefly show an already-deleted item.
+  const removeLocally = useCallback((ids: string[]) => {
+    const idSet = new Set(ids);
+    setAllNotifications(prev => prev.filter(n => !idSet.has(n.id)));
+    if (sharedCache)
+      sharedCache = {
+        ...sharedCache,
+        notifications: sharedCache.notifications.filter(n => !idSet.has(n.id)),
+      };
+  }, []);
+
+  const deleteNotification = useCallback(
+    async (id: string) => {
+      removeLocally([id]);
+      if (token)
+        await fetch(
+          `${API_BASE_URL}/notifications/${encodeURIComponent(id)}/delete`,
+          { method: 'POST', headers: { Authorization: `Bearer ${token}` } },
+        ).catch(() => undefined);
+      emitNotificationsChanged();
+    },
+    [removeLocally, token],
+  );
+
+  const deleteNotifications = useCallback(
+    async (ids?: string[]) => {
+      // Omitting ids deletes everything currently loaded in this instance —
+      // the "select all" / "delete all" path.
+      const targetIds = ids ?? allNotifications.map(n => n.id);
+      removeLocally(targetIds);
+      if (token)
+        await fetch(`${API_BASE_URL}/notifications/delete-bulk`, {
+          method: 'POST',
+          headers: {
+            Authorization: `Bearer ${token}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(ids ? { ids } : {}),
+        }).catch(() => undefined);
+      emitNotificationsChanged();
+    },
+    [allNotifications, removeLocally, token],
+  );
+
   const getNotificationById = useCallback(
     (id: string): Notification | undefined => {
       return allNotifications.find(n => n.id === id);
@@ -174,6 +224,17 @@ export const useNotifications = (role?: NotificationRole) => {
     return () => subscription.remove();
   }, [refetch]);
 
+  useEffect(() => {
+    // A delete/restore from another mounted instance (e.g. the list screen,
+    // while this instance is the tab badge) already updated sharedCache —
+    // sync straight from it instead of firing a redundant network refetch.
+    const subscription = onNotificationsChanged(() => {
+      if (token && sharedCache?.token === token)
+        setAllNotifications(sharedCache.notifications);
+    });
+    return () => subscription.remove();
+  }, [token]);
+
   return {
     notifications,
     unreadCount,
@@ -181,6 +242,8 @@ export const useNotifications = (role?: NotificationRole) => {
     error,
     markAsRead,
     markAllAsRead,
+    deleteNotification,
+    deleteNotifications,
     getNotificationById,
     refetch,
   };
