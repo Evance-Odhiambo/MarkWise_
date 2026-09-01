@@ -305,19 +305,19 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         verificationStatus !== 'verified' && verificationStatus !== 'duplicate' ||
         (attendanceMethod === 'pin' &&
           verificationStatus !== 'verified' &&
-          verificationStatus !== 'duplicate') ||
-        // Already-relayed evidence (signed MWIR1) is a terminal leaf, not a
-        // further relay source — verifyRelay's parent-method detection only
-        // recognizes MWBLE1/MWPIN1/MWIP1, not MWIR1 itself.
-        evidence.trim().startsWith('MWIR1:')
+          verificationStatus !== 'duplicate')
       )
         return;
-      // Every eligible mark — QR, PIN, or BLE — sets up both relay
-      // transports unconditionally, the same way QR/PIN-origin marks
-      // always have: the rotating relay QR (an image on screen, only ever
-      // actually relayed if another student chooses to scan it) and BLE
-      // broadcast relaying. There's no election/selection step; any
-      // verified or duplicate mark is relay-eligible.
+      // A mark whose own evidence is itself a relay envelope (MWIR1) is
+      // still relay-eligible — verifyRelay's relayerRecord check already
+      // confirms the relayer is server-verified for this session regardless
+      // of how many hops produced that, so student-to-student relay chains
+      // (A -> B -> C -> ...) work, not just lecturer-to-student. Every
+      // eligible mark — QR, PIN, or BLE, direct or relayed — sets up both
+      // relay transports unconditionally: the rotating relay QR (an image
+      // on screen, only ever actually relayed if another student chooses to
+      // scan it) and BLE broadcast relaying. There's no election/selection
+      // step; any verified or duplicate mark is relay-eligible.
       relayParentRef.current = { session: attendanceSession, evidence };
       // Helper-PIN eligibility is the same guard above, minus PIN-origin
       // marks — see helperPinParentRef's declaration for why.

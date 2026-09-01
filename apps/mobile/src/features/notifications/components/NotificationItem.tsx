@@ -59,10 +59,14 @@ const NotificationItem: React.FC<NotificationItemProps> = ({
           </View>
 
           <Text
-            className={`text-sm font-semibold mt-1 ${bodyColor}`}
+            className={`text-sm font-extrabold mt-1 ${bodyColor}`}
             numberOfLines={2}
           >
-            {truncateWords(body)}
+            {/* A shorter cap than the default deliberately cuts off before
+                the reason clause (see notifyAttendanceOutcome, which puts it
+                last) — the preview says what unit this is about, not why it
+                was accepted or rejected; that's worth opening for. */}
+            {truncateWords(body, 6)}
           </Text>
         </View>
 

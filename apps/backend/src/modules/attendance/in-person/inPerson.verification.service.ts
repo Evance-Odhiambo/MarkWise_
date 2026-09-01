@@ -472,13 +472,27 @@ export class InPersonVerificationService {
       select: { id: true },
     });
     if (!relayerRecord) throw new Error("RELAY_PARENT_NOT_VERIFIED");
+    // A relayer's own evidence can itself be a relay envelope (student A ->
+    // B -> C, arbitrarily deep) — re-verifying a *nested* MWIR1 payload as a
+    // raw QR/BLE/PIN artifact isn't possible (verify()/verifyPin() only
+    // decode session-level formats) and isn't necessary: relayerRecord above
+    // already independently confirms the relayer has a server-verified
+    // record for this exact session, regardless of how many hops produced
+    // it, and the signature/counter-drift checks below already guarantee
+    // this specific relay hop is live and genuinely signed by the relayer's
+    // own device key. Re-verifying the raw parent artifact is only possible
+    // (and only adds anything) for a first-hop relay.
     const parentMethod = relay.parentPayload.startsWith("MWBLE1:")
       ? "ble"
       : relay.parentPayload.startsWith("MWPIN1:")
       ? "pin"
+      : relay.parentPayload.startsWith("MWIR1:")
+      ? "relay"
       : "qr";
     const parent =
-      parentMethod === "pin"
+      parentMethod === "relay"
+        ? { status: "verified" as const }
+        : parentMethod === "pin"
         ? await this.verifyPin({
             ...input,
             rawPayload: relay.parentPayload,

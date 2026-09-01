@@ -16,6 +16,47 @@ const METHOD_LABELS: Record<string, string> = {
   pin: "PIN",
 };
 
+// Human-readable text for every rejection reason verifyPin/verify/verifyBle/
+// verifyRelay/verifyLecturerAssisted can throw — students should never see a
+// raw code like RELAY_SELF_MARK in a notification.
+const REJECTION_REASON_MESSAGES: Record<string, string> = {
+  SESSION_NOT_FOUND: "the session could not be found",
+  SESSION_EXPIRED: "the session had already ended",
+  SESSION_NOT_OWNED: "the session could not be found",
+  SESSION_TIME_MISMATCH: "the session details didn't match — try again",
+  SCAN_TIME_INVALID: "the scan time didn't match — check your device clock",
+  SESSION_MISMATCH: "the code was for a different session",
+  BLE_SESSION_MISMATCH: "the code was for a different session",
+  UNIT_MISMATCH: "the code was for a different unit",
+  REQUEST_UNIT_MISMATCH: "the code was for a different unit",
+  NONCE_MISMATCH: "the code didn't match this session — try scanning again",
+  ISSUED_AT_INVALID: "the code had expired — try the current one",
+  COUNTER_DRIFT: "the code had expired — try the current one",
+  PIN_COUNTER_DRIFT: "the PIN had expired — try the current one",
+  RELAY_COUNTER_DRIFT: "the shared code had expired — try the current one",
+  SIGNATURE_INVALID: "the code could not be verified",
+  BLE_FORMAT_INVALID: "the Bluetooth signal could not be read",
+  PIN_FORMAT_INVALID: "the PIN was not in a valid format",
+  PIN_INVALID: "the PIN entered was incorrect",
+  RELAY_FORMAT_INVALID: "the shared code was not in a valid format",
+  RELAY_SELF_MARK: "you can't use your own relay code",
+  RELAY_PARENT_NOT_VERIFIED:
+    "the classmate who shared this code hasn't been verified yet",
+  RELAY_PARENT_INVALID: "the shared code is no longer valid",
+  RELAY_DEVICE_NOT_REGISTERED:
+    "the sharing device isn't registered — ask them to reconnect once online",
+  RELAY_SIGNATURE_INVALID: "the shared code could not be verified",
+  METHOD_MISMATCH: "this method isn't available for this code",
+  UNIT_NOT_FOUND: "this unit could not be found",
+  NOT_ENROLLED: "you're not enrolled in this unit",
+  DEVICE_CONFLICT:
+    "this device is already linked to another student's attendance",
+};
+
+const humanizeRejectionReason = (reason?: string) =>
+  (reason && REJECTION_REASON_MESSAGES[reason]) ||
+  "attendance could not be verified";
+
 export const inPersonRoutes: FastifyPluginAsync = async (app) => {
   const service = new InPersonService(app.prisma);
   const PIN_PENDING_TTL_MS = 24 * 60 * 60 * 1000;
@@ -57,6 +98,31 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       .catch(() => null);
     if (recent) return;
     const label = METHOD_LABELS[method] || "attendance";
+    // Best-effort — a notification is still worth sending (with just the
+    // unit code, or none at all) if this lookup fails for any reason.
+    const session = await app.prisma.conductedSession
+      .findUnique({
+        where: { id: sessionId },
+        select: { unitCode: true, institutionId: true },
+      })
+      .catch(() => null);
+    const unitCode = session?.unitCode;
+    const unit = unitCode
+      ? await app.prisma.unit
+          .findFirst({
+            where: {
+              code: unitCode,
+              semester: {
+                courseYear: { course: { institutionId: session!.institutionId } },
+              },
+            },
+            select: { name: true },
+          })
+          .catch(() => null)
+      : null;
+    const unitDisplay = unit?.name
+      ? `${unit.name} (${unitCode})`
+      : unitCode || "your unit";
     const notification = await app.prisma.notification
       .create({
         data: {
@@ -64,16 +130,21 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           userType: "student",
           type: "attendance",
           title: success
-            ? `Attendance ${label} accepted`
-            : `Attendance ${label} rejected`,
+            ? `Attendance marked${unitCode ? ` — ${unitCode}` : ""}`
+            : `Attendance not marked${unitCode ? ` — ${unitCode}` : ""}`,
+          // The reason clause is deliberately last — the list preview
+          // truncates to a few words, so a rejection's actual reason only
+          // shows once the student opens the notification.
           message: success
-            ? `Your attendance ${label} was verified by the server.`
-            : `Your attendance ${label} was rejected${reason ? `: ${reason}` : "."}`,
+            ? `Verified via ${label} for ${unitDisplay}.`
+            : `${label} was not accepted for ${unitDisplay}: ${humanizeRejectionReason(reason)}.`,
           data: {
             sessionId,
             method,
             outcome: success ? "verified" : "rejected",
             reason: reason ?? null,
+            unitCode: unitCode ?? null,
+            unitName: unit?.name ?? null,
           },
         },
       })
