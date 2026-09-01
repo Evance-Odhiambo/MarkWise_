@@ -73,7 +73,6 @@ import {
   SpinView,
 } from '../components/in-person/AnimatedAttendance';
 import {
-  Clock,
   Radio,
   QrCode,
   KeyRound,
@@ -100,7 +99,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const [relayBleActive, setRelayBleActive] = useState(false);
   const [relayError, setRelayError] = useState<string | null>(null);
   const [helperPin, setHelperPin] = useState<string | null>(null);
-  const [helperPinRemainingSeconds, setHelperPinRemainingSeconds] = useState(0);
   const [bluetoothEnabled, setBluetoothEnabled] = useState(false);
   const [bleAdvertisingSupported, setBleAdvertisingSupported] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
@@ -112,6 +110,17 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const [pinUnitCode, setPinUnitCode] = useState('');
   const [pinRemainingSeconds, setPinRemainingSeconds] = useState(0);
   const pinComplete = /^\d{6}$/.test(pinValue);
+  // Drives the BLE card's three states — derived from state this screen
+  // already tracks, nothing new to compute: a BLE beacon resolves method to
+  // 'ble' and sets session (see the BLE listener effect), and submitting is
+  // already true for the duration of any handleJoin call, auto-mark
+  // included.
+  const bleCardState =
+    method === 'ble' && session
+      ? submitting
+        ? ('marking' as const)
+        : ('detected' as const)
+      : ('scanning' as const);
   const [remainingSeconds, setRemainingSeconds] = useState(0);
   const pinWindowRef = useRef<number | null>(null);
   const autoMarkedSessions = useRef(new Set<string>());
@@ -222,6 +231,13 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     const timer = setInterval(update, 1_000);
     return () => clearInterval(timer);
   }, [session]);
+
+  // Replaces the old manual "Done" button on the post-mark relay screen —
+  // it resumes the attendance screen on its own once the session actually
+  // ends, instead of requiring the student to dismiss it themselves.
+  useEffect(() => {
+    if (success && remainingSeconds === 0) navigation.goBack();
+  }, [success, remainingSeconds, navigation]);
 
   useEffect(() => {
     const update = () => {
@@ -382,9 +398,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         return;
       }
       const nowMs = nowEpochMs();
-      setHelperPinRemainingSeconds(
-        PIN_ROTATION_SECONDS - (Math.floor(nowMs / 1000) % PIN_ROTATION_SECONDS),
-      );
       try {
         if (!helperRelayKeyRef.current)
           helperRelayKeyRef.current = await getOrCreateRelayKey();
@@ -495,12 +508,39 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       try {
         const attendanceMethod = override?.method ?? method;
         const evidence = override?.evidence ?? rawPayload.trim();
-        const record = await capture(
-          evidence,
-          attendanceMethod,
-          attendanceSession,
+        let record;
+        try {
+          record = await capture(evidence, attendanceMethod, attendanceSession);
+        } catch (error) {
+          // A local structural validation failure (bad signature, wrong
+          // session/nonce, malformed payload) — not a server verification
+          // question, so there's nothing to queue or sync. Worth telling
+          // the student immediately since it means the scan itself needs
+          // retrying, not just waiting.
+          if (override) autoMarkedSessions.current.delete(override.session.id);
+          Alert.alert(
+            'Scan not recognized',
+            error instanceof Error
+              ? error.message
+              : 'Could not read this attendance code. Try again.',
+          );
+          return;
+        }
+        // sync() always durably queues the record locally (before it ever
+        // attempts the network) and only throws for a definitive
+        // server-side rejection, not a transient one (offline, session not
+        // yet claimed, etc — those resolve to "queued" without throwing).
+        // Even a definitive rejection isn't surfaced here as a blocking
+        // alert: the record stays queued, the background sync retries or
+        // gives up per the same classification, and notifyAttendanceOutcome
+        // (server-side, fires whenever /submit actually runs — the attempt
+        // made here or a later background one) tells the student the real
+        // outcome asynchronously instead of interrupting the scan. This
+        // also means a single scan never causes more than the one API call
+        // made right here — no separate "retry immediately" round-trip.
+        const result = await sync(record).catch(
+          () => ({ data: { status: 'queued' as const } }),
         );
-        const result = await sync(record);
         // QR and BLE are cryptographically validated locally before being
         // queued. They may relay immediately while offline. PIN is different:
         // it can relay only after the backend returns verified/duplicate.
@@ -509,31 +549,12 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
             ? 'verified'
             : result.data.status;
         await scheduleRelay(attendanceSession, evidence, attendanceMethod, relayStatus);
-        setSuccess(
-          result.data.status === 'verified' ||
-            result.data.status === 'duplicate' ||
-            result.data.status === 'queued',
-        );
-      } catch (error) {
-        if (error instanceof ApiRequestError && error.status === 404) {
-          Alert.alert(
-            'Session not found',
-            'There is no active attendance session for this unit.',
-          );
-          return;
-        }
-        if (override) autoMarkedSessions.current.delete(override.session.id);
-        Alert.alert(
-          'Attendance not verified',
-          error instanceof Error
-            ? error.message
-            : 'The server rejected this attendance proof.',
-        );
+        setSuccess(true);
       } finally {
         setSubmitting(false);
       }
     },
-    [capture, method, rawPayload, scheduleRelay, session, sync, token],
+    [capture, method, rawPayload, scheduleRelay, session, sync],
   );
 
   const submitPin = async () => {
@@ -1212,88 +1233,109 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                 </Text>
               </View>
             ) : success ? (
-              <View className="gap-4">
+              <View className="gap-3">
                 <PulseView>
-                  <View className="items-center rounded-2xl border-2 border-emerald-300 bg-emerald-50 p-6">
-                    <View className="mb-3 rounded-full bg-emerald-600 p-2">
-                      <CheckCircle2 size={42} color="#ffffff" strokeWidth={2.5} />
+                  <View
+                    className={`items-center rounded-2xl border-2 p-4 ${
+                      isDark
+                        ? 'border-emerald-500/40 bg-emerald-500/10'
+                        : 'border-emerald-300 bg-emerald-50'
+                    }`}
+                  >
+                    <View className="mb-2 rounded-full bg-emerald-600 p-2">
+                      <CheckCircle2 size={32} color="#ffffff" strokeWidth={2.5} />
                     </View>
-                    <Text className="text-center text-2xl font-extrabold text-emerald-800">
+                    <Text
+                      className={`text-center text-xl font-extrabold ${
+                        isDark ? 'text-emerald-300' : 'text-emerald-800'
+                      }`}
+                    >
                       Attendance Marked
                     </Text>
-                    <Text className="mt-2 text-center text-base font-medium text-emerald-700">
-                      Your attendance was recorded successfully. You can now
-                      help nearby classmates.
+                    <Text
+                      className={`mt-2 text-sm font-bold ${
+                        isDark ? 'text-emerald-400' : 'text-emerald-700'
+                      }`}
+                    >
+                      Session ends in{' '}
+                      {Math.floor(remainingSeconds / 60)}:
+                      {String(remainingSeconds % 60).padStart(2, '0')}
                     </Text>
                   </View>
                 </PulseView>
                 {relayPayload && (
-                  <View className="items-center rounded-2xl border border-slate-200 bg-white p-5">
-                    <Text className="mb-4 text-lg font-bold text-slate-900">
-                      Rotating relay QR
-                    </Text>
-                    <QRCodeDisplay value={relayPayload} size={230} />
-                    <Text className={`mt-3 text-center text-xs ${bodyClasses}`}>
-                      Keep this code visible so nearby students can check in. It
-                      refreshes automatically every few seconds.
-                    </Text>
-                  </View>
-                )}
-                {helperPin && (
                   <View
-                    className={`items-center rounded-2xl border p-5 ${
+                    className={`items-center rounded-2xl border p-4 ${
                       isDark
                         ? 'border-slate-700 bg-slate-900'
                         : 'border-slate-200 bg-white'
                     }`}
                   >
-                    <Text className={`mb-2 text-lg font-bold ${titleClasses}`}>
+                    <Text className={`mb-3 font-bold ${titleClasses}`}>
+                      Relay QR
+                    </Text>
+                    <QRCodeDisplay value={relayPayload} size={190} />
+                    <Text className={`mt-2 text-center text-xs ${bodyClasses}`}>
+                      Show this to nearby classmates to help them check in.
+                    </Text>
+                  </View>
+                )}
+                {helperPin && (
+                  <View
+                    className={`items-center rounded-2xl border p-4 ${
+                      isDark
+                        ? 'border-slate-700 bg-slate-900'
+                        : 'border-slate-200 bg-white'
+                    }`}
+                  >
+                    <Text className={`mb-1 font-bold ${titleClasses}`}>
                       Help a classmate
                     </Text>
                     <Text className="text-3xl font-extrabold tracking-widest text-emerald-600">
                       {helperPin}
                     </Text>
-                    <Text className={`mt-3 text-center text-xs ${bodyClasses}`}>
-                      For a classmate whose phone can't scan QR or Bluetooth —
-                      they enter this in their own "Enter PIN" screen. Works
-                      fully offline; refreshes in {helperPinRemainingSeconds}s.
+                    <Text
+                      className={`mt-1 text-xs font-bold ${
+                        isDark ? 'text-amber-400' : 'text-amber-600'
+                      }`}
+                    >
+                      PIN rotates in {pinRemainingSeconds}s
+                    </Text>
+                    <Text className={`mt-2 text-center text-xs ${bodyClasses}`}>
+                      For a classmate who can't scan QR or Bluetooth — they
+                      type this into their own PIN entry.
                     </Text>
                   </View>
                 )}
                 <View
                   className={`rounded-2xl border p-4 ${
                     relayBleActive
-                      ? 'border-emerald-300 bg-emerald-50'
+                      ? isDark
+                        ? 'border-emerald-500/40 bg-emerald-500/10'
+                        : 'border-emerald-300 bg-emerald-50'
                       : isDark
                       ? 'border-slate-700 bg-slate-900'
                       : 'border-slate-200 bg-white'
                   }`}
                 >
                   <View className="flex-row items-center justify-between">
-                    <Text className={`font-extrabold ${titleClasses}`}>
+                    <Text className={`font-bold ${titleClasses}`}>
                       Bluetooth relay
                     </Text>
                     <Text
-                      className={`font-bold ${
-                        relayBleActive ? 'text-emerald-700' : 'text-amber-600'
+                      className={`text-xs font-bold ${
+                        relayBleActive ? 'text-emerald-600' : 'text-amber-600'
                       }`}
                     >
-                      {relayBleActive ? 'Broadcasting' : 'QR relay active'}
+                      {relayBleActive ? 'On' : 'Starting'}
                     </Text>
                   </View>
-                  <Text className={`mt-2 text-sm ${bodyClasses}`}>
+                  <Text className={`mt-1 text-xs ${bodyClasses}`}>
                     {relayBleActive
-                      ? 'Nearby students can detect this secure attendance relay automatically.'
-                      : relayError ||
-                        'Bluetooth relay starts after the server confirms your attendance. The QR relay remains available.'}
+                      ? 'Nearby classmates are detected automatically.'
+                      : relayError || 'Starts once your mark is confirmed.'}
                   </Text>
                 </View>
-                <TouchableOpacity
-                  onPress={() => navigation.goBack()}
-                  className="items-center rounded-2xl bg-emerald-600 py-4"
-                >
-                  <Text className="font-bold text-white">Done</Text>
-                </TouchableOpacity>
               </View>
             ) : (
               <>
@@ -1384,20 +1426,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                       {motionVerified ? 'Active' : 'Pending'}
                     </Text>
                   </View>
-                  <View className="mx-1 w-px bg-slate-200" />
-                  <View className="flex-1 items-center">
-                    <Clock size={17} color="#d97706" />
-                    <Text className={`mt-1 text-[11px] ${bodyClasses}`}>
-                      Status
-                    </Text>
-                    <Text className="mt-1 font-extrabold text-emerald-600">
-                      {remainingSeconds > 0
-                        ? `${Math.floor(remainingSeconds / 60)}:${String(
-                            remainingSeconds % 60,
-                          ).padStart(2, '0')}`
-                        : '—'}
-                    </Text>
-                  </View>
                 </View>
                 <View
                   className={`mt-4 rounded-2xl border border-emerald-500/30 p-5 ${
@@ -1405,17 +1433,25 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                   }`}
                 >
                   <View className="flex-row items-center">
-                    {bluetoothEnabled ? (
+                    {!bluetoothEnabled ? (
+                      <Radio size={21} color="#d97706" />
+                    ) : bleCardState === 'marking' ? (
+                      <ActivityIndicator color="#059669" size="small" />
+                    ) : (
                       <PulseView>
                         <Radio size={21} color="#059669" />
                       </PulseView>
-                    ) : (
-                      <Radio size={21} color="#d97706" />
                     )}
                     <Text
                       className={`ml-2 text-lg font-extrabold ${titleClasses}`}
                     >
-                      BLE Scanning
+                      {!bluetoothEnabled
+                        ? 'BLE Scanning'
+                        : bleCardState === 'marking'
+                        ? 'Marking Attendance'
+                        : bleCardState === 'detected'
+                        ? 'Signals Detected'
+                        : 'BLE Scanning'}
                     </Text>
                   </View>
                   <Text
@@ -1423,9 +1459,13 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                       bluetoothEnabled ? 'text-emerald-600' : 'text-amber-600'
                     }`}
                   >
-                    {bluetoothEnabled
-                      ? 'Continuously scanning for nearby BLE signals — attendance marks automatically the moment one is detected.'
-                      : 'Enable Bluetooth to continuously scan for nearby BLE signals'}
+                    {!bluetoothEnabled
+                      ? 'Enable Bluetooth to continuously scan for nearby BLE signals'
+                      : bleCardState === 'marking'
+                      ? `Marking attendance for ${session?.unitCode}`
+                      : bleCardState === 'detected'
+                      ? `Detected signals for ${session?.unitCode}`
+                      : 'Continuously scanning for nearby BLE signals'}
                   </Text>
                   {!bluetoothEnabled && (
                     <TouchableOpacity
