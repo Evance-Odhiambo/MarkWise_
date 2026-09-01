@@ -2,7 +2,6 @@ import React, { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
-  Platform,
   ScrollView,
   Text,
   TouchableOpacity,
@@ -365,8 +364,24 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         return;
       }
       try {
+        // A chained relay (this mark's own evidence is itself an MWIR1
+        // envelope) would otherwise re-embed the entire nested parent
+        // envelope as parentPayload, growing the QR by roughly the size of
+        // one full envelope per hop — a 2-3 hop chain quickly becomes too
+        // dense to scan reliably, which is also why a corrupted scan of one
+        // could get misrouted into the plain-QR decoder and throw
+        // "Unsupported attendance payload" instead of the real error. The
+        // backend's chained-relay check (verifyRelay, inPerson.verification.
+        // service.ts) only needs to recognize the MWIR1: prefix to trust the
+        // relayerRecord check — it never inspects the rest of a nested
+        // parentPayload — so a short, fixed sentinel carries exactly as much
+        // information the backend actually uses, keeping every relay QR
+        // roughly the same (small) size regardless of chain depth.
+        const parentPayload = parent.evidence.trim().startsWith('MWIR1:')
+          ? 'MWIR1:RELAYED'
+          : parent.evidence;
         const value = await createRelayPayload(
-          parent.evidence,
+          parentPayload,
           parent.session.id,
           userId || '',
         );
@@ -428,9 +443,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
 
   useEffect(() => {
     const stop = async () => {
-      await NativeBLEAdvertiser.stopBackgroundAdvertising().catch(
-        () => undefined,
-      );
+      await NativeBLEAdvertiser.stopAdvertising().catch(() => undefined);
       setRelayBleActive(false);
     };
     if (
@@ -469,12 +482,19 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         }
         const nextPayload = await createCompactBlePayload(session, '');
         const base64Payload = nextPayload.slice(7);
-        if (Platform.OS === 'android')
-          await NativeBLEAdvertiser.startBackgroundAdvertising(
-            base64Payload,
-            Math.ceil((session.expiresAt - nowEpochMs()) / 1_000),
-          );
-        else await NativeBLEAdvertiser.startAdvertising(base64Payload);
+        // startBackgroundAdvertising (Android) hands off to a foreground
+        // service and resolves as soon as the service *intent* is
+        // dispatched, not once it's actually advertising — a foreground
+        // service failing internally (a stricter, more version/OEM-
+        // sensitive path than a plain advertise call, especially around
+        // Android 12+'s connectedDevice foreground-service rules) is
+        // invisible here and reads as "relay just doesn't start" with no
+        // error. The lecturer's own broadcast (TakeInPersonAttendance) has
+        // never used the foreground-service path and reliably works — this
+        // effect already re-invokes on its own RELAY_ROTATION_SECONDS timer
+        // regardless of platform, so the plain call (which does surface a
+        // real rejection on failure) is both simpler and more reliable here.
+        await NativeBLEAdvertiser.startAdvertising(base64Payload);
         if (active) {
           setRelayBlePayload(nextPayload);
           setRelayBleActive(true);
