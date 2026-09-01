@@ -1,7 +1,9 @@
 buildscript {
     ext {
         buildToolsVersion = "37.0.0"
-        minSdkVersion = 24
+        // react-native-passkey requires API 28+ for Android Credential Manager
+        // passkey support (see the online-attendance passkey plan).
+        minSdkVersion = 28
         compileSdkVersion = 37
         targetSdkVersion = 36
         ndkVersion = "27.1.12297006"

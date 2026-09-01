@@ -14,6 +14,18 @@ const CHALLENGE_TTL_MS = 5 * 60 * 1000;
 const REGISTRATION_PURPOSE = "attendance-passkey-registration";
 const ATTENDANCE_PURPOSE = "attendance-passkey-authentication";
 
+// A native Android app has no browser origin of its own — Credential Manager
+// presents android:apk-key-hash:<base64url(SHA-256 of the signing cert)>
+// instead, once Digital Asset Links (see app.ts's /.well-known/assetlinks.json)
+// establishes trust between that cert and env.webauthnRpId. Accepting both
+// origins is additive — web's own flow (env.webauthnOrigin) is unaffected.
+// This is the *debug* keystore's fingerprint; add the release keystore's here
+// too before a Play Store build ships, or passkeys break for real users while
+// continuing to pass in debug builds.
+const ANDROID_APK_KEY_HASH_ORIGIN =
+  "android:apk-key-hash:-sYXRdwJA3hvue3mKpYrOZ9zSPC7b4mbgzJmdZEDuQ";
+const expectedOrigins = [env.webauthnOrigin, ANDROID_APK_KEY_HASH_ORIGIN];
+
 export class WebAuthnService {
   constructor(private readonly prisma: PrismaClient) {}
 
@@ -81,7 +93,7 @@ export class WebAuthnService {
       const verification = await verifyRegistrationResponse({
         response,
         expectedChallenge: challenge.challenge,
-        expectedOrigin: env.webauthnOrigin,
+        expectedOrigin: expectedOrigins,
         expectedRPID: env.webauthnRpId,
         requireUserVerification: true,
       });
@@ -168,7 +180,7 @@ export class WebAuthnService {
       const verification = await verifyAuthenticationResponse({
         response,
         expectedChallenge: challenge.challenge,
-        expectedOrigin: env.webauthnOrigin,
+        expectedOrigin: expectedOrigins,
         expectedRPID: env.webauthnRpId,
         requireUserVerification: true,
         credential: {

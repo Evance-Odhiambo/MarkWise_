@@ -33,6 +33,7 @@
     "react-native-gesture-handler": "^3.2.1",
     "react-native-keychain": "^10.0.0",
     "react-native-nitro-modules": "^0.37.1",
+    "react-native-passkey": "^3.6.1",
     "react-native-quick-base64": "^3.0.1",
     "react-native-quick-crypto": "^1.1.7",
     "react-native-reanimated": "4.6.0-nightly-20260811-248dee712",

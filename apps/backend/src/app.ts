@@ -37,6 +37,32 @@ export function buildApp() {
   app.register(adminModule, { prefix: `${apiPrefix}/admin` });
 
   app.get(`${apiPrefix}/health`, async () => ({ status: "ok" }));
+
+  // Digital Asset Links — lets Android's Credential Manager trust the mobile
+  // app to create/use passkeys scoped to this domain (env.webauthnRpId). Must
+  // be reachable, unauthenticated, at the site root — not under apiPrefix.
+  // Only the debug keystore's fingerprint is listed here; the release
+  // keystore's SHA-256 must be added before a Play Store release build ships,
+  // or passkeys will silently fail to verify for real users while continuing
+  // to work in debug builds.
+  app.get("/.well-known/assetlinks.json", async (_request, reply) => {
+    reply.header("Content-Type", "application/json");
+    return [
+      {
+        relation: [
+          "delegate_permission/common.handle_all_urls",
+          "delegate_permission/common.get_login_creds",
+        ],
+        target: {
+          namespace: "android_app",
+          package_name: "com.markwise",
+          sha256_cert_fingerprints: [
+            "FA:C6:17:45:DC:09:03:78:6F:B9:ED:E6:2A:96:2B:39:9F:73:48:F0:BB:6F:89:9B:83:32:66:75:91:03:3B:9C",
+          ],
+        },
+      },
+    ];
+  });
   app.register(attendanceRoutes, { prefix: `${apiPrefix}/attendance` });
   app.register(inPersonRoutes, { prefix: `${apiPrefix}/attendance/in-person` });
   app.register(delegationRoutes, { prefix: `${apiPrefix}/attendance/delegations` });

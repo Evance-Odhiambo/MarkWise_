@@ -24,6 +24,11 @@ import {
 } from '../../../shared/storage/onlineAttendanceQueue';
 import { getOrCreateSecureDeviceId } from '../../../shared/storage/secureDeviceId';
 import { AttendanceBackHeader } from '../components/AttendanceBackHeader';
+import {
+  isPasskeySupported,
+  markOnlineAttendanceWithPasskey,
+  registerOnlineAttendancePasskey,
+} from '../security/onlineAttendancePasskey';
 
 type Props = NativeStackScreenProps<AttendanceStackParamList, 'MarkOnline'>;
 
@@ -35,6 +40,7 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
   const [loading, setLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [message, setMessage] = useState('');
+  const [offerPasskeyRegister, setOfferPasskeyRegister] = useState(false);
   const screenClasses = isDark ? 'bg-slate-950' : 'bg-slate-50';
   const cardClasses = isDark
     ? 'bg-slate-900 border-slate-800'
@@ -84,28 +90,77 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
     })();
   }, [route.params.sessionId, token]);
 
-  const handleJoin = async () => {
-    if (!token || !session) return;
-    setSubmitting(true);
+  const submitWithDeviceId = async (authToken: string) => {
+    const deviceId = await getOrCreateSecureDeviceId();
     try {
-      const deviceId = await getOrCreateSecureDeviceId();
       await submitOnlineAttendance(
         route.params.sessionId,
         { deviceId },
-        { token },
+        { token: authToken },
       );
       await removeQueuedOnlineSubmission(route.params.sessionId, deviceId);
       Alert.alert('Attendance marked', 'Your attendance was recorded.', [
         { text: 'Done', onPress: () => navigation.goBack() },
       ]);
     } catch (error) {
-      const deviceId = await getOrCreateSecureDeviceId();
       await queueOnlineSubmission({
         sessionId: route.params.sessionId,
         deviceId,
       });
       setMessage(
         'Connection unavailable. Your check-in is queued and will retry while this session is open.',
+      );
+    }
+  };
+
+  const handleJoin = async () => {
+    if (!token || !session) return;
+    setSubmitting(true);
+    try {
+      if (isPasskeySupported()) {
+        try {
+          const result = await markOnlineAttendanceWithPasskey(
+            route.params.sessionId,
+            token,
+          );
+          if ('noCredential' in result) {
+            // No passkey registered on this device yet. Mark attendance now
+            // via the existing deviceId path so the student isn't blocked,
+            // and surface the option to register a passkey for next time.
+            setOfferPasskeyRegister(true);
+            await submitWithDeviceId(token);
+            return;
+          }
+          Alert.alert(
+            'Attendance marked',
+            'Your attendance was verified with your device passkey.',
+            [{ text: 'Done', onPress: () => navigation.goBack() }],
+          );
+          return;
+        } catch {
+          // Passkey ceremony failed, was cancelled, or the device otherwise
+          // couldn't complete it — fall back to the deviceId path rather
+          // than stranding the student.
+        }
+      }
+      await submitWithDeviceId(token);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const handleRegisterPasskey = async () => {
+    if (!token) return;
+    setSubmitting(true);
+    try {
+      await registerOnlineAttendancePasskey(token);
+      setOfferPasskeyRegister(false);
+      setMessage('Passkey registered for faster, more secure check-ins.');
+    } catch (error) {
+      setMessage(
+        error instanceof Error
+          ? error.message
+          : 'Passkey registration failed. You can try again later.',
       );
     } finally {
       setSubmitting(false);
@@ -170,6 +225,20 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
             </Text>
           </View>
 
+          {offerPasskeyRegister && (
+            <TouchableOpacity
+              onPress={handleRegisterPasskey}
+              disabled={submitting}
+              className={`py-3 rounded-2xl items-center border mb-4 ${
+                isDark ? 'border-slate-700' : 'border-slate-300'
+              } ${submitting ? 'opacity-40' : ''}`}
+            >
+              <Text className={`font-semibold ${titleClasses}`}>
+                Register device biometrics for faster check-in
+              </Text>
+            </TouchableOpacity>
+          )}
+
           <TouchableOpacity
             onPress={handleJoin}
             disabled={!session || submitting || session.status !== 'active'}
@@ -188,6 +257,12 @@ const MarkOnlineAttendance = ({ navigation, route }: Props) => {
               </Text>
             )}
           </TouchableOpacity>
+
+          {session && message ? (
+            <Text className={`text-sm ${bodyTextClasses} mt-4 text-center`}>
+              {message}
+            </Text>
+          ) : null}
         </View>
       </ScrollView>
     </SafeAreaView>
