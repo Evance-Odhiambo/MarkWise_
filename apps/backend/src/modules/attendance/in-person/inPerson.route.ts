@@ -1,5 +1,4 @@
 import type { FastifyPluginAsync } from "fastify";
-import crypto from "node:crypto";
 import { requireAttendanceRole } from "../../../plugins/index.js";
 import { InPersonService } from "./inPerson.service.js";
 import { sendPushNotification } from "../../notification/notification.service.js";
@@ -320,11 +319,8 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           body.method === "pin"
             ? await service.submitPin(request.user.id, body)
             : typeof body.rawPayload === "string" &&
-              (body.rawPayload.startsWith("MWIR1:") ||
-                body.rawPayload.startsWith("MWR1:"))
-            ? body.rawPayload.startsWith("MWR1:")
-              ? await service.submitOpaqueRelay(request.user.id, body)
-              : await service.submitRelay(request.user.id, body)
+              body.rawPayload.startsWith("MWIR1:")
+            ? await service.submitRelay(request.user.id, body)
             : await service.submit(request.user.id, body);
         if (body.sessionId)
           await notifyAttendanceOutcome(
@@ -368,64 +364,12 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     }
   );
 
-  // Server-issued v1 relay proofs are compact enough for BLE. They can
-  // only be created after this student's attendance is verified.
-  app.post<{ Body: { sessionId?: string } }>(
-    "/relay/create-token",
-    { preHandler: requireAttendanceRole("student") },
-    async (request, reply) => {
-      const sessionId = String(request.body?.sessionId || "");
-      if (!sessionId)
-        return reply.code(400).send({ error: "sessionId is required" });
-      const parent = await app.prisma.inPersonAttendanceRecord.findFirst({
-        where: {
-          studentId: request.user.id,
-          conductedSessionId: sessionId,
-          verificationStatus: "verified",
-        },
-        orderBy: { createdAt: "desc" },
-      });
-      if (!parent)
-        return reply.code(403).send({
-          error:
-            "Attendance must be server verified before relay can be enabled",
-          reason: "RELAY_PARENT_NOT_VERIFIED",
-        });
-      const relayToken = crypto.randomBytes(4).toString("hex");
-      await app.prisma.inPersonAttendanceRecord.update({
-        where: { id: parent.id },
-        data: { token: relayToken },
-      });
-      const bytes = Buffer.concat([
-        Buffer.from("MWI2", "ascii"),
-        Buffer.from(relayToken, "hex"),
-        Buffer.from([1]),
-      ]);
-      return reply.code(201).send({
-        success: true,
-        data: { payload: `MWR1:${bytes.toString("base64")}` },
-      });
-    }
-  );
-
-  app.get<{ Params: { token: string } }>(
-    "/sessions/by-relay/:token",
-    { preHandler: requireAttendanceRole("student", "lecturer") },
-    async (request, reply) => {
-      if (!/^[0-9a-f]{8}$/i.test(request.params.token))
-        return reply.code(400).send({ error: "Invalid relay token" });
-      const parent = await app.prisma.inPersonAttendanceRecord.findFirst({
-        where: { token: request.params.token },
-        select: { conductedSessionId: true },
-      });
-      if (!parent?.conductedSessionId)
-        return reply.code(404).send({ error: "Relay session not found" });
-      const session = await service.getPublicSession(parent.conductedSessionId);
-      if (!session)
-        return reply.code(404).send({ error: "Relay session not found" });
-      return reply.send({ success: true, data: session });
-    }
-  );
+  // The opaque relay code (MWR1, an 8-hex-char typed/read-aloud code minted
+  // server-side via these two routes) has been superseded by the peer
+  // helper PIN (verifyPin's peer fallback) for BLE/QR-incapable students —
+  // same offline-first goal, but generated entirely on-device from the
+  // student's own relay key instead of needing a live mint call, and reuses
+  // the existing PIN entry flow instead of a dedicated one. Removed.
 
   app.post(
     "/assisted-mark",

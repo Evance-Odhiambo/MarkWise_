@@ -5,7 +5,6 @@ import {
   Platform,
   ScrollView,
   Text,
-  TextInput,
   TouchableOpacity,
   View,
   Modal,
@@ -20,9 +19,7 @@ import { useAuth } from '../../auth/context/AuthContext';
 import {
   getInPersonSession,
   getInPersonSessionByBleNonce,
-  getInPersonSessionByRelayToken,
   getActiveInPersonSessionByUnit,
-  createInPersonRelayToken,
   submitPinByUnit,
   ApiRequestError,
 } from '../api/inPersonAttendanceApi';
@@ -49,8 +46,6 @@ import {
 import {
   createRelayPayload,
   decodeRelayPayload,
-  decodeOpaqueRelayPayload,
-  encodeOpaqueRelayPayload,
   getOrCreateRelayKey,
 } from '../security/attendanceRelay';
 import { QRCodeDisplay } from '../components/in-person/QRCodeDisplay';
@@ -104,9 +99,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   const [relayBlePayload, setRelayBlePayload] = useState<string | null>(null);
   const [relayBleActive, setRelayBleActive] = useState(false);
   const [relayError, setRelayError] = useState<string | null>(null);
-  const [relayCode, setRelayCode] = useState<string | null>(null);
-  const [showRelayCodeEntry, setShowRelayCodeEntry] = useState(false);
-  const [relayCodeInput, setRelayCodeInput] = useState('');
   const [helperPin, setHelperPin] = useState<string | null>(null);
   const [helperPinRemainingSeconds, setHelperPinRemainingSeconds] = useState(0);
   const [bluetoothEnabled, setBluetoothEnabled] = useState(false);
@@ -293,14 +285,10 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         (attendanceMethod === 'pin' &&
           verificationStatus !== 'verified' &&
           verificationStatus !== 'duplicate') ||
-        // Already-relayed evidence (signed MWIR1 or opaque MWR1) is a
-        // terminal leaf, not a further relay source — chaining a signed
-        // relay on top of an opaque-relay redemption isn't verifiable
-        // server-side (verifyRelay's parent-method detection only
-        // recognizes MWBLE1/MWPIN1/MWIP1, not MWR1), so this is blocked
-        // the same way re-relaying an existing MWIR1 already is.
-        evidence.trim().startsWith('MWIR1:') ||
-        evidence.trim().startsWith('MWR1:')
+        // Already-relayed evidence (signed MWIR1) is a terminal leaf, not a
+        // further relay source — verifyRelay's parent-method detection only
+        // recognizes MWBLE1/MWPIN1/MWIP1, not MWIR1 itself.
+        evidence.trim().startsWith('MWIR1:')
       )
         return;
       // Every eligible mark — QR, PIN, or BLE — sets up both relay
@@ -374,49 +362,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       relayParentRef.current = null;
     };
   }, [success, userId]);
-
-  // Mints a typeable relay code (the opaque MWR1 token) once this mark is
-  // relay-eligible. Unlike the rotating relay QR, this is minted once, not
-  // rotated — the token has no expiry check server-side, and a code someone
-  // has to read aloud or type in needs to stay put, not refresh every 3s.
-  // Minting requires this student's own mark to already be server-verified
-  // (RELAY_PARENT_NOT_VERIFIED otherwise), which can lag behind the local
-  // "success" state by little more than one network round-trip in the
-  // common case — a flat 30s retry made that common case feel stuck for up
-  // to 30s waiting on what's usually a 1-2s race. Retry quickly at first
-  // and back off only if it's still not landed after several tries (a
-  // genuinely offline/slow sync), capping at 30s.
-  useEffect(() => {
-    const parent = relayParentRef.current;
-    if (!parent || !token) return;
-    let active = true;
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const retryDelaysMs = [1_500, 2_500, 4_000, 6_000, 10_000, 15_000, 30_000];
-    let attempt = 0;
-    const mintRelayCode = async () => {
-      if (!active || parent.session.expiresAt <= Date.now()) return;
-      try {
-        const result = await createInPersonRelayToken(parent.session.id, token);
-        const hex = decodeOpaqueRelayPayload(result.data.payload);
-        if (active) setRelayCode(hex);
-        return;
-      } catch {
-        // Most likely the mark hasn't synced/verified server-side yet —
-        // retry below rather than surfacing an error; the relay QR and BLE
-        // relay remain available in the meantime.
-      }
-      if (!active) return;
-      const delay =
-        retryDelaysMs[Math.min(attempt, retryDelaysMs.length - 1)];
-      attempt += 1;
-      timer = setTimeout(() => void mintRelayCode(), delay);
-    };
-    void mintRelayCode();
-    return () => {
-      active = false;
-      if (timer) clearTimeout(timer);
-    };
-  }, [success, userId, token]);
 
   // Displays a rotating 6-digit "helper PIN" for the struggling classmate to
   // type into their own PIN entry — no server call to mint or redeem it,
@@ -751,45 +696,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     }
   };
 
-  const submitRelayCode = async () => {
-    const normalized = relayCodeInput.trim().toLowerCase();
-    if (!/^[0-9a-f]{8}$/.test(normalized)) {
-      Alert.alert(
-        'Invalid code',
-        'Enter the 8-character relay code exactly as given.',
-      );
-      return;
-    }
-    if (!token) {
-      Alert.alert(
-        'Relay code requires internet',
-        'Connect to the internet to redeem a relay code.',
-      );
-      return;
-    }
-    try {
-      const payload = encodeOpaqueRelayPayload(normalized);
-      const response = await getInPersonSessionByRelayToken(normalized, token);
-      await cacheInPersonSession(response.data);
-      setSession(response.data);
-      setRawPayload(payload);
-      setShowRelayCodeEntry(false);
-      setRelayCodeInput('');
-      await handleJoin({
-        session: response.data,
-        evidence: payload,
-        method: 'pin',
-      });
-    } catch (error) {
-      Alert.alert(
-        'Relay code not accepted',
-        error instanceof Error
-          ? error.message
-          : 'Check the code and try again.',
-      );
-    }
-  };
-
   const autoMarkBle = useCallback(
     (attendanceSession: InPersonSession, evidence: string, rssi: number) => {
       if (autoMarkedSessions.current.has(attendanceSession.id)) return;
@@ -871,23 +777,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
   useEffect(() => {
     const listener = NativeBLEScanner.addDeviceListener(async device => {
       if (!device.payload) return;
-      const opaqueValue = `MWR1:${device.payload}`;
-      try {
-        const relayToken = decodeOpaqueRelayPayload(opaqueValue);
-        if (!token) return;
-        getInPersonSessionByRelayToken(relayToken, token)
-          .then(async response => {
-            await cacheInPersonSession(response.data);
-            setRawPayload(opaqueValue);
-            setSession(response.data);
-            setMethod('ble');
-            autoMarkBle(response.data, opaqueValue, device.rssi);
-          })
-          .catch(() => undefined);
-        return;
-      } catch {
-        // This is a normal compact lecturer beacon or unrelated BLE device.
-      }
       const value = `MWBLE1:${device.payload}`;
       try {
         const beacon = decodeCompactBlePayload(value);
@@ -978,23 +867,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
     setScanCount(current => Math.min(2, current + 1));
     setRawPayload(value);
     try {
-      if (value.trim().startsWith('MWR1:')) {
-        if (!token) return;
-        const relayToken = decodeOpaqueRelayPayload(value.trim());
-        const response = await getInPersonSessionByRelayToken(
-          relayToken,
-          token,
-        );
-        await cacheInPersonSession(response.data);
-        setSession(response.data);
-        setMethod('qr');
-        await handleJoin({
-          session: response.data,
-          evidence: value.trim(),
-          method: 'qr',
-        });
-        return;
-      }
       if (value.trim().startsWith('MWIR1:')) {
         const relay = decodeRelayPayload(value.trim());
         const parent = relay.parentPayload.startsWith('MWBLE1:')
@@ -1252,88 +1124,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         </View>
       </Modal>
       <Modal
-        visible={showRelayCodeEntry}
-        transparent
-        animationType="slide"
-        onRequestClose={() => setShowRelayCodeEntry(false)}
-      >
-        <View className="flex-1 bg-black/50">
-          <Pressable
-            className="flex-1 justify-start px-4 pt-4"
-            onPress={() => setShowRelayCodeEntry(false)}
-          >
-            <Pressable
-              className={`rounded-3xl p-6 ${
-                isDark ? 'bg-slate-900' : 'bg-white'
-              }`}
-              onPress={event => event.stopPropagation()}
-            >
-              <Text className={`text-xl font-extrabold ${titleClasses}`}>
-                Enter relay code
-              </Text>
-              <Text className={`mt-2 ${bodyClasses}`}>
-                A nearby classmate who's already marked can read you their
-                8-character relay code instead of you scanning their screen.
-              </Text>
-              <View className="mt-5">
-                <TextInput
-                  value={relayCodeInput}
-                  onChangeText={text =>
-                    setRelayCodeInput(
-                      text
-                        .toUpperCase()
-                        .replace(/[^0-9A-F]/g, '')
-                        .slice(0, 8),
-                    )
-                  }
-                  placeholder="XXXXXXXX"
-                  placeholderTextColor={isDark ? '#64748b' : '#94a3b8'}
-                  autoCapitalize="characters"
-                  autoCorrect={false}
-                  maxLength={8}
-                  className={`rounded-xl border px-4 py-4 text-center text-2xl font-extrabold tracking-widest ${
-                    isDark
-                      ? 'border-slate-700 bg-slate-800 text-white'
-                      : 'border-slate-300 bg-slate-100 text-slate-900'
-                  }`}
-                />
-              </View>
-              <TouchableOpacity
-                disabled={submitting || relayCodeInput.length !== 8}
-                onPress={() => void submitRelayCode()}
-                className={`mt-6 rounded-xl py-4 ${
-                  submitting || relayCodeInput.length !== 8
-                    ? 'bg-slate-300'
-                    : 'bg-emerald-600'
-                }`}
-              >
-                <Text className="text-center font-bold text-white">
-                  {submitting ? 'Submitting...' : 'Submit code'}
-                </Text>
-              </TouchableOpacity>
-              <TouchableOpacity
-                disabled={submitting}
-                onPress={() => {
-                  setRelayCodeInput('');
-                  setShowRelayCodeEntry(false);
-                }}
-                className={`mt-3 rounded-xl border py-4 ${
-                  isDark ? 'border-slate-700' : 'border-slate-300'
-                }`}
-              >
-                <Text
-                  className={`text-center font-bold ${
-                    isDark ? 'text-slate-200' : 'text-slate-700'
-                  }`}
-                >
-                  Cancel
-                </Text>
-              </TouchableOpacity>
-            </Pressable>
-          </Pressable>
-        </View>
-      </Modal>
-      <Modal
         visible={showHelp}
         transparent
         animationType="fade"
@@ -1449,33 +1239,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                     </Text>
                   </View>
                 )}
-                <View
-                  className={`items-center rounded-2xl border p-5 ${
-                    isDark
-                      ? 'border-slate-700 bg-slate-900'
-                      : 'border-slate-200 bg-white'
-                  }`}
-                >
-                  <Text className={`mb-2 text-lg font-bold ${titleClasses}`}>
-                    Relay code
-                  </Text>
-                  {relayCode ? (
-                    <>
-                      <Text className="text-3xl font-extrabold tracking-widest text-emerald-600">
-                        {relayCode.slice(0, 4).toUpperCase()}-
-                        {relayCode.slice(4).toUpperCase()}
-                      </Text>
-                      <Text className={`mt-3 text-center text-xs ${bodyClasses}`}>
-                        Read this to a nearby classmate — they can type it in
-                        instead of scanning. It stays valid for this session.
-                      </Text>
-                    </>
-                  ) : (
-                    <Text className={`text-center text-xs ${bodyClasses}`}>
-                      Preparing a code nearby classmates can type in...
-                    </Text>
-                  )}
-                </View>
                 {helperPin && (
                   <View
                     className={`items-center rounded-2xl border p-5 ${
@@ -1636,25 +1399,6 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
                     </Text>
                   </View>
                 </View>
-                <TouchableOpacity
-                  onPress={() => setShowRelayCodeEntry(true)}
-                  className={`mt-4 flex-row items-center justify-between rounded-2xl border p-4 ${
-                    isDark
-                      ? 'border-blue-400/50 bg-blue-500/15'
-                      : 'border-blue-200 bg-blue-50'
-                  }`}
-                  activeOpacity={0.7}
-                >
-                  <View>
-                    <Text className={`font-extrabold ${titleClasses}`}>
-                      Have a relay code?
-                    </Text>
-                    <Text className={`mt-1 text-xs ${bodyClasses}`}>
-                      Type in the code a nearby classmate read out to you.
-                    </Text>
-                  </View>
-                  <KeyRound size={20} color="#2563eb" />
-                </TouchableOpacity>
                 <View
                   className={`mt-4 rounded-2xl border border-emerald-500/30 p-5 ${
                     isDark ? 'bg-slate-900' : 'bg-white'

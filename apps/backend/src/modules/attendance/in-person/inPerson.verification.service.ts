@@ -42,18 +42,6 @@ const decodeRelay = (raw: string) => {
   return value;
 };
 
-const decodeOpaqueRelay = (raw: string) => {
-  if (!raw.startsWith("MWR1:")) throw new Error("RELAY_FORMAT_INVALID");
-  const bytes = Buffer.from(raw.slice(5), "base64");
-  if (
-    bytes.length !== 9 ||
-    bytes.subarray(0, 4).toString("ascii") !== "MWI2" ||
-    bytes.readUInt8(8) !== 1
-  )
-    throw new Error("RELAY_FORMAT_INVALID");
-  return { token: bytes.subarray(4).toString("hex") };
-};
-
 // The 9-byte compact BLE wire format has no room for an HMAC — it's a
 // deliberate size/power tradeoff for BLE advertising payloads. This means a
 // captured beacon could in principle be rebroadcast by anyone with BLE
@@ -572,86 +560,6 @@ export class InPersonVerificationService {
     await this.prisma.studentDevice.update({
       where: { id: key.id },
       data: { lastUsedAt: new Date() },
-    });
-    return { status: "verified" as const, recordId: record.id };
-  }
-
-  async verifyOpaqueRelay(
-    input: SubmitInPersonAttendanceBody & { studentId: string }
-  ) {
-    const relay = decodeOpaqueRelay(input.rawPayload);
-    // Unlike the signed MWIR1 relay (verifyRelay, above), the opaque token
-    // is a short, server-minted, unguessable value — safe to redeem by any
-    // transport that can carry it, including a student typing it in by hand
-    // like a PIN. The token itself already carries the entire trust chain
-    // (bound to a verified attendance record), so no extra check is needed
-    // per transport.
-    if (!["qr", "ble", "pin"].includes(input.method))
-      throw new Error("METHOD_MISMATCH");
-    const parent = await this.prisma.inPersonAttendanceRecord.findFirst({
-      where: { token: relay.token, verificationStatus: "verified" },
-      include: { conductedSession: true },
-    });
-    if (
-      !parent?.conductedSession ||
-      parent.conductedSession.id !== input.sessionId
-    )
-      throw new Error("RELAY_PARENT_INVALID");
-    if (parent.studentId === input.studentId)
-      throw new Error("RELAY_SELF_MARK");
-    const session = parent.conductedSession;
-    const now = Date.now();
-    const end = session.sessionStart.getTime() + session.sessionDuration * 1000;
-    if (
-      session.sessionEnd ||
-      now < session.sessionStart.getTime() - 15_000 ||
-      now > end + 15_000
-    )
-      throw new Error("SESSION_EXPIRED");
-    const scannedAt = new Date(input.scannedAt).getTime();
-    if (
-      !Number.isFinite(scannedAt) ||
-      scannedAt > now + 15_000 ||
-      scannedAt < session.sessionStart.getTime() - 15_000
-    )
-      throw new Error("SCAN_TIME_INVALID");
-    const unit = await this.prisma.unit.findFirst({
-      where: {
-        code: session.unitCode,
-        semester: {
-          courseYear: {
-            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
-          },
-        },
-      },
-      select: { id: true },
-    });
-    if (!unit) throw new Error("UNIT_NOT_FOUND");
-    const enrolled = await this.prisma.enrollment.findUnique({
-      where: {
-        studentId_unitId: { studentId: input.studentId, unitId: unit.id },
-      },
-    });
-    if (!enrolled) throw new Error("NOT_ENROLLED");
-    const duplicate = await this.prisma.inPersonAttendanceRecord.findFirst({
-      where: { studentId: input.studentId, conductedSessionId: session.id },
-    });
-    if (duplicate)
-      return { status: "duplicate" as const, recordId: duplicate.id };
-    await this.assertNoDeviceConflict(session.id, input.deviceId, input.studentId);
-    const record = await this.prisma.inPersonAttendanceRecord.create({
-      data: {
-        studentId: input.studentId,
-        unitCode: normalizeUnitCode(session.unitCode),
-        sessionStart: session.sessionStart,
-        scannedAt: new Date(scannedAt),
-        deviceId: input.deviceId,
-        rawPayload: input.rawPayload,
-        method: input.method,
-        conductedSessionId: session.id,
-        submittedNonce: session.sessionNonce,
-        verificationStatus: "verified",
-      },
     });
     return { status: "verified" as const, recordId: record.id };
   }

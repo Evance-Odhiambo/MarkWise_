@@ -334,13 +334,6 @@ export class InPersonService {
     return this.verifier.verifyRelay({ ...input, studentId });
   }
 
-  submitOpaqueRelay(
-    studentId: string,
-    input: Parameters<InPersonVerificationService["verifyOpaqueRelay"]>[0],
-  ) {
-    return this.verifier.verifyOpaqueRelay({ ...input, studentId });
-  }
-
   submitAssisted(
     lecturerId: string,
     input: Parameters<InPersonVerificationService["verifyLecturerAssisted"]>[1],
