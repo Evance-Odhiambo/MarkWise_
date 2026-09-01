@@ -466,15 +466,28 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
       !bluetoothEnabled ||
       !bleAdvertisingSupported ||
       !session ||
-      // No BLE unit mapping for this session — createCompactBlePayload
-      // would throw 'BLE unit mapping unavailable' on every single retry
-      // forever (a persistent, not transient, failure). Skip cleanly
-      // instead of hammering the radio with a call that can never succeed;
-      // the relay QR remains available regardless.
-      session.bleUnitId == null ||
       session.expiresAt <= nowEpochMs()
     ) {
+      // These are ordinary not-ready-yet states (mark not confirmed,
+      // Bluetooth off, session expired, ...) — no error, the "Starting"
+      // UI copy (relayBleActive false + no relayError) is correct here.
       void stop();
+      return;
+    }
+    if (session.bleUnitId == null) {
+      // No BLE unit mapping for this session — createCompactBlePayload
+      // would throw 'BLE unit mapping unavailable' on every single retry
+      // forever (a persistent, not transient, failure), so this is
+      // deliberately not just left to hit that throw and get caught below.
+      // But unlike the block above, this session otherwise WOULD be ready
+      // to advertise — silently no-op'ing here previously left the relay
+      // BLE card stuck showing "Starting" / "Starts once your mark is
+      // confirmed" forever with no indication anything was wrong, even
+      // though the mark *was* confirmed. Set a real error instead.
+      void stop();
+      setRelayError(
+        'This unit has no BLE mapping yet — relay QR is still available.',
+      );
       return;
     }
     let active = true;
