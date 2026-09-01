@@ -20,6 +20,7 @@ import { useTheme } from '../../theme/context/ThemeContext';
 import { useResponsive } from '../../theme/hooks/useResponsive';
 import { useAuth } from '../../auth/context/AuthContext';
 import { useInPersonSession } from '../hooks/useInPersonSession';
+import type { InPersonSession } from '../types/inPerson';
 import { createAttendancePin } from '../security/attendancePin';
 import {
   PIN_ROTATION_SECONDS,
@@ -406,6 +407,21 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
     );
     return () => clearTimeout(timeout);
   }, [end, session]);
+
+  // Resets the unit picker back to its initial "Tap to choose a teaching
+  // unit" state once a session genuinely ends (session goes from set to
+  // null) — not on the initial mount (already null) or the brief gap
+  // between picking a unit and the session actually being created (also
+  // null, but selectedUnitCode is deliberately shown there already), which
+  // is why this tracks the previous value instead of just checking !session.
+  const previousSessionRef = useRef<InPersonSession | null>(null);
+  useEffect(() => {
+    if (previousSessionRef.current && !session) {
+      setSelectedUnitCode('');
+      setSelectedUnitName('');
+    }
+    previousSessionRef.current = session;
+  }, [session]);
 
   const startSession = async (unitCode = selectedUnitCode) => {
     if (!unitCode || session || sessionStartingRef.current) return;
