@@ -27,6 +27,23 @@ type LecturerAtRiskStudent = {
   missedCount: number;
 };
 
+/** Picks a display-only "current term" label for a unit that may have
+ * several offerings (one per course/semester it's taught under) - highest
+ * (courseYear.yearNumber, semesterNumber) wins as a "most recent" proxy.
+ * Not attendance-critical, just what shows as the unit's semester name. */
+function mostRecentSemesterName(
+  offerings: Array<{
+    semester: { name: string; semesterNumber: number; courseYear: { yearNumber: number } };
+  }>,
+): string | null {
+  if (offerings.length === 0) return null;
+  return [...offerings].sort((a, b) => {
+    const yearDiff = b.semester.courseYear.yearNumber - a.semester.courseYear.yearNumber;
+    if (yearDiff !== 0) return yearDiff;
+    return b.semester.semesterNumber - a.semester.semesterNumber;
+  })[0].semester.name;
+}
+
 async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
   const since = new Date();
   since.setDate(since.getDate() - 29);
@@ -39,7 +56,20 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
         select: {
           code: true,
           name: true,
-          semester: { select: { name: true } },
+          // A unit can now be offered under more than one semester/course -
+          // pick the most recently-ordered offering purely as a display
+          // label ("current teaching term"), not attendance-critical.
+          offerings: {
+            select: {
+              semester: {
+                select: {
+                  name: true,
+                  semesterNumber: true,
+                  courseYear: { select: { yearNumber: true } },
+                },
+              },
+            },
+          },
           enrollments: {
             select: {
               student: {
@@ -214,7 +244,7 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
     return {
       unitCode: unit.code,
       unitName: unit.name,
-      semesterName: unit.semester.name,
+      semesterName: mostRecentSemesterName(unit.offerings) ?? "Unassigned",
       enrolled,
       sessions: conducted,
       checkIns,
@@ -246,7 +276,8 @@ async function getLecturerSummary(prisma: PrismaClient, lecturerId: string) {
         )
       : 0;
   const termName =
-    selectedUnits[0]?.unit.semester.name ?? "Current teaching term";
+    (selectedUnits[0] && mostRecentSemesterName(selectedUnits[0].unit.offerings)) ??
+    "Current teaching term";
 
   atRiskStudents.sort((a, b) => a.attendanceRate - b.attendanceRate);
 
@@ -363,11 +394,12 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
         where: { id: studentId },
         select: {
           year: true,
+          courseId: true,
           course: {
             select: {
               years: {
                 orderBy: { yearNumber: "desc" },
-                select: { yearNumber: true, semester: { orderBy: { semesterNumber: "desc" }, select: { id: true, name: true, units: { select: { id: true } } } } },
+                select: { yearNumber: true, semester: { orderBy: { semesterNumber: "desc" }, select: { id: true, name: true } } },
               },
             },
           },
@@ -376,12 +408,38 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
       if (!student) return reply.code(404).send({ error: "Student record not found" });
       const currentYear = student.course.years.find(({ yearNumber }) => yearNumber === student.year) ?? student.course.years[0];
       const fallbackSemester = currentYear?.semester[0];
-      const enrolledUnits = await app.prisma.enrollment.findMany({ where: { studentId }, select: { unit: { select: { id: true, code: true, name: true, semesterId: true } } } });
+      const enrolledUnits = await app.prisma.enrollment.findMany({
+        where: { studentId },
+        select: {
+          unit: {
+            select: {
+              id: true,
+              code: true,
+              name: true,
+              // A unit can be offered under several courses now - only the
+              // offering(s) under *this student's own course* matter for
+              // inferring their current semester; an offering under some
+              // other course this unit also happens to be taught in must
+              // not leak into this student's inference.
+              offerings: {
+                where: { semester: { courseYear: { courseId: student.courseId } } },
+                select: { semesterId: true },
+              },
+            },
+          },
+        },
+      });
       const semesterCounts = new Map<string, number>();
-      enrolledUnits.forEach(({ unit }) => semesterCounts.set(unit.semesterId, (semesterCounts.get(unit.semesterId) ?? 0) + 1));
+      enrolledUnits.forEach(({ unit }) =>
+        unit.offerings.forEach(({ semesterId }) =>
+          semesterCounts.set(semesterId, (semesterCounts.get(semesterId) ?? 0) + 1),
+        ),
+      );
       const selectedSemesterId = [...semesterCounts.entries()].sort((a, b) => b[1] - a[1])[0]?.[0];
       const selectedSemester = student.course.years.flatMap(({ semester }) => semester).find(({ id }) => id === selectedSemesterId) ?? fallbackSemester;
-      const selectedSemesterUnitCount = enrolledUnits.filter(({ unit }) => unit.semesterId === selectedSemester?.id).length;
+      const selectedSemesterUnitCount = enrolledUnits.filter(({ unit }) =>
+        unit.offerings.some(({ semesterId }) => semesterId === selectedSemester?.id),
+      ).length;
       const enrolledUnitCodes = enrolledUnits.map(({ unit }) => unit.code);
 
       const [inPersonCount, onlineCount, recentInPerson, recentOnline, weeklyInPerson, weeklyOnline, unitInPerson, unitOnline, conductedInPerson, conductedOnline] = await Promise.all([
@@ -455,6 +513,13 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
       streakDay.setHours(0, 0, 0, 0);
       while (attendanceDates.has(streakDay.toISOString().slice(0, 10))) { streak += 1; streakDay.setDate(streakDay.getDate() - 1); }
 
+      // selectedSemester is already one of this student's own course's
+      // semesters (found via student.course.years above), so every offering
+      // under its id is inherently scoped to this course already.
+      const selectedSemesterUnitsTotal = selectedSemester
+        ? await app.prisma.unitOffering.count({ where: { semesterId: selectedSemester.id } })
+        : 0;
+
       return reply.send({
         total: inPersonCount + onlineCount,
         inPerson: inPersonCount,
@@ -463,7 +528,7 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
         units,
         currentSemester: {
           name: selectedSemester?.name ?? "Current semester",
-          unitsTotal: selectedSemester?.units.length ?? 0,
+          unitsTotal: selectedSemesterUnitsTotal,
           unitsEnrolled: selectedSemester ? selectedSemesterUnitCount : enrolledUnits.length,
         },
         health: { conducted, attended, missed, projectedPercentage: conducted > 0 ? Math.round((attended / conducted) * 100) : 0, goalPercentage: 75, streak },

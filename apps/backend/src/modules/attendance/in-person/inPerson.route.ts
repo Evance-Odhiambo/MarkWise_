@@ -112,9 +112,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           .findFirst({
             where: {
               code: unitCode,
-              semester: {
-                courseYear: { course: { institutionId: session!.institutionId } },
-              },
+              institutionId: session!.institutionId,
             },
             select: { name: true },
           })
@@ -215,11 +213,7 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
               studentId: request.user.id,
               unit: {
                 code: unitCode,
-                semester: {
-                  courseYear: {
-                    course: { institutionId: request.user.institutionId ?? undefined },
-                  },
-                },
+                institutionId: request.user.institutionId ?? undefined,
               },
             },
           });

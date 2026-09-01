@@ -35,9 +35,7 @@ export class InPersonService {
     // attendance; they are not required to have a pre-assigned unit record.
     const institutionUnits = await this.prisma.unit.findMany({
       where: {
-        semester: {
-          courseYear: { course: { institutionId: lecturer.institutionId } },
-        },
+        institutionId: lecturer.institutionId,
       },
       select: { code: true, bleId: true },
     });
@@ -286,11 +284,7 @@ export class InPersonService {
         studentId,
         unit: {
           code: normalizedCode,
-          semester: {
-            courseYear: {
-              course: { institutionId: student.institutionId },
-            },
-          },
+          institutionId: student.institutionId,
         },
       },
       select: { unitId: true },

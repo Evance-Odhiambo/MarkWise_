@@ -106,9 +106,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       // Get units from Unit table
       const units = await app.prisma.unit.findMany({
         where: {
-          semester: {
-            courseYear: { course: { institutionId: lecturer.institutionId } },
-          },
+          institutionId: lecturer.institutionId,
           ...(query
             ? {
                 OR: [
@@ -178,7 +176,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       let unit = await app.prisma.unit.findFirst({
         where: {
           code: unitCode,
-          semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
+          institutionId: lecturer.institutionId,
         },
         select: {
           enrollments: {
@@ -197,7 +195,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
           where: {
             unit: {
               code: unitCode,
-              semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
+              institutionId: lecturer.institutionId,
             },
           },
           orderBy: { student: { admissionNumber: "asc" } },
@@ -254,9 +252,7 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
       const validUnits = await app.prisma.unit.findMany({
         where: {
           id: { in: unitIds },
-          semester: {
-            courseYear: { course: { institutionId: lecturer.institutionId } },
-          },
+          institutionId: lecturer.institutionId,
         },
         select: { id: true },
       });

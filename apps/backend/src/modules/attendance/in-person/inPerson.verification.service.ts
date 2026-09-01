@@ -124,6 +124,22 @@ export class InPersonVerificationService {
       throw new Error("DEVICE_CONFLICT");
   }
 
+  /**
+   * Resolves a session's unitCode to its institution-scoped Unit id. Unit
+   * codes are only unique within an institution (a Unit is its own entity,
+   * many-to-many with courses/semesters via UnitOffering), so this is a flat
+   * (code, institutionId) lookup rather than a semester -> courseYear ->
+   * course chain traversal.
+   */
+  private async resolveUnitId(unitCode: string, institutionId: string) {
+    const unit = await this.prisma.unit.findFirst({
+      where: { code: unitCode, institutionId },
+      select: { id: true },
+    });
+    if (!unit) throw new Error("UNIT_NOT_FOUND");
+    return unit.id;
+  }
+
   async verify(
     input: SubmitInPersonAttendanceBody & { studentId: string },
     allowEndedSession = false
@@ -192,21 +208,10 @@ export class InPersonVerificationService {
 
     if (input.method !== "qr") throw new Error("METHOD_MISMATCH");
 
-    const unit = await this.prisma.unit.findFirst({
-      where: {
-        code: session.unitCode,
-        semester: {
-          courseYear: {
-            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
-          },
-        },
-      },
-      select: { id: true },
-    });
-    if (!unit) throw new Error("UNIT_NOT_FOUND");
+    const unitId = await this.resolveUnitId(session.unitCode, session.institutionId);
     const enrollment = await this.prisma.enrollment.findUnique({
       where: {
-        studentId_unitId: { studentId: input.studentId, unitId: unit.id },
+        studentId_unitId: { studentId: input.studentId, unitId },
       },
     });
     if (!enrollment) throw new Error("NOT_ENROLLED");
@@ -263,21 +268,10 @@ export class InPersonVerificationService {
     );
     if (counterDistance > 3)
       throw new Error("COUNTER_DRIFT");
-    const unit = await this.prisma.unit.findFirst({
-      where: {
-        code: session.unitCode,
-        semester: {
-          courseYear: {
-            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
-          },
-        },
-      },
-      select: { id: true },
-    });
-    if (!unit) throw new Error("UNIT_NOT_FOUND");
+    const unitId = await this.resolveUnitId(session.unitCode, session.institutionId);
     const enrolled = await this.prisma.enrollment.findUnique({
       where: {
-        studentId_unitId: { studentId: input.studentId, unitId: unit.id },
+        studentId_unitId: { studentId: input.studentId, unitId },
       },
     });
     if (!enrolled) throw new Error("NOT_ENROLLED");
@@ -339,21 +333,10 @@ export class InPersonVerificationService {
     );
     if (Math.abs(receivedCounter - expectedCounter) > MAX_PIN_DRIFT)
       throw new Error("PIN_COUNTER_DRIFT");
-    const unit = await this.prisma.unit.findFirst({
-      where: {
-        code: session.unitCode,
-        semester: {
-          courseYear: {
-            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
-          },
-        },
-      },
-      select: { id: true },
-    });
-    if (!unit) throw new Error("UNIT_NOT_FOUND");
+    const unitId = await this.resolveUnitId(session.unitCode, session.institutionId);
     const enrolled = await this.prisma.enrollment.findUnique({
       where: {
-        studentId_unitId: { studentId: input.studentId, unitId: unit.id },
+        studentId_unitId: { studentId: input.studentId, unitId },
       },
     });
     if (!enrolled) throw new Error("NOT_ENROLLED");
@@ -532,21 +515,10 @@ export class InPersonVerificationService {
     );
     if (Math.abs(relay.counter - expectedCounter) > 3)
       throw new Error("RELAY_COUNTER_DRIFT");
-    const unit = await this.prisma.unit.findFirst({
-      where: {
-        code: session.unitCode,
-        semester: {
-          courseYear: {
-            course: { institution: { lecturers: { some: { id: session.lecturerId } } } },
-          },
-        },
-      },
-      select: { id: true },
-    });
-    if (!unit) throw new Error("UNIT_NOT_FOUND");
+    const unitId = await this.resolveUnitId(session.unitCode, session.institutionId);
     const enrolled = await this.prisma.enrollment.findUnique({
       where: {
-        studentId_unitId: { studentId: input.studentId, unitId: unit.id },
+        studentId_unitId: { studentId: input.studentId, unitId },
       },
     });
     if (!enrolled) throw new Error("NOT_ENROLLED");

@@ -22,6 +22,7 @@ model Institution {
   lecturers Lecturer[]
   students  Student[]
   courses   Course[]
+  units     Unit[]
   admins    Admin[]
   onboardingRequests  OnboardingRequest[]
   conductedSessions   ConductedSession[]
@@ -103,38 +104,62 @@ model CourseYear {
 }
 
 model Semester {
-  id             String     @id @default(uuid())
+  id             String         @id @default(uuid())
   name           String
   semesterNumber Int
   courseYearId   String
-  courseYear     CourseYear @relation(fields: [courseYearId], references: [id])
-  units          Unit[]
-  createdAt      DateTime   @default(now())
-  updatedAt      DateTime   @updatedAt
+  courseYear     CourseYear     @relation(fields: [courseYearId], references: [id])
+  unitOfferings  UnitOffering[]
+  createdAt      DateTime       @default(now())
+  updatedAt      DateTime       @updatedAt
 
   @@unique([courseYearId, semesterNumber])
   @@index([courseYearId])
   @@map("Semester")
 }
 
+// A unit is its own institution-scoped entity (code unique per institution),
+// many-to-many with courses/semesters via UnitOffering below - a unit taught
+// under two different course curricula is one Unit row with two offerings,
+// not two duplicate Unit rows with the same code.
 model Unit {
   id            String         @id @default(uuid())
   name          String
   code          String
+  institutionId String
+  institution   Institution    @relation(fields: [institutionId], references: [id])
   bleId         String?        @unique
   lastSyncAt    DateTime?
   syncVersion   Int            @default(0)
   lecturerUnits LecturerUnit[]
-  semesterId    String
-  semester      Semester       @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  offerings     UnitOffering[]
   enrollments   Enrollment[]
   createdAt     DateTime       @default(now())
   updatedAt     DateTime       @updatedAt
 
-  @@index([semesterId])
+  @@unique([institutionId, code])
+  @@index([institutionId])
   @@index([code])
   @@index([bleId])
   @@map("Unit")
+}
+
+// The many-to-many join between Unit and Semester (transitively, Course) -
+// replaces Unit's old scalar semesterId. A unit with two rows here is
+// genuinely offered under two different course curricula; no duplication of
+// the underlying Unit row.
+model UnitOffering {
+  id         String   @id @default(uuid())
+  unitId     String
+  semesterId String
+  unit       Unit     @relation(fields: [unitId], references: [id], onDelete: Cascade)
+  semester   Semester @relation(fields: [semesterId], references: [id], onDelete: Cascade)
+  createdAt  DateTime @default(now())
+
+  @@unique([unitId, semesterId])
+  @@index([unitId])
+  @@index([semesterId])
+  @@map("UnitOffering")
 }
 
 model Student {

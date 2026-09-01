@@ -176,9 +176,15 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
                 select: {
                   semesterNumber: true,
                   name: true,
-                  units: {
-                    orderBy: { code: "asc" },
-                    select: { id: true, code: true, name: true },
+                  // Units are institution-scoped now (a unit can be offered
+                  // under other courses too) - filtering offerings to this
+                  // one semester already scopes the result to this course's
+                  // curriculum, same shape the frontend already expects.
+                  unitOfferings: {
+                    orderBy: { unit: { code: "asc" } },
+                    select: {
+                      unit: { select: { id: true, code: true, name: true } },
+                    },
                   },
                 },
               },
@@ -194,7 +200,14 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
       });
       return reply.send({
         course: course.name,
-        years: course.years,
+        years: course.years.map((year) => ({
+          yearNumber: year.yearNumber,
+          semester: year.semester.map((semester) => ({
+            semesterNumber: semester.semesterNumber,
+            name: semester.name,
+            units: semester.unitOfferings.map(({ unit }) => unit),
+          })),
+        })),
         enrolledUnitIds: enrolled.map(({ unitId }) => unitId),
       });
     },
@@ -225,7 +238,9 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
       const validUnits = await prisma.unit.findMany({
         where: {
           id: { in: unitIds },
-          semester: { courseYear: { courseId: student.courseId } },
+          offerings: {
+            some: { semester: { courseYear: { courseId: student.courseId } } },
+          },
         },
         select: { id: true },
       });
@@ -262,7 +277,9 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
       const unit = await prisma.unit.findFirst({
         where: {
           id: unitId,
-          semester: { courseYear: { courseId: student.courseId } },
+          offerings: {
+            some: { semester: { courseYear: { courseId: student.courseId } } },
+          },
         },
         select: { id: true },
       });

@@ -24,9 +24,7 @@ export async function getBleMappings(
   const units = await prisma.unit.findMany({
     where: {
       bleId: { not: null },
-      ...(institutionId
-        ? { semester: { courseYear: { course: { institutionId } } } }
-        : {}),
+      ...(institutionId ? { institutionId } : {}),
     },
     select: { id: true, bleId: true, name: true, code: true },
     orderBy: { bleId: "asc" },
@@ -99,7 +97,7 @@ export async function getLecturerBleMappings(
     // Lecturers select units from their institution at attendance time; they
     // are not restricted to lecturerUnit assignment rows.
     where: {
-      semester: { courseYear: { course: { institutionId: lecturer.institutionId } } },
+      institutionId: lecturer.institutionId,
       bleId: { not: null },
     },
     select: { code: true, bleId: true },

@@ -40,9 +40,7 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
       const unit = await app.prisma.unit.findFirst({
         where: {
           code: unitCode,
-          semester: {
-            courseYear: { course: { institutionId: lecturer.institutionId } },
-          },
+          institutionId: lecturer.institutionId,
         },
         select: { id: true, name: true, bleId: true },
       });
@@ -176,11 +174,7 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
       const unit = await app.prisma.unit.findFirst({
         where: {
           code: delegation.unitCode,
-          semester: {
-            courseYear: {
-              course: { institutionId: delegation.institutionId || undefined },
-            },
-          },
+          institutionId: delegation.institutionId || undefined,
         },
         select: { name: true, bleId: true },
       });

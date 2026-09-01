@@ -96,11 +96,8 @@ function formatAcademicCourses(
         name: string;
         semesterNumber: number;
         courseYearId: string;
-        units: Array<{
-          id: string;
-          name: string;
-          code: string;
-          semesterId: string;
+        unitOfferings: Array<{
+          unit: { id: string; name: string; code: string };
         }>;
       }>;
     }>;
@@ -119,7 +116,14 @@ function formatAcademicCourses(
         name: semester.name,
         semesterNum: semester.semesterNumber,
         yearId: year.id,
-        units: semester.units.map((unit) => ({
+        // `id` is the canonical, institution-scoped Unit id - a unit offered
+        // under two different semesters (of the same or a different course)
+        // appears here twice, under each semester, sharing the same `id`.
+        // The frontend's existing id-keyed edit/React-key logic needs no
+        // change: entering the same code under a second semester panel and
+        // saving links it as a second offering of the one unit instead of
+        // creating a duplicate.
+        units: semester.unitOfferings.map(({ unit }) => ({
           id: unit.id,
           name: unit.name,
           code: unit.code,
@@ -229,7 +233,12 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
             include: {
               semester: {
                 orderBy: { semesterNumber: "asc" },
-                include: { units: { orderBy: { code: "asc" } } },
+                include: {
+                  unitOfferings: {
+                    include: { unit: true },
+                    orderBy: { unit: { code: "asc" } },
+                  },
+                },
               },
             },
           },
@@ -269,7 +278,11 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
           const keptCourseIds = new Set<string>();
           const keptYearIds = new Set<string>();
           const keptSemesterIds = new Set<string>();
-          const keptUnitIds = new Set<string>();
+          // Offering keys (`${unitId}:${semesterId}`), not unit ids - a unit
+          // can be kept under one semester and simultaneously dropped from
+          // another in the same save, so "kept" is a property of the link,
+          // not the unit.
+          const keptOfferingKeys = new Set<string>();
 
           for (const courseInput of request.body.courses) {
             const courseName = clean(courseInput.name);
@@ -359,19 +372,27 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
                   if (!code || !name) continue;
 
                   try {
+                    // Resolve "is this the same unit" by id first (if it's a
+                    // real, already-saved id belonging to this institution),
+                    // then by (institutionId, code) - code is now the
+                    // cross-semester identity a unit is matched on, not
+                    // semesterId. Entering the same code under a second
+                    // semester panel therefore links the existing unit as a
+                    // second offering instead of creating a duplicate row.
                     let existingUnit = null;
                     if (isValidUUID(unitInput.id)) {
                       existingUnit = await transaction.unit.findFirst({
-                        where: { id: unitInput.id, semesterId: semester.id },
+                        where: { id: unitInput.id, institutionId },
                       });
                     }
 
                     if (!existingUnit) {
                       existingUnit = await transaction.unit.findFirst({
-                        where: { semesterId: semester.id, code },
+                        where: { institutionId, code },
                       });
                     }
 
+                    let unit;
                     if (existingUnit) {
                       if (!existingUnit.bleId) {
                         const [nextBleId] = buildAvailableUnitBleIds(
@@ -383,7 +404,7 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
                             "Failed to generate BLE ID for existing unit",
                           );
                         }
-                        const updated = await transaction.unit.update({
+                        unit = await transaction.unit.update({
                           where: { id: existingUnit.id },
                           data: {
                             code,
@@ -392,16 +413,14 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
                           },
                         });
                         allUsedBleIds.add(nextBleId);
-                        keptUnitIds.add(updated.id);
                       } else {
-                        const updated = await transaction.unit.update({
+                        unit = await transaction.unit.update({
                           where: { id: existingUnit.id },
                           data: {
                             code,
                             name,
                           },
                         });
-                        keptUnitIds.add(updated.id);
                       }
                     } else {
                       const [nextBleId] = buildAvailableUnitBleIds(
@@ -413,17 +432,31 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
                           "Failed to generate BLE ID for new unit",
                         );
                       }
-                      const created = await transaction.unit.create({
+                      unit = await transaction.unit.create({
                         data: {
-                          semesterId: semester.id,
+                          institutionId,
                           code,
                           name,
                           bleId: nextBleId,
                         },
                       });
                       allUsedBleIds.add(nextBleId);
-                      keptUnitIds.add(created.id);
                     }
+
+                    // Link this unit to this semester - additive, never
+                    // touches the unit's other offerings under different
+                    // semesters/courses.
+                    await transaction.unitOffering.upsert({
+                      where: {
+                        unitId_semesterId: {
+                          unitId: unit.id,
+                          semesterId: semester.id,
+                        },
+                      },
+                      create: { unitId: unit.id, semesterId: semester.id },
+                      update: {},
+                    });
+                    keptOfferingKeys.add(`${unit.id}:${semester.id}`);
                   } catch (unitError) {
                     throw new Error(
                       `Error processing unit "${code}": ${unitError instanceof Error ? unitError.message : "Unknown error"}`,
@@ -434,12 +467,32 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
             }
           }
 
-          // Prune removed units, semesters, years, and courses for this institution
+          // Prune removed offerings, semesters, years, and courses for this
+          // institution. Deleting an offering only unlinks a unit from one
+          // semester - it must never delete the Unit itself just because
+          // this save dropped it from *this* semester's panel, since the
+          // same unit may still be legitimately offered elsewhere. A unit is
+          // only deleted once it has zero offerings left anywhere.
+          const allOfferingsForInstitution =
+            await transaction.unitOffering.findMany({
+              where: { semester: { courseYear: { course: { institutionId } } } },
+              select: { id: true, unitId: true, semesterId: true },
+            });
+          const offeringIdsToDelete = allOfferingsForInstitution
+            .filter(
+              (offering) =>
+                !keptOfferingKeys.has(
+                  `${offering.unitId}:${offering.semesterId}`,
+                ),
+            )
+            .map((offering) => offering.id);
+          if (offeringIdsToDelete.length > 0) {
+            await transaction.unitOffering.deleteMany({
+              where: { id: { in: offeringIdsToDelete } },
+            });
+          }
           await transaction.unit.deleteMany({
-            where: {
-              semester: { courseYear: { course: { institutionId } } },
-              id: { notIn: Array.from(keptUnitIds) },
-            },
+            where: { institutionId, offerings: { none: {} } },
           });
 
           await transaction.semester.deleteMany({
@@ -486,7 +539,12 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
             include: {
               semester: {
                 orderBy: { semesterNumber: "asc" },
-                include: { units: { orderBy: { code: "asc" } } },
+                include: {
+                  unitOfferings: {
+                    include: { unit: true },
+                    orderBy: { unit: { code: "asc" } },
+                  },
+                },
               },
             },
           },

@@ -17,19 +17,18 @@ export class AttendanceService {
     select: { id: true; name: true; code: true },
   ) {
     // Always filter to the given institution so identical unit codes at
-    // different institutions never collide.
+    // different institutions never collide. Unit.code is unique per
+    // institution (see schema.prisma), so this is now a direct lookup
+    // rather than a chain traversal through semester/courseYear/course.
     const unit = await this.prisma.unit.findFirst({
-      where: {
-        code,
-        semester: { courseYear: { course: { institutionId } } },
-      },
+      where: { code, institutionId },
       select,
     });
     if (unit) return unit;
 
     // Fallback: try normalized comparison within the same institution.
     const units = await this.prisma.unit.findMany({
-      where: { semester: { courseYear: { course: { institutionId } } } },
+      where: { institutionId },
       select,
     });
     return (

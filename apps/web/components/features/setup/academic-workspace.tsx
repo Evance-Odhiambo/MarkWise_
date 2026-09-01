@@ -92,6 +92,28 @@ export function AcademicWorkspace({
     return { totalCourses, totalYears, totalSemesters, totalUnits };
   }, [courses]);
 
+  // Unit codes are unique per institution, not per semester - a code typed
+  // into two different semester panels links to the same underlying Unit
+  // once saved. Built across every course (not just the active one) so the
+  // hint below is accurate institution-wide, matching the backend's
+  // (institutionId, code) uniqueness.
+  const institutionUnitsByCode = useMemo(() => {
+    const map = new Map<string, { id: string; name: string }>();
+    courses.forEach((c) => {
+      (c.years ?? []).forEach((y) => {
+        (y.semesters ?? []).forEach((s) => {
+          (s.units ?? []).forEach((u) => {
+            const code = u.code.trim().toUpperCase();
+            if (code && !map.has(code)) {
+              map.set(code, { id: u.id, name: u.name });
+            }
+          });
+        });
+      });
+    });
+    return map;
+  }, [courses]);
+
   const handleSelectCourse = (courseId: string) => {
     setSelectedCourseId(courseId);
     setSelectedYearNumber(1);
@@ -530,6 +552,7 @@ export function AcademicWorkspace({
                             semester={semester}
                             courseId={activeCourse.id}
                             yearId={activeYear.id}
+                            institutionUnitsByCode={institutionUnitsByCode}
                             onUnitsChange={(nextUnits) =>
                               handleSemesterUnitsChange(
                                 activeYear.id,

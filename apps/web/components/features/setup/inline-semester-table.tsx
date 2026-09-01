@@ -5,6 +5,7 @@ import {
   AlertCircle,
   ClipboardPaste,
   FileText,
+  Link2,
   ListPlus,
   Plus,
   Trash2,
@@ -30,6 +31,12 @@ interface InlineSemesterTableProps {
   onUnitsChange: (units: AcademicUnit[]) => void;
   onSemesterNameChange?: (newName: string) => void;
   onDeleteSemester?: () => void;
+  // Every unit code already in use across the institution (any course, any
+  // semester), keyed by normalized code. Used to hint when a code typed here
+  // already belongs to an existing unit elsewhere - that's not an error,
+  // codes are unique per institution and this links the same unit into a
+  // second offering - so it's shown as an informational hint, not a warning.
+  institutionUnitsByCode?: Map<string, { id: string; name: string }>;
 }
 
 const makeUnitId = (semesterId: string, code: string, index: number) =>
@@ -42,6 +49,7 @@ export function InlineSemesterTable({
   onUnitsChange,
   onSemesterNameChange,
   onDeleteSemester,
+  institutionUnitsByCode,
 }: InlineSemesterTableProps) {
   const [editingTitle, setEditingTitle] = useState(false);
   const [pasteNotice, setPasteNotice] = useState<string | null>(null);
@@ -380,6 +388,12 @@ export function InlineSemesterTable({
               {units.map((unit, index) => {
                 const code = unit.code.trim().toUpperCase();
                 const isDuplicate = code && (codeCounts.get(code) || 0) > 1;
+                const existingElsewhere =
+                  code && !isDuplicate
+                    ? institutionUnitsByCode?.get(code)
+                    : undefined;
+                const linksExistingUnit =
+                  existingElsewhere && existingElsewhere.id !== unit.id;
 
                 return (
                   <div
@@ -397,7 +411,9 @@ export function InlineSemesterTable({
                         className={`h-6 rounded px-1.5 font-mono text-[10px] md:text-[10px] uppercase font-bold tracking-tight ${
                           isDuplicate
                             ? "border-amber-400 bg-amber-50 text-amber-900 focus-visible:ring-amber-200"
-                            : "border-slate-200 bg-white"
+                            : linksExistingUnit
+                              ? "border-blue-300 bg-blue-50 text-blue-900 focus-visible:ring-blue-200"
+                              : "border-slate-200 bg-white"
                         }`}
                       />
                       {isDuplicate && (
@@ -406,6 +422,14 @@ export function InlineSemesterTable({
                           title="Duplicate code"
                         >
                           <AlertCircle className="h-3 w-3" />
+                        </span>
+                      )}
+                      {linksExistingUnit && (
+                        <span
+                          className="absolute top-1 right-1 text-blue-500"
+                          title={`Links to existing unit: ${existingElsewhere!.name}`}
+                        >
+                          <Link2 className="h-3 w-3" />
                         </span>
                       )}
                     </div>
