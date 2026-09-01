@@ -22,13 +22,6 @@ import {
   runWithSessionRefreshLock,
   sessionCacheKey,
 } from '../../../shared/storage/sessionCache';
-import {
-  readBleMappingsCache,
-} from '../../../shared/storage/bleCache';
-import {
-  readUnitSelectionSnapshot,
-} from '../../../shared/storage/unitSelectionCache';
-
 export type UserRole = 'student' | 'lecturer';
 
 export interface AuthSession {
@@ -90,26 +83,11 @@ export const AuthProvider = ({ children }: AuthProviderProps) => {
         setRole(snapshot.role);
       }
 
-      const [unitSnapshot, bleSnapshot] = snapshot
-        ? await Promise.all([
-            readUnitSelectionSnapshot({
-              role: snapshot.role,
-              userId: snapshot.userId,
-              institutionId: snapshot.institutionId,
-            }),
-            readBleMappingsCache(snapshot.role),
-          ])
-        : [null, null];
-
-      if (!mounted) return;
-
-      if (unitSnapshot) {
-        void unitSnapshot;
-      }
-      if (bleSnapshot) {
-        void bleSnapshot;
-      }
-
+      // Splash can clear as soon as the session snapshot itself is known —
+      // the unit-selection/BLE-mapping caches used to be read here too, but
+      // their results were never used (see git history), so this was two
+      // extra AsyncStorage round-trips purely delaying startup for no
+      // benefit. Whatever actually needs those caches reads them itself.
       setIsHydrated(true);
 
       if (!snapshot) return;

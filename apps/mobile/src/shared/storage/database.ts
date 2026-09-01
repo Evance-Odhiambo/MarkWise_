@@ -16,6 +16,11 @@ const adapter = new SQLiteAdapter({
   schema: appSchemaDef,
   migrations: appMigrations,
   dbName: 'markwise',
+  // JSI mode talks to SQLite synchronously in-process instead of over the
+  // async bridge — every read/write across the app (including several that
+  // already run during cold start) is meaningfully faster. Falls back to
+  // the bridge automatically on setups where JSI isn't available.
+  jsi: true,
 });
 
 export const database = new Database({
