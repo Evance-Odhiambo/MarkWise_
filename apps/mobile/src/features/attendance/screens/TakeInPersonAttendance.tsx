@@ -243,10 +243,25 @@ const TakeInPersonAttendance = ({ navigation, route }: Props) => {
         setBleStartError('Preparing secure BLE payload...');
         return;
       }
+      // Prefer the local WatermelonDB-backed unit-mapping cache
+      // (adaptiveConfig, already populated in-memory by useUnitSelection on
+      // this screen — no API call) over session.bleUnitId for the BLE
+      // payload specifically. session.bleUnitId briefly holds whatever the
+      // claim happened to resolve at claim time; adaptiveConfig, once
+      // learned (including by that same claim — see useInPersonSession's
+      // saveUnitMappings call), is durable and doesn't depend on session's
+      // object identity or claim timing, so BLE availability stops
+      // depending on the claim/session lifecycle at all.
+      const localBleUnitId =
+        adaptiveConfig.getUnitId(session.unitCode) ?? session.bleUnitId;
+      const bleSession =
+        localBleUnitId !== session.bleUnitId
+          ? { ...session, bleUnitId: localBleUnitId }
+          : session;
       const [qr, currentPin, ble] = await Promise.all([
         createSignedPayload(session, secret),
         createAttendancePin(session, secret),
-        createCompactBlePayload(session, secret).catch(() => null),
+        createCompactBlePayload(bleSession, secret).catch(() => null),
       ]);
       if (!active) return;
       if (displayedQrCounterRef.current !== qr.counter) {
