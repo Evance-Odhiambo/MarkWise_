@@ -3,16 +3,17 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
+  BarChart3,
   Bell,
   BookOpen,
   CalendarCheck2,
-  CheckCircle2,
+  FileBarChart,
   GraduationCap,
   LayoutDashboard,
   LogOut,
   Radio,
   Settings2,
-  Smartphone,
+  ShieldCheck,
   UserRound,
 } from "lucide-react";
 import {
@@ -52,34 +53,97 @@ export function RoleWorkspaceShell({
   const pathname = usePathname();
   const isStudent = role === "student";
 
-  const navigation = isStudent
+  // Grouped so lecturer can have extra sections (Insights, a three-way
+  // Account split) without touching student's single Workspace + Account
+  // layout at all — student's groups render exactly as they did before this
+  // was split into groups.
+  const navGroups = isStudent
     ? [
         {
-          label: "Dashboard",
-          href: "/student/dashboard",
-          icon: LayoutDashboard,
+          label: "Workspace",
+          items: [
+            {
+              label: "Dashboard",
+              href: "/student/dashboard",
+              icon: LayoutDashboard,
+            },
+            {
+              label: "Attendance",
+              href: "/student/dashboard/attendance",
+              icon: CalendarCheck2,
+            },
+            { label: "Units", href: "/student/units", icon: BookOpen },
+            {
+              label: "Notifications",
+              href: "/student/notifications",
+              icon: Bell,
+            },
+          ],
         },
         {
-          label: "Attendance Ledger",
-          href: "/student/dashboard/attendance",
-          icon: CalendarCheck2,
+          label: "Account",
+          items: [
+            {
+              label: "Settings & Security",
+              href: "/student/settings",
+              icon: Settings2,
+            },
+          ],
         },
-        { label: "My Units", href: "/student/units", icon: BookOpen },
-        { label: "Notifications", href: "/student/notifications", icon: Bell },
       ]
     : [
         {
-          label: "Dashboard",
-          href: "/lecturer/dashboard",
-          icon: LayoutDashboard,
+          label: "Workspace",
+          items: [
+            {
+              label: "Dashboard",
+              href: "/lecturer/dashboard",
+              icon: LayoutDashboard,
+            },
+            {
+              label: "Attendance",
+              href: "/lecturer/attendance/online",
+              icon: Radio,
+            },
+            {
+              label: "Notifications",
+              href: "/lecturer/notifications",
+              icon: Bell,
+            },
+            { label: "Units", href: "/lecturer/units", icon: BookOpen },
+          ],
         },
         {
-          label: "Online Session",
-          href: "/lecturer/attendance/online",
-          icon: Radio,
+          label: "Insights",
+          items: [
+            {
+              label: "Analytics",
+              href: "/lecturer/analytics",
+              icon: BarChart3,
+            },
+            {
+              label: "Reports",
+              href: "/lecturer/reports",
+              icon: FileBarChart,
+            },
+          ],
         },
-        { label: "Teaching Units", href: "/lecturer/units", icon: BookOpen },
-        { label: "Notifications", href: "/lecturer/notifications", icon: Bell },
+        {
+          label: "Account",
+          items: [
+            { label: "Profile", href: "/lecturer/profile", icon: UserRound },
+            {
+              label: "Settings",
+              href: "/lecturer/settings",
+              icon: Settings2,
+            },
+            {
+              label: "Security",
+              href: "/lecturer/security",
+              icon: ShieldCheck,
+            },
+          ],
+        },
       ];
 
   const dashboardHref = isStudent ? "/student/dashboard" : "/lecturer/dashboard";
@@ -108,7 +172,7 @@ export function RoleWorkspaceShell({
                     MarkWise
                   </span>
                   <span className="rounded bg-emerald-100 px-1 py-0.2 text-[8.5px] font-bold uppercase tracking-wide text-emerald-800">
-                    {isStudent ? "Student" : "Faculty"}
+                    {isStudent ? "Student" : "Lecturer"}
                   </span>
                 </div>
                 <p className="text-[9.5px] font-medium text-slate-400">
@@ -120,64 +184,43 @@ export function RoleWorkspaceShell({
 
           {/* Navigation */}
           <SidebarContent className="px-1.5 py-2 space-y-2">
-            <SidebarGroup className="p-0">
-              <SidebarGroupLabel className="h-5 px-2 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                Workspace
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  {navigation.map((item) => {
-                    const Icon = item.icon;
-                    const isActive = pathname === item.href;
+            {navGroups.map((group) => (
+              <SidebarGroup key={group.label} className="p-0">
+                <SidebarGroupLabel className="h-5 px-2 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
+                  {group.label}
+                </SidebarGroupLabel>
+                <SidebarGroupContent>
+                  <SidebarMenu className="gap-0.5">
+                    {group.items.map((item) => {
+                      const Icon = item.icon;
+                      const isActive = pathname === item.href;
 
-                    return (
-                      <SidebarMenuItem key={item.label}>
-                        <Link
-                          href={item.href}
-                          className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-medium transition-all ${
-                            isActive
-                              ? "bg-emerald-600 text-white font-semibold shadow-xs"
-                              : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                          }`}
-                        >
-                          <div className="flex items-center gap-2 min-w-0">
-                            <Icon
-                              className={`h-3.5 w-3.5 shrink-0 ${
-                                isActive ? "text-white" : "text-slate-400"
-                              }`}
-                            />
-                            <span className="truncate">{item.label}</span>
-                          </div>
-                        </Link>
-                      </SidebarMenuItem>
-                    );
-                  })}
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
-
-            <SidebarGroup className="p-0">
-              <SidebarGroupLabel className="h-5 px-2 text-[9px] font-bold uppercase tracking-[0.14em] text-slate-400">
-                Account
-              </SidebarGroupLabel>
-              <SidebarGroupContent>
-                <SidebarMenu className="gap-0.5">
-                  <SidebarMenuItem>
-                    <Link
-                      href={`/${role}/settings`}
-                      className={`flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[11px] font-medium transition-all ${
-                        pathname === `/${role}/settings`
-                          ? "bg-emerald-600 text-white font-semibold shadow-xs"
-                          : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
-                      }`}
-                    >
-                      <Settings2 className="h-3.5 w-3.5 shrink-0 text-slate-400" />
-                      <span>Settings &amp; Security</span>
-                    </Link>
-                  </SidebarMenuItem>
-                </SidebarMenu>
-              </SidebarGroupContent>
-            </SidebarGroup>
+                      return (
+                        <SidebarMenuItem key={item.label}>
+                          <Link
+                            href={item.href}
+                            className={`flex w-full items-center justify-between rounded-md px-2 py-1.5 text-[11px] font-medium transition-all ${
+                              isActive
+                                ? "bg-emerald-600 text-white font-semibold shadow-xs"
+                                : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
+                            }`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <Icon
+                                className={`h-3.5 w-3.5 shrink-0 ${
+                                  isActive ? "text-white" : "text-slate-400"
+                                }`}
+                              />
+                              <span className="truncate">{item.label}</span>
+                            </div>
+                          </Link>
+                        </SidebarMenuItem>
+                      );
+                    })}
+                  </SidebarMenu>
+                </SidebarGroupContent>
+              </SidebarGroup>
+            ))}
           </SidebarContent>
 
           {/* Footer Info: User Profile */}
