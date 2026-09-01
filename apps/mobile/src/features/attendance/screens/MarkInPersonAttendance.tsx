@@ -968,43 +968,38 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
         const cachedBleUnitId = adaptiveConfig.getUnitId(payload.unitCode);
         const bleId = cachedBleUnitId ?? (unitMapping?.bleId ? Number(unitMapping.bleId) : null);
         
-        // Reconstruct session from QR payload data
-        // A signed QR contains enough session metadata to record attendance
-        // locally. Server verification is deferred until connectivity returns.
-        {
-          // Calculate actual session start from issued time and counter
-          // QR codes rotate every QR_ROTATION_SECONDS, so we can estimate session start
-          const QR_ROTATION_SECONDS = 3;
-          // Epoch counters do not encode session age. The signed issuedAt is
-          // sufficient to validate and queue the scan locally; use it as the
-          // local session anchor until the authoritative session is synced.
-          const approximateSessionStart = payload.issuedAt;
-          
-          // Assume 10 minute session duration (standard)
-          const sessionDuration = 10 * 60 * 1000;
-          
-          // We have enough info to reconstruct the session locally
-          resolvedSession = {
-            id: payload.sessionId,
-            unitCode: payload.unitCode,
-            sessionStart: approximateSessionStart,
-            expiresAt: approximateSessionStart + sessionDuration,
-            sessionNonce: payload.sessionNonce,
-            bleUnitId: bleId,
-            status: 'active' as const,
-          };
-          
-          // Cache the reconstructed session for future use
-          await cacheInPersonSession(resolvedSession);
-          
-          console.log('Reconstructed session from QR payload and cached data:', {
-            unitCode: payload.unitCode,
-            bleId,
-            sessionStart: new Date(approximateSessionStart).toISOString(),
-            expiresAt: new Date(approximateSessionStart + sessionDuration).toISOString(),
-            source: bleId ? 'cached' : 'offline'
-          });
-        }
+        // Reconstruct session from QR payload data. The signed QR already
+        // carries the session's real sessionStart/expiresAt (see
+        // createSignedPayload) — issuedAt is only this specific rotation's
+        // timestamp, minutes later than sessionStart for a scan partway
+        // through a live session. Using issuedAt as a stand-in for
+        // sessionStart (as this used to) made the reconstructed session
+        // disagree with the QR's own embedded sessionStart by however far
+        // into the session the scan happened — almost always past the 15s
+        // tolerance — so validateAttendancePayload's own SESSION_TIME_MISMATCH
+        // check would fail against a session reconstructed from that exact
+        // QR. Use the payload's real values directly; nothing here is an
+        // approximation.
+        resolvedSession = {
+          id: payload.sessionId,
+          unitCode: payload.unitCode,
+          sessionStart: payload.sessionStart,
+          expiresAt: payload.expiresAt,
+          sessionNonce: payload.sessionNonce,
+          bleUnitId: bleId,
+          status: 'active' as const,
+        };
+
+        // Cache the reconstructed session for future use
+        await cacheInPersonSession(resolvedSession);
+
+        console.log('Reconstructed session from QR payload and cached data:', {
+          unitCode: payload.unitCode,
+          bleId,
+          sessionStart: new Date(payload.sessionStart).toISOString(),
+          expiresAt: new Date(payload.expiresAt).toISOString(),
+          source: bleId ? 'cached' : 'offline'
+        });
       }
       
       // If still not resolved, try backend as last resort
