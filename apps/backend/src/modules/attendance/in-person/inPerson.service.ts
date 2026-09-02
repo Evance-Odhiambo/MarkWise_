@@ -174,7 +174,10 @@ export class InPersonService {
     } else {
       session = await this.prisma.conductedSession.create({ data: sessionData });
     }
-    const publicSession = await this.getPublicSession(session.id);
+    const publicSession = await this.getPublicSession(
+      session.id,
+      session.institutionId,
+    );
     return {
       id: session.id,
       unitCode: session.unitCode,
@@ -195,11 +198,16 @@ export class InPersonService {
     });
   }
 
-  async getPublicSession(sessionId: string) {
+  async getPublicSession(sessionId: string, institutionId: string) {
     const session = await this.prisma.conductedSession.findUnique({
       where: { id: sessionId },
     });
-    if (!session) return null;
+    // Institution boundary: never hand out another institution's session
+    // (or its signed manifest) to a caller just because they know/guessed
+    // the session id - actually marking attendance with it still fails
+    // downstream (resolveUnitId/enrollment are scoped independently), but
+    // this stops the metadata and manifest disclosure itself.
+    if (!session || session.institutionId !== institutionId) return null;
     const sessionStart = session.sessionStart.getTime();
     const expiresAt = sessionStart + session.sessionDuration * 1000;
     const issuedAt = Date.now();
@@ -265,7 +273,9 @@ export class InPersonService {
       where,
       orderBy: { sessionStart: "desc" },
     });
-    return session ? this.getPublicSession(session.id) : null;
+    return session
+      ? this.getPublicSession(session.id, session.institutionId)
+      : null;
   }
 
   async getActiveSessionByUnit(unitCode: string, studentId: string) {
@@ -303,7 +313,10 @@ export class InPersonService {
     });
     if (!session) return null;
 
-    const publicSession = await this.getPublicSession(session.id);
+    const publicSession = await this.getPublicSession(
+      session.id,
+      session.institutionId,
+    );
     return publicSession?.status === "active" ? publicSession : null;
   }
 

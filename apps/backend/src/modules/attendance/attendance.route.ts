@@ -742,8 +742,15 @@ export const attendanceRoutes: FastifyPluginAsync = async (app) => {
     "/online/sessions/:sessionId",
     { preHandler: requireAttendanceRole("student", "lecturer") },
     async (request, reply) => {
+      // Only student/lecturer roles reach this route, both of which always
+      // carry a real institutionId - the null case can't happen in
+      // practice, but treat it as "not found" defensively rather than
+      // assert non-null.
+      if (!request.user.institutionId)
+        return reply.code(404).send({ error: "Attendance session not found" });
       const session = await attendance.getOnlineSession(
         request.params.sessionId,
+        request.user.institutionId,
       );
       if (!session)
         return reply.code(404).send({ error: "Attendance session not found" });

@@ -129,12 +129,16 @@ export class AttendanceService {
     });
   }
 
-  async getOnlineSession(sessionId: string) {
+  async getOnlineSession(sessionId: string, institutionId: string) {
     const cacheKey = this.sessionCacheKey(sessionId);
     if (this.redis?.isReady) {
       try {
         const cached = await this.redis.get(cacheKey);
-        if (cached) return JSON.parse(cached) as Record<string, unknown>;
+        if (cached) {
+          const parsed = JSON.parse(cached) as Record<string, unknown>;
+          if (parsed.institutionId !== institutionId) return null;
+          return parsed;
+        }
       } catch {
         // Cache failure must never block attendance.
       }
@@ -145,7 +149,11 @@ export class AttendanceService {
       include: { _count: { select: { records: true } } },
     });
 
-    if (!session) return null;
+    // Institution boundary: a student/lecturer from institution A must
+    // never be able to read institution B's session by guessing/leaking its
+    // id, even though this doesn't let them mark attendance (submitOnline-
+    // Attendance enforces the same check independently).
+    if (!session || session.institutionId !== institutionId) return null;
     const unit = await this.findUnitByCode(session.unitCode, session.institutionId, {
       id: true,
       name: true,

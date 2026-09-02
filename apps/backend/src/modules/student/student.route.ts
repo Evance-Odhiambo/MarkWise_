@@ -583,11 +583,20 @@ export const studentRoutes: FastifyPluginAsync = async (app) => {
             });
         }
 
+        const course = await prisma.course.findFirst({
+          where: { id: courseId, institutionId },
+          select: { id: true },
+        });
+        if (!course)
+          return reply
+            .code(400)
+            .send({ error: "Course not found for this institution" });
+
         const student = await prisma.student.create({
           data: {
             name,
             admissionNumber,
-            course: { connect: { id: courseId } },
+            course: { connect: { id: course.id } },
             institution: { connect: { id: institutionId } },
             year: year || 1,
           },

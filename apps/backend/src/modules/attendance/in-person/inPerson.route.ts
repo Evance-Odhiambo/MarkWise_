@@ -329,7 +329,16 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
     "/sessions/:sessionId",
     { preHandler: requireAttendanceRole("student", "lecturer") },
     async (request, reply) => {
-      const session = await service.getPublicSession(request.params.sessionId);
+      // Only student/lecturer roles reach this route, both of which always
+      // carry a real institutionId - the null case can't happen in
+      // practice, but treat it as "not found" defensively rather than
+      // assert non-null.
+      if (!request.user.institutionId)
+        return reply.code(404).send({ error: "Attendance session not found" });
+      const session = await service.getPublicSession(
+        request.params.sessionId,
+        request.user.institutionId,
+      );
       if (!session)
         return reply.code(404).send({ error: "Attendance session not found" });
       return reply.send({ success: true, data: session });
