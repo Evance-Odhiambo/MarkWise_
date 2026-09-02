@@ -515,7 +515,17 @@ export const institutionRoutes: FastifyPluginAsync = async (app) => {
               id: { notIn: Array.from(keptCourseIds) },
             },
           });
-        });
+        },
+        // Each unit now costs one extra sequential round-trip (the
+        // UnitOffering upsert, on top of the existing find + create/update)
+        // compared to before the Unit-institution restructure, and this
+        // loop is otherwise entirely sequential across every
+        // course/year/semester/unit in the payload. Prisma's default
+        // interactive-transaction timeout (5s) and maxWait (2s) are too
+        // tight for a real academic-setup save once cross-region DB
+        // latency (Cloud Run <-> Neon) is added up across that many round-
+        // trips - raised well above what a large save should ever need.
+        { timeout: 30_000, maxWait: 10_000 });
       } catch (error) {
         const errorMessage =
           error instanceof Error ? error.message : "Unknown error occurred";
