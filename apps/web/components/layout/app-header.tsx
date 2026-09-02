@@ -2,7 +2,7 @@
 import React, { useState } from "react";
 import Link from "next/link";
 import RoleModal from "./role-modal";
-import Logo from "@/components/shared/logo";
+import BrandMark from "@/components/shared/brand-mark";
 
 const AppHeader: React.FC = () => {
   const [isModalOpen, setIsModalOpen] = useState(false);
@@ -22,7 +22,7 @@ const AppHeader: React.FC = () => {
     <>
       <header className="bg-white/95 backdrop-blur-sm shadow-lg border-b border-gray-100 sticky top-0 z-40">
         <div className="container mx-auto px-4 sm:px-6 py-4 flex items-center justify-between">
-          <Logo size={40} />
+          <BrandMark size={40} />
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center space-x-2 lg:space-x-4">

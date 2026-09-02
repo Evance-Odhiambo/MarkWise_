@@ -1,7 +1,7 @@
 "use client";
 import React from "react";
 import Link from "next/link";
-import LogoIcon from "@/components/shared/logo-icon";
+import { BrandMarkGlyph } from "@/components/shared/brand-mark";
 
 const AppFooter: React.FC = () => {
   return (
@@ -11,7 +11,7 @@ const AppFooter: React.FC = () => {
           {/* Brand & Description */}
           <div>
             <div className="flex items-center space-x-3 mb-4">
-              <LogoIcon className="w-10 h-10" />
+              <BrandMarkGlyph size={40} />
               <h3 className="text-xl font-bold text-white">MarkWise</h3>
             </div>
             <p className="text-sm text-slate-400 leading-relaxed">
@@ -41,15 +41,7 @@ const AppFooter: React.FC = () => {
                 >
                   How it Works
                 </Link>
-              </li>
-              <li>
-                <Link
-                  href="/setup"
-                  className="hover:text-white transition-colors"
-                >
-                  Academic Setup
-                </Link>
-              </li>
+              </li>           
               <li>
                 <Link
                   href="/pricing"

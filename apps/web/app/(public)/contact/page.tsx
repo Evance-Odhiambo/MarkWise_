@@ -2,7 +2,7 @@
 import React, { useState, useCallback } from "react";
 import AppHeader from "@/components/layout/app-header";
 import AppFooter from "@/components/layout/app-footer";
-import LogoIcon from "@/components/shared/logo-icon";
+import { BrandMarkGlyph } from "@/components/shared/brand-mark";
 
 interface ContactForm {
   name: string;
@@ -92,9 +92,7 @@ const ContactPage: React.FC = () => {
           <div className="max-w-6xl mx-auto">
             {/* Page Header */}
             <div className="text-center mb-16">
-              <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-linear-to-br from-emerald-500 to-teal-600 mb-6 shadow-lg">
-                <LogoIcon className="w-10 h-10" variant="light" />
-              </div>
+              <BrandMarkGlyph size={64} className="mx-auto mb-6 shadow-lg" />
               <h1 className="text-4xl md:text-5xl font-extrabold text-slate-900 mb-4">
                 Get in Touch
               </h1>
