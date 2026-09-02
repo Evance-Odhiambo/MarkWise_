@@ -3,7 +3,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { requireAttendanceRole } from "../../plugins/index.js";
 import { sendPushNotification } from "../notification/notification.service.js";
 import { InPersonService } from "./in-person/inPerson.service.js";
-import { normalizeUnitCode } from "../../shared/unitCodes.js";
+import { resolveUnitByCode, resolveUnitNamesByCodes } from "../../shared/resolveUnit.js";
 import { assertLecturerCourseScope } from "./courseScope.js";
 
 const GRANT_TTL_MS = 15 * 60 * 1000;
@@ -22,8 +22,8 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
         unitCode?: string;
       };
       const studentId = String(body.studentId || "").trim();
-      const unitCode = normalizeUnitCode(body.unitCode);
-      if (!studentId || !unitCode)
+      const requestedCode = body.unitCode?.trim();
+      if (!studentId || !requestedCode)
         return reply
           .code(400)
           .send({ error: "studentId and unitCode are required" });
@@ -38,15 +38,14 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
         where: { id: studentId },
         select: { id: true, name: true, institutionId: true, courseId: true },
       });
-      const unit = await app.prisma.unit.findFirst({
-        where: {
-          code: unitCode,
-          institutionId: lecturer.institutionId,
-        },
-        select: { id: true, name: true, bleId: true },
-      });
+      const unit = await resolveUnitByCode(app.prisma, requestedCode, lecturer.institutionId);
       if (!student || !unit || student.institutionId !== lecturer.institutionId)
         return reply.code(404).send({ error: "Student or unit was not found" });
+      // Store the canonical stored code (e.g. "SBT 2170", space preserved)
+      // rather than the client's possibly-differently-formatted input, so
+      // every later lookup against this delegation's unitCode can rely on
+      // it matching Unit.code exactly.
+      const unitCode = unit.code;
 
       const enrolled = await app.prisma.enrollment.findFirst({
         where: { studentId, unitId: unit.id },
@@ -147,14 +146,47 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
               },
         orderBy: { createdAt: "desc" },
       });
+
+      // Delegation has no Prisma relations to Student/Lecturer/Unit
+      // (leaderStudentId/createdBy are raw strings, unitId is a raw BLE
+      // int, not a Unit FK) - batch-lookup names rather than a single
+      // "which student/lecturer was this" round trip per row.
+      const studentIds = [...new Set(rows.flatMap((r) => (r.leaderStudentId ? [r.leaderStudentId] : [])))];
+      const lecturerIds = [...new Set(rows.map((r) => r.createdBy))];
+      const unitCodes = [...new Set(rows.map((r) => r.unitCode))];
+      const institutionId =
+        request.user.role === "student"
+          ? (await app.prisma.student.findUnique({ where: { id: request.user.id }, select: { institutionId: true } }))?.institutionId
+          : (await app.prisma.lecturer.findUnique({ where: { id: request.user.id }, select: { institutionId: true } }))?.institutionId;
+
+      const [students, lecturers, unitNameByCode] = await Promise.all([
+        studentIds.length
+          ? app.prisma.student.findMany({ where: { id: { in: studentIds } }, select: { id: true, name: true } })
+          : Promise.resolve([]),
+        lecturerIds.length
+          ? app.prisma.lecturer.findMany({ where: { id: { in: lecturerIds } }, select: { id: true, fullName: true } })
+          : Promise.resolve([]),
+        unitCodes.length && institutionId
+          ? resolveUnitNamesByCodes(app.prisma, unitCodes, institutionId)
+          : Promise.resolve(new Map<string, string>()),
+      ]);
+      const studentNameById = new Map(students.map((s) => [s.id, s.name]));
+      const lecturerNameById = new Map(lecturers.map((l) => [l.id, l.fullName]));
+
       return {
         delegations: rows.map((row) => ({
           id: row.id,
           unitCode: row.unitCode,
+          unitName: unitNameByCode.get(row.unitCode) ?? null,
           validFrom: Number(row.validFrom),
           validUntil: Number(row.validUntil),
           startedAt: row.startedAt?.getTime() ?? null,
+          endedAt: row.endedAt?.getTime() ?? null,
           used: row.used,
+          leaderStudentId: row.leaderStudentId,
+          leaderStudentName: row.leaderStudentId ? (studentNameById.get(row.leaderStudentId) ?? null) : null,
+          createdBy: row.createdBy,
+          lecturerName: lecturerNameById.get(row.createdBy) ?? null,
         })),
       };
     }
@@ -186,13 +218,9 @@ export const delegationRoutes: FastifyPluginAsync = async (app) => {
           .code(403)
           .send({ error: "Delegation is invalid or expired" });
 
-      const unit = await app.prisma.unit.findFirst({
-        where: {
-          code: delegation.unitCode,
-          institutionId: delegation.institutionId || undefined,
-        },
-        select: { name: true, bleId: true },
-      });
+      const unit = delegation.institutionId
+        ? await resolveUnitByCode(app.prisma, delegation.unitCode, delegation.institutionId)
+        : null;
       if (!unit)
         return reply.code(404).send({ error: "Delegation unit was not found" });
 

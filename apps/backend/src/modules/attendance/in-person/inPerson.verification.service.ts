@@ -12,6 +12,7 @@ import {
   QR_ROTATION_SECONDS as QR_WINDOW_SECONDS,
 } from "./inPerson.schema.js";
 import { assertLecturerCourseScope } from "../courseScope.js";
+import { resolveUnitByCode } from "../../../shared/resolveUnit.js";
 
 const MAX_PIN_DRIFT = 1;
 
@@ -133,10 +134,7 @@ export class InPersonVerificationService {
    * course chain traversal.
    */
   private async resolveUnitId(unitCode: string, institutionId: string) {
-    const unit = await this.prisma.unit.findFirst({
-      where: { code: unitCode, institutionId },
-      select: { id: true },
-    });
+    const unit = await resolveUnitByCode(this.prisma, unitCode, institutionId);
     if (!unit) throw new Error("UNIT_NOT_FOUND");
     return unit.id;
   }

@@ -98,6 +98,23 @@ export function getLecturerUnits() {
   });
 }
 
+export type RosterStudent = {
+  studentId: string;
+  studentName: string;
+  admissionNumber: string;
+};
+
+export function getUnitRoster(unitCode: string) {
+  return fetch(`/api/v1/lecturers/units/${encodeURIComponent(unitCode)}/roster`, {
+    headers: { Authorization: `Bearer ${token()}` },
+  }).then(async (response) => {
+    const body = await response.json().catch(() => ({}));
+    if (!response.ok)
+      throw new Error(body.error ?? "Unable to load unit roster");
+    return body as { unitCode: string; students: RosterStudent[] };
+  });
+}
+
 export function getStudentUnits() {
   return fetch("/api/v1/students/units", {
     headers: { Authorization: `Bearer ${token()}` },
@@ -196,6 +213,18 @@ export function saveLecturerUnits(selections: TeachingUnitSelection[]) {
       selections: TeachingUnitSelection[];
     };
   });
+}
+
+export type OnlineSessionHistoryEntry = OnlineSession & {
+  createdAt: string;
+  lecturerId: string;
+  institutionId: string;
+};
+
+export function getLecturerOnlineSessions() {
+  return request<{ success: true; data: OnlineSessionHistoryEntry[] }>(
+    "/sessions",
+  );
 }
 
 export function getOnlineSession(id: string) {

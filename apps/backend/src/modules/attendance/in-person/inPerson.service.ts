@@ -14,6 +14,7 @@ import {
   manifestValues,
   signManifest,
 } from "./sessionManifest.js";
+import { resolveUnitByCode } from "../../../shared/resolveUnit.js";
 
 export class InPersonService {
   private readonly verifier: InPersonVerificationService;
@@ -279,8 +280,6 @@ export class InPersonService {
   }
 
   async getActiveSessionByUnit(unitCode: string, studentId: string) {
-    const normalizedCode = normalizeUnitCode(unitCode);
-
     // Resolve the student's institutionId from the DB so we never rely on
     // caller-supplied data for the institution boundary check.
     const student = await this.prisma.student.findUnique({
@@ -289,23 +288,22 @@ export class InPersonService {
     });
     if (!student) return null;
 
+    const unit = await resolveUnitByCode(this.prisma, unitCode, student.institutionId);
+    if (!unit) return null;
+
     const enrollment = await this.prisma.enrollment.findFirst({
-      where: {
-        studentId,
-        unit: {
-          code: normalizedCode,
-          institutionId: student.institutionId,
-        },
-      },
+      where: { studentId, unitId: unit.id },
       select: { unitId: true },
     });
     if (!enrollment) return null;
 
     // Scope the session lookup to the student's institution via the lecturer
     // relation so unit code collisions across institutions are harmless.
+    // Sessions store the canonical code (see createSession above), so this
+    // matches exactly once resolveUnitByCode has normalized the input.
     const session = await this.prisma.conductedSession.findFirst({
       where: {
-        unitCode: normalizedCode,
+        unitCode: unit.code,
         sessionEnd: null,
         institutionId: student.institutionId,
       },

@@ -239,7 +239,7 @@ export default function LecturerDashboardPage() {
             <RefreshCw className={`h-3.5 w-3.5 ${refreshing ? "animate-spin" : ""}`} />
             <span>Refresh</span>
           </Button>
-          <Link href="/lecturer/attendance/online">
+          <Link href="/lecturer/attendance">
             <Button
               size="sm"
               className="h-8 px-4 text-[11px] bg-gradient-to-r from-emerald-600 to-teal-600 hover:from-emerald-700 hover:to-teal-700 text-white font-bold gap-1.5 shadow-lg shadow-emerald-500/30"
@@ -288,7 +288,7 @@ export default function LecturerDashboardPage() {
             </div>
 
             <div className="flex items-center gap-2.5 flex-wrap">
-              <Link href="/lecturer/attendance/online">
+              <Link href="/lecturer/attendance">
                 <Button
                   size="sm"
                   className="h-8 px-4 text-[11px] bg-white text-emerald-700 hover:bg-emerald-50 font-bold gap-1.5 shadow-lg shadow-black/10 transition-all"

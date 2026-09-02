@@ -11,7 +11,10 @@ import {
 import { useAuth } from '../../auth/context/AuthContext';
 import { API_BASE_URL } from '../../../shared/constants';
 import { saveUnitStudents } from '../../../shared/storage/cachedUnitStudents';
-import { normalizeUnitCode as normalizeCode } from '../../../shared/utils/unitCodes';
+import {
+  normalizeUnitCode as normalizeCode,
+  unitCodesEqual,
+} from '../../../shared/utils/unitCodes';
 import {
   cacheUnitSelectionSnapshot,
   isUnitSelectionSnapshotFresh,
@@ -424,7 +427,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
       if (role === 'student' && token && userId) {
         // Get unit IDs for selected codes
         const selectedUnitIds = normalized
-          .map(code => catalogue.find(unit => unit.code === code)?.id)
+          .map(code => catalogue.find(unit => unitCodesEqual(unit.code, code))?.id)
           .filter((id): id is string => Boolean(id));
         
         const selectedIdsSet = new Set(selectedUnitIds);
@@ -493,7 +496,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
 
       if (role === 'lecturer' && token && userId) {
         const unitIds = normalized
-          .map(code => catalogue.find(unit => unit.code === code)?.id)
+          .map(code => catalogue.find(unit => unitCodesEqual(unit.code, code))?.id)
           .filter((id): id is string => Boolean(id));
         const response = await fetch(`${API_BASE_URL}/lecturers/units`, {
           method: 'POST',
@@ -581,7 +584,7 @@ export const useUnitSelection = (role: UnitSelectionRole, searchQuery = '') => {
     () =>
       selectedCodes.map(
         code =>
-          catalogue.find(unit => unit.code === code) ?? {
+          catalogue.find(unit => unitCodesEqual(unit.code, code)) ?? {
             code,
             name: 'Unknown unit',
           },

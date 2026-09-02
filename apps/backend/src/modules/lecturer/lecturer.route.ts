@@ -11,6 +11,7 @@ import {
   requireSuperAdmin,
 } from "../../plugins/index.js";
 import { cleanIdentifier } from "../../shared/identifiers.js";
+import { resolveUnitByCode } from "../../shared/resolveUnit.js";
 
 interface LoginBody {
   email: string;
@@ -230,74 +231,51 @@ export const lecturerRoutes: FastifyPluginAsync = async (app) => {
         where: { id: request.user.id },
         select: { institutionId: true },
       });
-      const unitCode = cleanIdentifier(request.params.unitCode);
-      if (!lecturer || !unitCode)
+      const requestedCode = request.params.unitCode?.trim();
+      if (!lecturer || !requestedCode)
         return reply.code(400).send({ error: "A valid unit code is required" });
 
-      // First try to find unit with full hierarchy
-      const unit = await app.prisma.unit.findFirst({
-        where: {
-          code: unitCode,
-          institutionId: lecturer.institutionId,
-        },
+      // Resolve by the canonical stored code first (the common case - the
+      // client already has it verbatim from a Unit row), falling back to a
+      // normalized-form match so a differently-formatted code still works.
+      const unit = await resolveUnitByCode(app.prisma, requestedCode, lecturer.institutionId);
+      const unitCode = unit?.code ?? requestedCode;
+
+      if (!unit) {
+        // Unit not in the Unit table at all (e.g. BleMapping-only) - no
+        // Unit.id for enrollments or course-scoping to key off, so there's
+        // nothing to look up.
+        return reply.send({ unitCode, students: [] });
+      }
+
+      let enrollments = await app.prisma.enrollment.findMany({
+        where: { unitId: unit.id },
+        orderBy: { student: { admissionNumber: "asc" } },
         select: {
-          id: true,
-          enrollments: {
-            orderBy: { student: { admissionNumber: "asc" } },
-            select: {
-              student: {
-                select: { id: true, name: true, admissionNumber: true, courseId: true },
-              },
-            },
+          student: {
+            select: { id: true, name: true, admissionNumber: true, courseId: true },
           },
         },
       });
 
-      // If unit not found in Unit table, query enrollments directly by
-      // unitCode. This handles cases where unit exists in BleMapping but
-      // not in Unit table - there's no Unit.id here for a LecturerUnit
-      // course-scoping row to attach to, so nothing to narrow by.
-      let enrollments = unit?.enrollments;
-      if (!unit) {
-        enrollments = await app.prisma.enrollment.findMany({
-          where: {
-            unit: {
-              code: unitCode,
-              institutionId: lecturer.institutionId,
-            },
-          },
-          orderBy: { student: { admissionNumber: "asc" } },
-          select: {
-            student: {
-              select: { id: true, name: true, admissionNumber: true, courseId: true },
-            },
-          },
-        });
-      }
-
-      if (!enrollments || enrollments.length === 0) {
+      if (enrollments.length === 0) {
         // Return empty roster instead of 404 - unit exists but has no enrollments
-        return reply.send({
-          unitCode,
-          students: [],
-        });
+        return reply.send({ unitCode, students: [] });
       }
 
       // Narrow to this lecturer's course-scoped section(s) for the unit, if
       // they've selected any - see LecturerUnit.courseId in schema.prisma.
-      if (unit) {
-        const scopes = await app.prisma.lecturerUnit.findMany({
-          where: { lecturerId: request.user.id, unitId: unit.id },
-          select: { courseId: true },
-        });
-        const unrestricted =
-          scopes.length === 0 || scopes.some((s) => s.courseId === null);
-        if (!unrestricted) {
-          const allowedCourseIds = new Set(scopes.map((s) => s.courseId));
-          enrollments = enrollments.filter((e) =>
-            allowedCourseIds.has(e.student.courseId),
-          );
-        }
+      const scopes = await app.prisma.lecturerUnit.findMany({
+        where: { lecturerId: request.user.id, unitId: unit.id },
+        select: { courseId: true },
+      });
+      const unrestricted =
+        scopes.length === 0 || scopes.some((s) => s.courseId === null);
+      if (!unrestricted) {
+        const allowedCourseIds = new Set(scopes.map((s) => s.courseId));
+        enrollments = enrollments.filter((e) =>
+          allowedCourseIds.has(e.student.courseId),
+        );
       }
 
       return reply.send({

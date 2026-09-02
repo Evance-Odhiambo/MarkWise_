@@ -4,14 +4,10 @@ import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import {
   CalendarCheck2,
-  CheckCircle2,
-  Clock,
   Download,
-  Filter,
-  GraduationCap,
   RefreshCw,
   Search,
-  Sparkles,
+  UserCheck,
   Zap,
 } from "lucide-react";
 import Link from "next/link";
@@ -25,6 +21,7 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { RoleWorkspaceShell } from "@/components/layout/role-workspace-shell";
+import { getDelegations, type Delegation } from "@/lib/attendance/delegation";
 
 interface AttendanceRecord {
   id: string;
@@ -51,14 +48,27 @@ interface StudentSession {
   admissionNumber?: string;
 }
 
+type Tab = "ledger" | "delegations";
+
+function delegationStatus(d: Delegation): { label: string; className: string } {
+  if (d.endedAt) return { label: "Revoked", className: "bg-slate-100 text-slate-600" };
+  if (d.used) return { label: "Accepted", className: "bg-emerald-100 text-emerald-800" };
+  if (d.validUntil < Date.now()) return { label: "Expired", className: "bg-amber-100 text-amber-800" };
+  return { label: "Pending", className: "bg-sky-100 text-sky-800" };
+}
+
 export default function StudentAttendancePage() {
   const router = useRouter();
+  const [activeTab, setActiveTab] = useState<Tab>("ledger");
   const [studentProfile, setStudentProfile] = useState<StudentSession | null>(null);
   const [summary, setSummary] = useState<AttendanceSummary | null>(null);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
   const [unitFilter, setUnitFilter] = useState("ALL");
   const [refreshing, setRefreshing] = useState(false);
+  const [delegations, setDelegations] = useState<Delegation[]>([]);
+  const [loadingDelegations, setLoadingDelegations] = useState(false);
+  const [delegationsLoaded, setDelegationsLoaded] = useState(false);
 
   const fetchLiveRecords = async (token: string) => {
     try {
@@ -112,6 +122,19 @@ export default function StudentAttendancePage() {
     }
     return () => { cancelled = true; };
   }, [router]);
+
+  // Load delegations once, the first time that tab is opened.
+  useEffect(() => {
+    if (activeTab !== "delegations" || delegationsLoaded) return;
+    setLoadingDelegations(true);
+    getDelegations()
+      .then((res) => setDelegations(res.delegations))
+      .catch(() => setDelegations([]))
+      .finally(() => {
+        setLoadingDelegations(false);
+        setDelegationsLoaded(true);
+      });
+  }, [activeTab, delegationsLoaded]);
 
   const handleRefresh = async () => {
     try {
@@ -225,6 +248,34 @@ export default function StudentAttendancePage() {
           </div>
         </div>
 
+        {/* Tab Switcher */}
+        <div className="flex items-center gap-1 rounded-md border border-slate-200 bg-slate-50 p-0.5 text-[10.5px] w-fit">
+          <button
+            onClick={() => setActiveTab("ledger")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-semibold transition ${
+              activeTab === "ledger"
+                ? "bg-white text-emerald-700 shadow-2xs"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <CalendarCheck2 className="h-3 w-3" />
+            <span>Ledger</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("delegations")}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded font-semibold transition ${
+              activeTab === "delegations"
+                ? "bg-white text-emerald-700 shadow-2xs"
+                : "text-slate-500 hover:text-slate-900"
+            }`}
+          >
+            <UserCheck className="h-3 w-3" />
+            <span>Delegations</span>
+          </button>
+        </div>
+
+        {activeTab === "ledger" && (
+        <>
         {/* 3 Metric Cards */}
         <section className="grid gap-2.5 sm:grid-cols-3">
           <Card className="border-slate-200/90 bg-white p-3 shadow-2xs">
@@ -373,6 +424,62 @@ export default function StudentAttendancePage() {
             )}
           </CardContent>
         </Card>
+        </>
+        )}
+
+        {activeTab === "delegations" && (
+          <Card className="border-slate-200/90 bg-white shadow-2xs overflow-hidden">
+            <CardHeader className="border-b border-slate-100 px-3.5 py-2.5 bg-slate-50/50">
+              <CardTitle className="text-xs font-bold text-slate-900 flex items-center gap-1.5">
+                <UserCheck className="h-3.5 w-3.5 text-emerald-600" />
+                <span>Delegations</span>
+              </CardTitle>
+              <CardDescription className="text-[10px] text-slate-500">
+                Sessions a lecturer has authorized you to help run
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              {loadingDelegations ? (
+                <div className="py-12 text-center text-slate-400 text-[10.5px]">
+                  Loading delegations...
+                </div>
+              ) : delegations.length === 0 ? (
+                <div className="py-12 text-center text-slate-400 text-[10.5px]">
+                  No delegations yet. When a lecturer delegates attendance-taking
+                  to you, it'll show up here — and as a notification you can
+                  accept from.
+                </div>
+              ) : (
+                <div className="divide-y divide-slate-100">
+                  {delegations.map((d) => {
+                    const status = delegationStatus(d);
+                    return (
+                      <div key={d.id} className="px-3.5 py-2.5 space-y-0.5">
+                        <div className="flex items-center gap-1.5">
+                          <span className="font-bold font-mono text-slate-900 text-[11px]">
+                            {d.unitCode}
+                          </span>
+                          {d.unitName && (
+                            <span className="text-slate-500 text-[10px]">{d.unitName}</span>
+                          )}
+                          <span
+                            className={`ml-auto rounded px-1.5 py-0.2 text-[8.5px] font-mono font-bold ${status.className}`}
+                          >
+                            {status.label}
+                          </span>
+                        </div>
+                        <p className="text-[10px] text-slate-500">
+                          Authorized by {d.lecturerName ?? "your lecturer"}
+                          {d.used && " — open the MarkWise mobile app to run this session"}
+                        </p>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
       </main>
     </RoleWorkspaceShell>
   );

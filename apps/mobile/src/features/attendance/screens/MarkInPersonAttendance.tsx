@@ -69,6 +69,7 @@ import {
   manifestToSession,
 } from '../../../shared/storage/sessionManifestCache';
 import { recordBleCounter } from '../../../shared/storage/receivedBleCounters';
+import { unitCodesEqual } from '../../../shared/utils/unitCodes';
 import { setRecordRelayEligibility } from '../../../shared/storage/inPersonAttendanceQueue';
 import {
   FadeSlideIn,
@@ -1100,7 +1101,7 @@ const MarkInPersonAttendance = ({ navigation, route }: Props) => {
           : [];
         
         const unitMapping = storedMappings.find(
-          mapping => mapping.unitCode === payload.unitCode
+          mapping => unitCodesEqual(mapping.unitCode, payload.unitCode)
         );
         
         const cachedBleUnitId = adaptiveConfig.getUnitId(payload.unitCode);

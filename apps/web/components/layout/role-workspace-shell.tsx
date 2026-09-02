@@ -102,7 +102,7 @@ export function RoleWorkspaceShell({
             },
             {
               label: "Attendance",
-              href: "/lecturer/attendance/online",
+              href: "/lecturer/attendance",
               icon: Radio,
             },
             {

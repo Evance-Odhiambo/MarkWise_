@@ -9,6 +9,7 @@ import {
   validateSubmitInPersonAttendance,
 } from "./inPerson.schema.js";
 import type { InPersonMethod } from "./index.js";
+import { resolveUnitByCode } from "../../../shared/resolveUnit.js";
 
 const METHOD_LABELS: Record<string, string> = {
   qr: "QR code",
@@ -109,19 +110,12 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
       })
       .catch(() => null);
     const unitCode = session?.unitCode;
-    const unit = unitCode
-      ? await app.prisma.unit
-          .findFirst({
-            where: {
-              code: unitCode,
-              institutionId: session!.institutionId,
-            },
-            select: { name: true },
-          })
-          .catch(() => null)
-      : null;
+    const unit =
+      unitCode && session
+        ? await resolveUnitByCode(app.prisma, unitCode, session.institutionId).catch(() => null)
+        : null;
     const unitDisplay = unit?.name
-      ? `${unit.name} (${unitCode})`
+      ? `${unit.name} (${unit.code})`
       : unitCode || "your unit";
     const notification = await app.prisma.notification
       .create({
@@ -169,13 +163,10 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         scannedAt?: string | number;
         deviceId?: string;
       };
-      const unitCode = String(body.unitCode || "")
-        .trim()
-        .toUpperCase()
-        .replace(/\s+/g, "");
+      const requestedCode = String(body.unitCode || "").trim();
       const pin = String(body.pin || "").trim();
       const scannedAt = Number(body.scannedAt);
-      if (!unitCode || !/^\d{6}$/.test(pin) || !Number.isFinite(scannedAt))
+      if (!requestedCode || !/^\d{6}$/.test(pin) || !Number.isFinite(scannedAt))
         return reply.code(400).send({
           error: "Unit code, six-digit PIN, and scan time are required",
         });
@@ -184,6 +175,14 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
         return reply
           .code(410)
           .send({ error: "This PIN submission has expired" });
+
+      // Resolve once to the canonical stored code (e.g. "SBT 2170", space
+      // preserved) - ConductedSession/Unit rows are keyed by that exact
+      // string, not by a stripped/normalized form of whatever the client sent.
+      const resolvedUnit = request.user.institutionId
+        ? await resolveUnitByCode(app.prisma, requestedCode, request.user.institutionId)
+        : null;
+      const unitCode = resolvedUnit?.code ?? requestedCode;
 
       let session = await service.getActiveSessionByUnit(
         unitCode,
@@ -209,14 +208,11 @@ export const inPersonRoutes: FastifyPluginAsync = async (app) => {
           const end = start + row.sessionDuration * 1000;
           return scannedAt >= start - 15_000 && scannedAt <= end + 15_000;
         });
-        if (candidate) {
+        if (candidate && resolvedUnit) {
           const enrolled = await app.prisma.enrollment.findFirst({
             where: {
               studentId: request.user.id,
-              unit: {
-                code: unitCode,
-                institutionId: request.user.institutionId ?? undefined,
-              },
+              unitId: resolvedUnit.id,
             },
           });
           if (enrolled)
