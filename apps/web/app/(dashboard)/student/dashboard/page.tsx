@@ -487,7 +487,7 @@ export default function StudentDashboardPage() {
                   <thead>
                     <tr className="border-b border-emerald-100/80 bg-gradient-to-r from-emerald-50/50 to-teal-50/30 text-[10px] font-bold uppercase tracking-wider text-emerald-700">
                       <th className="py-3 px-4">Unit Code</th>
-                      <th className="py-3 px-4">Course Unit Title</th>
+                      <th className="py-3 px-4">Unit Title</th>
                       <th className="py-3 px-4 text-right">Conducted</th>
                       <th className="py-3 px-4 text-right">Attended</th>
                       <th className="py-3 px-4 text-right">Missed</th>
@@ -610,11 +610,18 @@ export default function StudentDashboardPage() {
                     tickLine={false}
                     axisLine={false}
                     tickMargin={8}
-                    tickFormatter={(value: string) =>
-                      new Date(value).toLocaleDateString(undefined, {
-                        weekday: "short",
-                      })
-                    }
+                    tickFormatter={(value) => {
+                      const dateValue =
+                        value == null || (typeof value === "object" && !(value instanceof Date))
+                          ? null
+                          : new Date(value as string | number | Date);
+
+                      return dateValue && !Number.isNaN(dateValue.getTime())
+                        ? dateValue.toLocaleDateString(undefined, {
+                            weekday: "short",
+                          })
+                        : "";
+                    }}
                   />
                   <YAxis
                     tickLine={false}
@@ -627,13 +634,20 @@ export default function StudentDashboardPage() {
                     content={
                       <ChartTooltipContent
                         indicator="line"
-                        labelFormatter={(value) =>
-                          new Date(value).toLocaleDateString(undefined, {
-                            weekday: "long",
-                            month: "short",
-                            day: "numeric",
-                          })
-                        }
+                        labelFormatter={(value) => {
+                          const dateValue =
+                            value == null || (typeof value === "object" && !(value instanceof Date))
+                              ? null
+                              : new Date(value as string | number | Date);
+
+                          return dateValue && !Number.isNaN(dateValue.getTime())
+                            ? dateValue.toLocaleDateString(undefined, {
+                                weekday: "long",
+                                month: "short",
+                                day: "numeric",
+                              })
+                            : "";
+                        }}
                       />
                     }
                   />

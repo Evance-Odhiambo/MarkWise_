@@ -1,4 +1,5 @@
 import Fastify from "fastify";
+import { env } from "./config/index.js";
 import {
   attendanceRoutes,
   inPersonRoutes,
@@ -62,6 +63,23 @@ export function buildApp() {
         },
       },
     ];
+  });
+  // iOS equivalent of the assetlinks.json route above — lets a native app tied
+  // to an Associated Domain act as a WebAuthn "web origin" for env.webauthnRpId.
+  // Needs the real Apple Developer Team ID (env.appleTeamId, from APPLE_TEAM_ID)
+  // once the user has enrolled and registered the com.markwise App ID — until
+  // then this serves a valid-but-empty webcredentials list rather than a
+  // placeholder, so iOS passkeys just don't work yet instead of shipping a
+  // fake-looking value that could be mistaken for correct.
+  app.get("/.well-known/apple-app-site-association", async (_request, reply) => {
+    reply.header("Content-Type", "application/json");
+    return {
+      applinks: {},
+      webcredentials: {
+        apps: env.appleTeamId ? [`${env.appleTeamId}.com.markwise`] : [],
+      },
+      appclips: {},
+    };
   });
   app.register(attendanceRoutes, { prefix: `${apiPrefix}/attendance` });
   app.register(inPersonRoutes, { prefix: `${apiPrefix}/attendance/in-person` });

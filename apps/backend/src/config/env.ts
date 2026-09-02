@@ -39,4 +39,11 @@ export const env = {
   webauthnRpId: process.env.WEBAUTHN_RP_ID?.trim() || "localhost",
   webauthnOrigin:
     process.env.WEBAUTHN_ORIGIN?.trim() || "http://localhost:3000",
+  // 10-character Apple Developer Team ID, needed for the iOS passkey
+  // Associated Domain (apple-app-site-association) to resolve to a real
+  // App ID. Left unset until the user has enrolled and registered the
+  // com.markwise App ID - the route below serves a valid-but-empty
+  // response rather than a placeholder when this is blank, so iOS
+  // passkeys just don't work yet instead of shipping a fake-looking value.
+  appleTeamId: process.env.APPLE_TEAM_ID?.trim() || "",
 } as const;

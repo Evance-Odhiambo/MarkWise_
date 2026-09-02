@@ -43,7 +43,7 @@ const roles = [
   },
   {
     id: "admin",
-    name: "School Admin",
+    name: "Institution Administrator",
     description: "Manage institution, staff, and academic data",
     Icon: Building2,
     signInPath: "/admin/school-admin/login",
@@ -52,7 +52,7 @@ const roles = [
     iconShadow: "shadow-violet-500/30",
     hoverBorder: "hover:border-violet-300",
     hoverBg: "hover:bg-violet-50/60",
-    badge: "Admin",
+    badge: "Administrator",
     badgeColor: "bg-violet-50 border-violet-200 text-violet-700",
   },
 ];
@@ -156,7 +156,7 @@ export const RoleModal: React.FC<RoleModalProps> = ({ isOpen, onClose, mode, onM
           {/* Footer */}
           <div className="px-4 py-3 border-t border-slate-100 flex items-center justify-between shrink-0 bg-slate-50/50">
             <p className="text-[11px] text-slate-400">
-              {mode === "signin" ? "No account yet?" : "Already registered?"}
+              {mode === "signin" ? "Don't have an account?" : "Already have an account?"}
             </p>
             <button
               onClick={() => onModeChange?.(mode === "signin" ? "signup" : "signin")}
