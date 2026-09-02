@@ -6,15 +6,15 @@ import { BrandMarkGlyph } from "@/components/shared/brand-mark";
 const AppFooter: React.FC = () => {
   return (
     <footer className="bg-slate-900 text-slate-300">
-      <div className="container mx-auto px-4 sm:px-6 py-12">
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-8">
+      <div className="container mx-auto px-4 sm:px-6 py-8 text-[11px]">
+        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
           {/* Brand & Description */}
           <div>
-            <div className="flex items-center space-x-3 mb-4">
-              <BrandMarkGlyph size={40} />
-              <h3 className="text-xl font-bold text-white">MarkWise</h3>
+            <div className="flex items-center gap-2 mb-2.5">
+              <BrandMarkGlyph size={24} />
+              <h3 className="text-sm font-bold text-white">MarkWise</h3>
             </div>
-            <p className="text-sm text-slate-400 leading-relaxed">
+            <p className="text-slate-400 leading-relaxed">
               Digitised attendance for higher learning institutions. Fast,
               secure, and reliable.
             </p>
@@ -22,10 +22,10 @@ const AppFooter: React.FC = () => {
 
           {/* Product */}
           <div>
-            <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">
+            <h4 className="text-white font-semibold mb-2.5 text-[10px] uppercase tracking-wider">
               Product
             </h4>
-            <ul className="space-y-3 text-sm">
+            <ul className="space-y-1.5">
               <li>
                 <Link
                   href="/features"
@@ -41,7 +41,7 @@ const AppFooter: React.FC = () => {
                 >
                   How it Works
                 </Link>
-              </li>           
+              </li>
               <li>
                 <Link
                   href="/pricing"
@@ -55,10 +55,10 @@ const AppFooter: React.FC = () => {
 
           {/* Company */}
           <div>
-            <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">
+            <h4 className="text-white font-semibold mb-2.5 text-[10px] uppercase tracking-wider">
               Company
             </h4>
-            <ul className="space-y-3 text-sm">
+            <ul className="space-y-1.5">
               <li>
                 <Link
                   href="/about"
@@ -96,10 +96,10 @@ const AppFooter: React.FC = () => {
 
           {/* Legal & Social */}
           <div>
-            <h4 className="text-white font-semibold mb-4 text-sm uppercase tracking-wider">
+            <h4 className="text-white font-semibold mb-2.5 text-[10px] uppercase tracking-wider">
               Legal
             </h4>
-            <ul className="space-y-3 text-sm">
+            <ul className="space-y-1.5">
               <li>
                 <Link
                   href="/terms"
@@ -137,7 +137,7 @@ const AppFooter: React.FC = () => {
         </div>
 
         {/* Bottom Bar */}
-        <div className="border-t border-slate-800 mt-8 pt-6 text-center text-sm text-slate-500">
+        <div className="border-t border-slate-800 mt-6 pt-4 text-center text-[10px] text-slate-500">
           <p>
             &copy; {new Date().getFullYear()} MarkWise. All rights reserved.
           </p>
@@ -148,5 +148,3 @@ const AppFooter: React.FC = () => {
 };
 
 export default AppFooter;
-
-

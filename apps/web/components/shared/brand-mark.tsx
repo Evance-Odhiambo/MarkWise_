@@ -42,10 +42,10 @@ export function BrandMark({ size = 40, className = "" }: BrandMarkProps) {
         <BrandMarkGlyph size={size} />
       </span>
       <span className="flex flex-col leading-tight">
-        <span className="text-2xl font-bold tracking-tight text-gray-900 transition-colors duration-200 group-hover:text-emerald-600">
+        <span className="text-base font-bold tracking-tight text-gray-900 transition-colors duration-200 group-hover:text-emerald-600">
           Mark<span className="text-emerald-600">Wise</span>
         </span>
-        <span className="text-[10px] font-medium uppercase tracking-[0.25em] text-gray-500">
+        <span className="text-[8px] font-medium uppercase tracking-[0.2em] text-gray-500">
           Attendance Intelligence
         </span>
       </span>
